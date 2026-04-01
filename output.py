@@ -2,7 +2,7 @@ import pyttsx3
 import tkinter as tk
 import threading
 
-def speak(text):
+def speak(text, voice_id=None):
     # Run in a separate thread so it doesn't block the UI or main loop
     def _speak():
         try:
@@ -10,6 +10,11 @@ def speak(text):
             # Maximize speed slightly for faster output
             rate = engine.getProperty('rate')
             engine.setProperty('rate', rate + 25)
+
+            # Set specific playback voice/device configuration if provided
+            if voice_id:
+                engine.setProperty('voice', voice_id)
+
             engine.say(text)
             engine.runAndWait()
         except Exception as e:
@@ -73,12 +78,12 @@ def show_popup(text):
 
     threading.Thread(target=_popup, daemon=True).start()
 
-def output_result(text, output_modes):
+def output_result(text, output_modes, voice_id=None):
     if not output_modes:
         output_modes = ['popup'] # Default
 
     if 'audio' in output_modes:
-        speak(text)
+        speak(text, voice_id)
 
     if 'popup' in output_modes:
         show_popup(text)
