@@ -6,6 +6,8 @@ class CoordinateSelector:
         # Make the window transparent and cover the whole screen
         self.root.attributes("-alpha", 0.3)
         self.root.attributes("-fullscreen", True)
+        # Ensure it stays on top of all other windows
+        self.root.attributes("-topmost", True)
         self.root.config(cursor="cross")
 
         # Set up variables to store coordinates
@@ -57,6 +59,7 @@ class CoordinateSelector:
         self.root.quit()
 
     def cancel(self, event):
+        self.coordinates = None
         self.root.quit()
 
 def get_coordinates():
