@@ -1,0 +1,5 @@
+google-genai
+keyboard
+pyttsx3
+pillow
+pystray
