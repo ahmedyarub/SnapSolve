@@ -3,6 +3,7 @@ import json
 from PIL import ImageGrab
 import os
 import tempfile
+import shutil
 
 def capture_and_process(coords):
     if not coords or len(coords) != 4:
@@ -30,8 +31,12 @@ def capture_and_process(coords):
 
         # We use the -p flag for a single prompt and -o json for easy parsing
         # Pass the image file as positional argument to gemini CLI
+        gemini_cmd = shutil.which("gemini")
+        if not gemini_cmd:
+            return "Error: Could not find 'gemini' executable in PATH."
+
         result = subprocess.run(
-            ["gemini", "-p", prompt, temp_file_path, "-o", "json"],
+            [gemini_cmd, "-p", prompt, temp_file_path, "-o", "json"],
             capture_output=True,
             text=True,
             check=True
