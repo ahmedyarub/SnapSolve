@@ -28,10 +28,10 @@ def capture_and_process(coords):
         # Simple, fast prompt to ensure a short, direct answer
         prompt = "Read the question in this image and provide a very short, direct answer. Do not include extra explanation."
 
-        # We use the -p flag for a single prompt and --json for easy parsing
+        # We use the -p flag for a single prompt and -o json for easy parsing
         # Pass the image file as positional argument to gemini CLI
         result = subprocess.run(
-            ["gemini", "-p", prompt, temp_file_path, "--json"],
+            ["gemini", "-p", prompt, temp_file_path, "-o", "json"],
             capture_output=True,
             text=True,
             check=True
