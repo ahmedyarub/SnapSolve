@@ -1,11 +1,10 @@
-from google import genai
+import subprocess
+import json
 from PIL import ImageGrab
 import os
+import tempfile
 
-def capture_and_process(api_key, coords):
-    if not api_key:
-        return "Error: Gemini API Key is missing. Please set it in config.json or via command line."
-
+def capture_and_process(coords):
     if not coords or len(coords) != 4:
         return "Error: Invalid coordinates. Please run coordinate selection again."
 
@@ -18,18 +17,38 @@ def capture_and_process(api_key, coords):
     except Exception as e:
         return f"Error capturing screen: {str(e)}"
 
-    try:
-        # Configure Gemini API client
-        client = genai.Client(api_key=api_key)
+    temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    temp_file_path = temp_file.name
+    temp_file.close()
 
-        # Use gemini-2.5-flash as the latest fast model
+    try:
+        # Save image to temporary file
+        img.save(temp_file_path)
+
         # Simple, fast prompt to ensure a short, direct answer
         prompt = "Read the question in this image and provide a very short, direct answer. Do not include extra explanation."
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt, img]
+        # We use the -p flag for a single prompt and --json for easy parsing
+        # Pass the image file as positional argument to gemini CLI
+        result = subprocess.run(
+            ["gemini", "-p", prompt, temp_file_path, "--json"],
+            capture_output=True,
+            text=True,
+            check=True
         )
-        return response.text.strip()
+
+        # Parse the JSON response from the CLI
+        data = json.loads(result.stdout)
+        return data.get("candidates", [{}])[0].get("content", "").strip()
+
+    except subprocess.CalledProcessError as e:
+        return f"CLI Error: {e.stderr}"
     except Exception as e:
-        return f"Error calling Gemini API: {str(e)}"
+        return f"Error calling Gemini CLI: {str(e)}"
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except OSError:
+                pass

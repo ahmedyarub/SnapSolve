@@ -43,7 +43,7 @@ def handle_capture(config):
     def _capture():
         global is_processing
         try:
-            result = capture_and_process(config.get('api_key'), config.get('coordinates'))
+            result = capture_and_process(config.get('coordinates'))
             print(f"Result: {result}")
             # Pass the voice_id config if present
             output_result(result, config.get('output_mode'), config.get('voice_id'))
@@ -93,9 +93,6 @@ def main():
 
     print("Initializing Screen Capture & Gemini QA App...")
     config = get_config()
-
-    if not config.get('api_key'):
-        print("Warning: API Key not set. Please set it via --api-key or config.json.")
 
     if not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")

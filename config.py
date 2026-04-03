@@ -6,7 +6,6 @@ CONFIG_FILE = 'config.json'
 
 def load_config():
     config = {
-        'api_key': '',
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
         'hotkeys': [
             {'action': 'capture', 'key': 'ctrl+alt+shift+s'},
@@ -54,7 +53,6 @@ def save_config(config):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Screen Capture & Gemini QA")
-    parser.add_argument('--api-key', type=str, help='Gemini API Key')
     parser.add_argument('--output-mode', type=str, nargs='+', choices=['popup', 'audio', 'both'], help='Output mode: popup, audio, both')
     parser.add_argument('--hotkey-capture', type=str, help='Keyboard shortcut to trigger capture (e.g., ctrl+alt+shift+s)')
     parser.add_argument('--hotkey-reselect', type=str, help='Keyboard shortcut to reselect coordinates (e.g., ctrl+alt+shift+r)')
@@ -69,8 +67,6 @@ def get_config():
     config = load_config()
     args = parse_args()
 
-    if args.api_key:
-        config['api_key'] = args.api_key
     if args.output_mode:
         if 'both' in args.output_mode:
             config['output_mode'] = ['popup', 'audio']
