@@ -35,8 +35,14 @@ def capture_and_process(coords):
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
+        # Combine the prompt and the image file path to avoid conflict.
+        # Crucially, we must still use the -p flag to force non-interactive mode.
+        combined_prompt = f"{prompt} {temp_file_path}"
+        cmd_args = [gemini_cmd, "-p", combined_prompt, "-o", "json"]
+        print(f"Executing command: {' '.join(cmd_args)}")
+
         result = subprocess.run(
-            [gemini_cmd, "-p", prompt, temp_file_path, "-o", "json"],
+            cmd_args,
             capture_output=True,
             text=True,
             check=True
