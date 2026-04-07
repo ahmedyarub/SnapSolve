@@ -3,6 +3,7 @@ import keyboard
 import threading
 import sys
 import os
+import platform
 
 from config import get_config, save_config
 from selector import get_coordinates
@@ -19,6 +20,15 @@ except ImportError:
 # Global state
 is_running = True
 is_processing = False
+
+# Enable Windows DPI awareness to fix coordinate scaling issues
+if platform.system() == "Windows":
+    import ctypes
+    try:
+        # 2 = PROCESS_PER_MONITOR_DPI_AWARE
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception as e:
+        print(f"Warning: Failed to set DPI awareness: {e}")
 
 def create_tray_icon(on_exit):
     # Create a simple tray icon
