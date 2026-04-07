@@ -6,7 +6,6 @@ CONFIG_FILE = 'config.json'
 
 def load_config():
     config = {
-        'api_key': '',
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
         'hotkeys': [
             {'action': 'capture', 'key': 'ctrl+alt+shift+s'},
@@ -14,7 +13,8 @@ def load_config():
         ],
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
-        'voice_id': None # The TTS voice/playback device ID
+        'voice_id': None, # The TTS voice/playback device ID
+        'model': 'gemini-2.5-flash-lite'
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -54,7 +54,6 @@ def save_config(config):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Screen Capture & Gemini QA")
-    parser.add_argument('--api-key', type=str, help='Gemini API Key')
     parser.add_argument('--output-mode', type=str, nargs='+', choices=['popup', 'audio', 'both'], help='Output mode: popup, audio, both')
     parser.add_argument('--hotkey-capture', type=str, help='Keyboard shortcut to trigger capture (e.g., ctrl+alt+shift+s)')
     parser.add_argument('--hotkey-reselect', type=str, help='Keyboard shortcut to reselect coordinates (e.g., ctrl+alt+shift+r)')
@@ -62,6 +61,7 @@ def parse_args():
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
     parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
+    parser.add_argument('--model', type=str, help='Gemini model to use (default: gemini-2.5-flash-lite)')
 
     return parser.parse_args()
 
@@ -69,8 +69,6 @@ def get_config():
     config = load_config()
     args = parse_args()
 
-    if args.api_key:
-        config['api_key'] = args.api_key
     if args.output_mode:
         if 'both' in args.output_mode:
             config['output_mode'] = ['popup', 'audio']
@@ -95,5 +93,8 @@ def get_config():
 
     if args.voice_id:
         config['voice_id'] = args.voice_id
+
+    if args.model:
+        config['model'] = args.model
 
     return config

@@ -1,26 +1,22 @@
 # Screen Capture & Gemini QA
 
-A very fast Windows-compatible application that captures a user-defined rectangular area of the screen, sends it directly to Google Gemini 1.5 Flash (to bypass local OCR for extreme speed), and provides a very short answer to the question in the image.
+A very fast and simple application that captures a user-defined rectangular area of the screen, sends it directly to the Gemini CLI (to bypass local OCR for extreme speed), and provides a very short answer to the question in the image.
 
 The answer is outputted via a frameless popup notification and/or local Text-to-Speech (TTS).
 
 ## Setup & Installation
 
-1. Install Python 3.8+
-2. Install dependencies:
+1. Install Node.js (for `npx`)
+2. Install the Gemini CLI:
+   ```bash
+   npx @google/gemini-cli
+   ```
+   *Note: Run the command `gemini` at least once from the terminal to log in using your browser.*
+3. Install Python 3.8+
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-
-## Getting a Gemini API Token
-
-This application requires a Google Gemini API Key to process the screenshots.
-
-1. Go to Google AI Studio: https://aistudio.google.com/
-2. Sign in with your Google Account.
-3. Click on **"Get API key"** in the left navigation menu.
-4. Click **"Create API key"**.
-5. Copy the generated key.
 
 ## Configuration
 
@@ -32,7 +28,6 @@ Create a file named `config.json` in the same directory as the script. Example:
 
 ```json
 {
-    "api_key": "YOUR_GEMINI_API_KEY_HERE",
     "output_mode": ["popup", "audio"],
     "hotkeys": [
         {
@@ -45,7 +40,8 @@ Create a file named `config.json` in the same directory as the script. Example:
         }
     ],
     "background": false,
-    "voice_id": null
+    "voice_id": null,
+    "model": "gemini-2.5-flash-lite"
 }
 ```
 
@@ -56,7 +52,7 @@ Create a file named `config.json` in the same directory as the script. Example:
 You can pass arguments directly when running the application. These will override the `config.json` settings:
 
 ```bash
-python main.py --api-key YOUR_GEMINI_API_KEY_HERE --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r" --voice-id "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_DAVID_11.0"
+python main.py --model gemini-2.5-flash --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r" --voice-id "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_DAVID_11.0"
 ```
 
 ## Usage

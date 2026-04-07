@@ -3,11 +3,12 @@ import keyboard
 import threading
 import sys
 import os
+import platform
 
 from config import get_config, save_config
 from selector import get_coordinates
 from processor import capture_and_process
-from output import output_result
+from output import output_result, show_popup
 
 try:
     from PIL import Image
@@ -19,6 +20,15 @@ except ImportError:
 # Global state
 is_running = True
 is_processing = False
+
+# Enable Windows DPI awareness to fix coordinate scaling issues
+if platform.system() == "Windows":
+    import ctypes
+    try:
+        # 2 = PROCESS_PER_MONITOR_DPI_AWARE
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception as e:
+        print(f"Warning: Failed to set DPI awareness: {e}")
 
 def create_tray_icon(on_exit):
     # Create a simple tray icon
@@ -40,10 +50,18 @@ def handle_capture(config):
     is_processing = True
     print("Capturing and processing...")
 
+    def status_update(msg):
+        if 'popup' in config.get('output_mode', ['popup']):
+            show_popup(msg, auto_close=None)
+
     def _capture():
         global is_processing
         try:
-            result = capture_and_process(config.get('api_key'), config.get('coordinates'))
+            result = capture_and_process(
+                config.get('coordinates'),
+                model=config.get('model', 'gemini-2.5-flash-lite'),
+                status_callback=status_update
+            )
             print(f"Result: {result}")
             # Pass the voice_id config if present
             output_result(result, config.get('output_mode'), config.get('voice_id'))
@@ -93,9 +111,6 @@ def main():
 
     print("Initializing Screen Capture & Gemini QA App...")
     config = get_config()
-
-    if not config.get('api_key'):
-        print("Warning: API Key not set. Please set it via --api-key or config.json.")
 
     if not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
