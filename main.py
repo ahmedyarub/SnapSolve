@@ -7,7 +7,7 @@ import os
 from config import get_config, save_config
 from selector import get_coordinates
 from processor import capture_and_process
-from output import output_result
+from output import output_result, show_popup
 
 try:
     from PIL import Image
@@ -40,10 +40,14 @@ def handle_capture(config):
     is_processing = True
     print("Capturing and processing...")
 
+    def status_update(msg):
+        if 'popup' in config.get('output_mode', ['popup']):
+            show_popup(msg, auto_close=None)
+
     def _capture():
         global is_processing
         try:
-            result = capture_and_process(config.get('coordinates'))
+            result = capture_and_process(config.get('coordinates'), status_callback=status_update)
             print(f"Result: {result}")
             # Pass the voice_id config if present
             output_result(result, config.get('output_mode'), config.get('voice_id'))

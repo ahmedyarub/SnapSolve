@@ -5,12 +5,15 @@ import os
 import tempfile
 import shutil
 
-def capture_and_process(coords):
+def capture_and_process(coords, status_callback=None):
     if not coords or len(coords) != 4:
         return "Error: Invalid coordinates. Please run coordinate selection again."
 
     # Unpack coordinates (x1, y1, x2, y2)
     bbox = tuple(coords)
+
+    if status_callback:
+        status_callback("Capturing screen...")
 
     try:
         # Capture screen region
@@ -40,6 +43,9 @@ def capture_and_process(coords):
         combined_prompt = f"{prompt} {temp_file_path}"
         cmd_args = [gemini_cmd, "-p", combined_prompt, "-o", "json"]
         print(f"Executing command: {' '.join(cmd_args)}")
+
+        if status_callback:
+            status_callback("Processing with Gemini CLI...")
 
         result = subprocess.run(
             cmd_args,

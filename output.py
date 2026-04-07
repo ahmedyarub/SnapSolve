@@ -22,61 +22,83 @@ def speak(text, voice_id=None):
 
     threading.Thread(target=_speak, daemon=True).start()
 
-class PopupMessage:
-    def __init__(self, text):
-        self.root = tk.Tk()
-        # Make the popup appear on top and remove title bar
-        self.root.attributes("-topmost", True)
-        self.root.overrideredirect(True)
+import queue
 
-        # Basic styling for a fast, clean popup
-        self.frame = tk.Frame(self.root, bg="black", bd=2, relief=tk.RAISED)
-        self.frame.pack(fill=tk.BOTH, expand=True)
+_ui_queue = queue.Queue()
+_ui_thread = None
 
-        self.label = tk.Label(
-            self.frame,
-            text=text,
-            bg="black",
-            fg="white",
-            font=("Arial", 14),
-            padx=20,
-            pady=10,
-            wraplength=400
-        )
-        self.label.pack(fill=tk.BOTH, expand=True)
+def _ui_loop():
+    root = tk.Tk()
+    root.attributes("-topmost", True)
+    root.overrideredirect(True)
+    root.withdraw() # Hide initially
 
-        # Calculate position to be near bottom right, but give some padding
-        ws = self.root.winfo_screenwidth()
-        hs = self.root.winfo_screenheight()
+    frame = tk.Frame(root, bg="black", bd=2, relief=tk.RAISED)
+    frame.pack(fill=tk.BOTH, expand=True)
 
-        # Give tkinter time to calculate size
-        self.root.update_idletasks()
+    label = tk.Label(
+        frame,
+        text="",
+        bg="black",
+        fg="white",
+        font=("Arial", 14),
+        padx=20,
+        pady=10,
+        wraplength=400
+    )
+    label.pack(fill=tk.BOTH, expand=True)
 
-        w = self.root.winfo_reqwidth()
-        h = self.root.winfo_reqheight()
-
+    def position_window():
+        root.update_idletasks()
+        w = root.winfo_reqwidth()
+        h = root.winfo_reqheight()
+        ws = root.winfo_screenwidth()
+        hs = root.winfo_screenheight()
         x = ws - w - 50
         y = hs - h - 100
+        root.geometry(f"{w}x{h}+{x}+{y}")
 
-        self.root.geometry(f"{w}x{h}+{x}+{y}")
+    def close_window(event=None):
+        root.withdraw()
 
-        # Bind click to close
-        self.root.bind("<Button-1>", self.close)
+    root.bind("<Button-1>", close_window)
 
-        # Auto-close after 5 seconds
-        self.root.after(5000, self.close)
+    close_timer = [None]  # Use list to allow modification in nested function
 
-    def close(self, event=None):
-        self.root.destroy()
+    def process_queue():
+        try:
+            while True:
+                msg = _ui_queue.get_nowait()
+                text = msg.get("text")
+                auto_close = msg.get("auto_close", 5000)
 
-def show_popup(text):
-    # tkinter needs to run in the main thread of its own context,
-    # but we can spin it up and destroy it each time.
-    def _popup():
-        popup = PopupMessage(text)
-        popup.root.mainloop()
+                label.config(text=text)
+                root.deiconify() # Show window
+                position_window()
 
-    threading.Thread(target=_popup, daemon=True).start()
+                if close_timer[0]:
+                    root.after_cancel(close_timer[0])
+                    close_timer[0] = None
+
+                if auto_close:
+                    close_timer[0] = root.after(auto_close, close_window)
+        except queue.Empty:
+            pass
+
+        root.after(100, process_queue)
+
+    root.after(100, process_queue)
+    root.mainloop()
+
+def init_ui():
+    global _ui_thread
+    if _ui_thread is None:
+        _ui_thread = threading.Thread(target=_ui_loop, daemon=True)
+        _ui_thread.start()
+
+def show_popup(text, auto_close=5000):
+    init_ui()
+    _ui_queue.put({"text": text, "auto_close": auto_close})
 
 def output_result(text, output_modes, voice_id=None):
     if not output_modes:
@@ -86,4 +108,4 @@ def output_result(text, output_modes, voice_id=None):
         speak(text, voice_id)
 
     if 'popup' in output_modes:
-        show_popup(text)
+        show_popup(text, auto_close=5000)
