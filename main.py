@@ -60,6 +60,9 @@ def handle_capture(config):
             result = capture_and_process(
                 config.get('coordinates'),
                 model=config.get('model', 'gemini-2.5-flash-lite'),
+                llm_engine=config.get('llm_engine', 'gemini'),
+                ocr_engine=config.get('ocr_engine', 'none'),
+                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 status_callback=status_update
             )
             print(f"Result: {result}")
