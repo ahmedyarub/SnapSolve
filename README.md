@@ -1,6 +1,6 @@
 # Screen Capture & Gemini QA
 
-A very fast Windows-compatible application that captures a user-defined rectangular area of the screen, sends it directly to the Gemini CLI (to bypass local OCR for extreme speed), and provides a very short answer to the question in the image.
+A very fast and simple application that captures a user-defined rectangular area of the screen, sends it directly to the Gemini CLI (to bypass local OCR for extreme speed), and provides a very short answer to the question in the image.
 
 The answer is outputted via a frameless popup notification and/or local Text-to-Speech (TTS).
 

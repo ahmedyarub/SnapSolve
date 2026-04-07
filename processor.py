@@ -46,7 +46,7 @@ def capture_and_process(coords, model="gemini-2.5-flash-lite", status_callback=N
         temp_dir = os.path.dirname(temp_file_path)
         if not temp_dir.endswith(os.sep):
             temp_dir += os.sep
-        include_dir_arg = f'"{temp_dir}"'
+        include_dir_arg = f'{temp_dir}'
 
         cmd_args = [
             gemini_cmd,
