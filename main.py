@@ -57,7 +57,11 @@ def handle_capture(config):
     def _capture():
         global is_processing
         try:
-            result = capture_and_process(config.get('coordinates'), status_callback=status_update)
+            result = capture_and_process(
+                config.get('coordinates'),
+                model=config.get('model', 'gemini-2.5-flash-lite'),
+                status_callback=status_update
+            )
             print(f"Result: {result}")
             # Pass the voice_id config if present
             output_result(result, config.get('output_mode'), config.get('voice_id'))

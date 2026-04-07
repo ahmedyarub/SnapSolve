@@ -13,7 +13,8 @@ def load_config():
         ],
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
-        'voice_id': None # The TTS voice/playback device ID
+        'voice_id': None, # The TTS voice/playback device ID
+        'model': 'gemini-2.5-flash-lite'
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -60,6 +61,7 @@ def parse_args():
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
     parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
+    parser.add_argument('--model', type=str, help='Gemini model to use (default: gemini-2.5-flash-lite)')
 
     return parser.parse_args()
 
@@ -91,5 +93,8 @@ def get_config():
 
     if args.voice_id:
         config['voice_id'] = args.voice_id
+
+    if args.model:
+        config['model'] = args.model
 
     return config
