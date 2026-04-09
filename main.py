@@ -1,14 +1,14 @@
-import time
-import keyboard
-import threading
-import sys
-import os
 import platform
+import sys
+import threading
+import time
+
+import keyboard
 
 from config import get_config, save_config
-from selector import get_coordinates
-from processor import capture_and_process
 from output import output_result, show_popup
+from processor import capture_and_process
+from selector import get_coordinates
 
 try:
     from PIL import Image
