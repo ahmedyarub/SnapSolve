@@ -7,7 +7,7 @@ import keyboard
 
 from config import get_config, save_config
 from output import output_result, show_popup
-from processor import capture_and_process
+from processor import capture_and_process, PaddleOCREngine, OllamaEngine
 from selector import get_coordinates
 
 try:
@@ -151,7 +151,8 @@ def main():
     model = config.get('model', 'gemini-2.5-flash-lite')
     if llm_type == "ollama":
         print("Initializing Ollama Engine...")
-        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'), status_callback=lambda msg: print(f"Init status: {msg}"))
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
+                                           status_callback=lambda msg: print(f"Init status: {msg}"))
 
     hotkeys = config.get('hotkeys', [])
 
