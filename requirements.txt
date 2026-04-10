@@ -3,3 +3,5 @@ pyttsx3
 pillow
 pystray
 google-genai
+darkdetect
+sv_ttk

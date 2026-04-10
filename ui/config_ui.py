@@ -4,6 +4,9 @@ import json
 import os
 import sys
 import subprocess
+import darkdetect
+import sv_ttk
+import keyboard
 
 # Add parent to path so we can import config.settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -93,12 +96,20 @@ class ConfigUI:
         # Hotkeys
         ttk.Label(main_frame, text="Capture Hotkey:").grid(row=row, column=0, sticky=tk.W, pady=5)
         self.capture_hk_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.capture_hk_var).grid(row=row, column=1, sticky=tk.EW, pady=5)
+        capture_hk_frame = ttk.Frame(main_frame)
+        capture_hk_frame.grid(row=row, column=1, sticky=tk.EW, pady=5)
+        capture_hk_frame.columnconfigure(0, weight=1)
+        ttk.Entry(capture_hk_frame, textvariable=self.capture_hk_var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
+        ttk.Button(capture_hk_frame, text="Record", command=lambda: self.record_hotkey(self.capture_hk_var)).grid(row=0, column=1, padx=(5, 0))
         row += 1
 
         ttk.Label(main_frame, text="Reselect Hotkey:").grid(row=row, column=0, sticky=tk.W, pady=5)
         self.reselect_hk_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.reselect_hk_var).grid(row=row, column=1, sticky=tk.EW, pady=5)
+        reselect_hk_frame = ttk.Frame(main_frame)
+        reselect_hk_frame.grid(row=row, column=1, sticky=tk.EW, pady=5)
+        reselect_hk_frame.columnconfigure(0, weight=1)
+        ttk.Entry(reselect_hk_frame, textvariable=self.reselect_hk_var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
+        ttk.Button(reselect_hk_frame, text="Record", command=lambda: self.record_hotkey(self.reselect_hk_var)).grid(row=0, column=1, padx=(5, 0))
         row += 1
 
         # Run in background
@@ -151,6 +162,47 @@ class ConfigUI:
                 self.reselect_hk_var.set(hk.get('key', ''))
 
         self.bg_var.set(self.config.get('background', False))
+
+    def record_hotkey(self, var):
+        # Create a popup dialog to ask user to press keys
+        record_win = tk.Toplevel(self.root)
+        record_win.title("Record Hotkey")
+        record_win.geometry("300x150")
+        record_win.transient(self.root)
+        record_win.grab_set()
+
+        lbl = ttk.Label(record_win, text="Press your desired key combination...\n(e.g., Ctrl+Shift+A)\n\nPress Escape to cancel.", justify="center")
+        lbl.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
+
+        recorded_key = []
+
+        def on_key_event(e):
+            if e.event_type == keyboard.KEY_DOWN:
+                if e.name == "esc":
+                    keyboard.unhook_all()
+                    record_win.destroy()
+                    return
+                # Use keyboard.read_hotkey() logic if needed, but it's simpler to use keyboard.read_hotkey() directly
+                # However, read_hotkey blocks. We'll use a slightly different approach.
+                pass
+
+        def do_record():
+            try:
+                # read_hotkey blocks until a hotkey is pressed and released
+                hotkey = keyboard.read_hotkey(suppress=False)
+                if hotkey and hotkey != "esc":
+                    # Use after() to safely update Tkinter variables from a background thread
+                    self.root.after(0, lambda: var.set(hotkey))
+            except Exception as e:
+                print(f"Error recording hotkey: {e}")
+            finally:
+                # Use after() to safely destroy Tkinter windows from a background thread
+                self.root.after(0, lambda: record_win.destroy() if record_win.winfo_exists() else None)
+
+        # Run recording in a separate thread so the UI doesn't freeze
+        import threading
+        threading.Thread(target=do_record, daemon=True).start()
+
 
     def update_models(self, event=None):
         llm = self.llm_var.get()
@@ -228,5 +280,12 @@ class ConfigUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # Apply OS theme using sv_ttk
+    if darkdetect.isDark():
+        sv_ttk.set_theme("dark")
+    else:
+        sv_ttk.set_theme("light")
+
     app = ConfigUI(root)
     root.mainloop()
