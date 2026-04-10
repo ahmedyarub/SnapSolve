@@ -46,9 +46,10 @@ Open your terminal (PowerShell, CMD, or your IDE's terminal) and set up your Pyt
 
 **Step A: Install the GPU Engine**
 It is highly recommended to use the official Baidu mirror to get the correctly compiled Windows CUDA wheels. The default PyPI package can sometimes fail to link against Windows CUDA binaries properly.
-*Note: Change `cu118` in the URL below to `cu126` or `cu129` depending on the exact CUDA version you installed.*
 ```bash
-python -m pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+python -m pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+pip install "paddlex[base]"
+paddlex --install PaddleOCR PaddleClas
 ```
 
 **Step B: Install the OCR Toolkit**
