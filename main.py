@@ -7,7 +7,7 @@ import keyboard
 
 from config import get_config, save_config
 from output import output_result, show_popup
-from processor import capture_and_process
+from processor import capture_and_process, PaddleOCREngine, NoOCREngine, GeminiCLIEngine, OllamaEngine, GoogleGenAIEngine
 from selector import get_coordinates
 
 try:
@@ -20,6 +20,8 @@ except ImportError:
 # Global state
 is_running = True
 is_processing = False
+ocr_engine_instance = None
+llm_engine_instance = None
 
 # Enable Windows DPI awareness to fix coordinate scaling issues
 if platform.system() == "Windows":
@@ -57,13 +59,11 @@ def handle_capture(config):
     def _capture():
         global is_processing
         try:
+            global ocr_engine_instance, llm_engine_instance
             result = capture_and_process(
                 config.get('coordinates'),
-                model=config.get('model', 'gemini-2.5-flash-lite'),
-                llm_engine=config.get('llm_engine', 'gemini'),
-                ocr_engine=config.get('ocr_engine', 'none'),
-                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
-                google_genai_api_key=config.get('google_genai_api_key', ''),
+                ocr_engine_instance=ocr_engine_instance,
+                llm_engine_instance=llm_engine_instance,
                 status_callback=status_update
             )
             print(f"Result: {result}")
