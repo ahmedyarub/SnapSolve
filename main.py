@@ -62,6 +62,11 @@ def handle_capture(config):
             global ocr_engine_instance, llm_engine_instance
             result = capture_and_process(
                 config.get('coordinates'),
+                model=config.get('model', 'gemini-2.5-flash-lite'),
+                llm_engine=config.get('llm_engine', 'gemini'),
+                ocr_engine=config.get('ocr_engine', 'none'),
+                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
+                google_genai_api_key=config.get('google_genai_api_key', ''),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update
