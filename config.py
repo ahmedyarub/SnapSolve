@@ -14,7 +14,10 @@ def load_config():
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
         'voice_id': None, # The TTS voice/playback device ID
-        'model': 'gemini-2.5-flash-lite'
+        'model': 'gemini-2.5-flash-lite',
+        'llm_engine': 'gemini', # 'gemini' or 'ollama'
+        'ocr_engine': 'none', # 'none' or 'paddleocr'
+        'ollama_url': 'http://localhost:11434'
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -61,7 +64,10 @@ def parse_args():
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
     parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
-    parser.add_argument('--model', type=str, help='Gemini model to use (default: gemini-2.5-flash-lite)')
+    parser.add_argument('--model', type=str, help='Model to use (default: gemini-2.5-flash-lite)')
+    parser.add_argument('--llm-engine', type=str, choices=['gemini', 'ollama'], help='LLM engine to use (default: gemini)')
+    parser.add_argument('--ocr-engine', type=str, choices=['none', 'paddleocr'], help='OCR engine to use (default: none)')
+    parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
 
     return parser.parse_args()
 
@@ -96,5 +102,14 @@ def get_config():
 
     if args.model:
         config['model'] = args.model
+
+    if args.llm_engine:
+        config['llm_engine'] = args.llm_engine
+
+    if args.ocr_engine:
+        config['ocr_engine'] = args.ocr_engine
+
+    if args.ollama_url:
+        config['ollama_url'] = args.ollama_url
 
     return config
