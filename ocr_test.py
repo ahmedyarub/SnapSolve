@@ -1,6 +1,6 @@
 import os
-import warnings
 import time
+import warnings
 
 # Silence C++ logs
 os.environ['GLOG_minloglevel'] = '2'

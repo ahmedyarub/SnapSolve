@@ -1,23 +1,27 @@
-import subprocess
-import json
-from PIL import ImageGrab
-import os
-import tempfile
-import shutil
-import time
-import base64
-import urllib.request
-import urllib.error
 import abc
+import base64
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+from PIL import ImageGrab
+
 
 class OCREngine(abc.ABC):
     @abc.abstractmethod
     def extract_text(self, image_path: str, status_callback=None) -> str:
         pass
 
+
 class NoOCREngine(OCREngine):
     def extract_text(self, image_path: str, status_callback=None) -> str:
         return None
+
 
 class PaddleOCREngine(OCREngine):
     def __init__(self, status_callback=None):
@@ -44,7 +48,7 @@ class PaddleOCREngine(OCREngine):
             else:
                 from PIL import Image
                 temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                img = Image.new('RGB', (100, 100), color = 'white')
+                img = Image.new('RGB', (100, 100), color='white')
                 img.save(temp_file.name)
                 self.ocr.ocr(temp_file.name)
                 os.remove(temp_file.name)
@@ -106,6 +110,7 @@ class PaddleOCREngine(OCREngine):
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
             raise Exception(f"Error during OCR execution: {str(e)}")
 
+
 class LLMEngine(abc.ABC):
     def __init__(self, model: str):
         self.model = model
@@ -113,6 +118,7 @@ class LLMEngine(abc.ABC):
     @abc.abstractmethod
     def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None) -> str:
         pass
+
 
 class OllamaEngine(LLMEngine):
     def __init__(self, model: str, ollama_url: str, status_callback=None):
@@ -178,6 +184,7 @@ class OllamaEngine(LLMEngine):
         print(f"Ollama took {elapsed_ms:.2f} ms")
         return ans
 
+
 class GeminiCLIEngine(LLMEngine):
     def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None) -> str:
         start_time = time.time()
@@ -235,6 +242,7 @@ class GeminiCLIEngine(LLMEngine):
         except subprocess.CalledProcessError as e:
             return f"CLI Error: {e.stderr}"
 
+
 class GoogleGenAIEngine(LLMEngine):
     def __init__(self, model: str, api_key: str):
         super().__init__(model)
@@ -279,7 +287,10 @@ class GoogleGenAIEngine(LLMEngine):
         except Exception as e:
             return f"Error calling Google GenAI API: {str(e)}"
 
-def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none", ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None, llm_engine_instance=None, status_callback=None):
+
+def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
+                        ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
+                        llm_engine_instance=None, status_callback=None):
     if not coords or len(coords) != 4:
         return "Error: Invalid coordinates. Please run coordinate selection again."
 
