@@ -25,7 +25,12 @@ To use the default Gemini CLI:
 1. Install [Ollama](https://ollama.com/).
 2. Start your local Ollama server and pull a model (e.g., `ollama run llama3`).
 
-### Option 3: Local OCR with PaddleOCR
+### Option 3: Google GenAI Python SDK
+Instead of the CLI, you can use the official Python SDK directly.
+1. Make sure `google-genai` is installed (it's in `requirements.txt`).
+2. Add your API key to `config.json` under `google_genai_api_key`.
+
+### Option 4: Local OCR with PaddleOCR
 If you want to use PaddleOCR to extract text locally before sending it to an LLM:
 
 Setting up PaddleOCR with CUDA on Windows is straightforward, provided your NVIDIA environment is properly configured. Because PaddleOCR separates the underlying engine (PaddlePaddle) from the OCR logic, you must install them in a specific order.
@@ -41,9 +46,10 @@ Open your terminal (PowerShell, CMD, or your IDE's terminal) and set up your Pyt
 
 **Step A: Install the GPU Engine**
 It is highly recommended to use the official Baidu mirror to get the correctly compiled Windows CUDA wheels. The default PyPI package can sometimes fail to link against Windows CUDA binaries properly.
-*Note: Change `cu118` in the URL below to `cu126` or `cu129` depending on the exact CUDA version you installed.*
 ```bash
-python -m pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+python -m pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+pip install "paddlex[base]"
+paddlex --install PaddleOCR PaddleClas
 ```
 
 **Step B: Install the OCR Toolkit**
@@ -53,6 +59,17 @@ pip install timm
 pip install torch
 pip install paddleocr
 ```
+
+## Supported Engines
+
+**LLM Engines (`llm_engine`):**
+*   `gemini` - Uses the Google Gemini CLI. Sends multimodal (image + text) directly or text-only if OCR is used.
+*   `ollama` - Uses a local Ollama server. Can process both images and text-only depending on the model.
+*   `google-genai` - Uses the official Python SDK for Google GenAI. Requires an API key. Supports both image and text inputs.
+
+**OCR Engines (`ocr_engine`):**
+*   `none` - Does not perform local OCR. The full image is sent directly to the LLM.
+*   `paddleocr` - Uses local PaddleOCR to extract text from the image, sending only the extracted text to the LLM.
 
 ## Configuration
 
@@ -80,14 +97,16 @@ Create a file named `config.json` in the same directory as the script. Example:
     "model": "gemini-2.5-flash-lite",
     "llm_engine": "gemini",
     "ocr_engine": "none",
-    "ollama_url": "http://localhost:11434"
+    "ollama_url": "http://localhost:11434",
+    "google_genai_api_key": ""
 }
 ```
 
 *   `voice_id`: Allows you to pick a specific TTS voice or OS playback device configuration installed on your system. You can pass the ID here, or omit it to use the system default.
-*   `llm_engine`: Can be `"gemini"` or `"ollama"`.
+*   `llm_engine`: Can be `"gemini"`, `"ollama"`, or `"google-genai"`.
 *   `ocr_engine`: Can be `"none"` (to send image directly to the LLM) or `"paddleocr"` (to extract text locally before sending to the LLM).
 *   `ollama_url`: The URL to your Ollama API.
+*   `google_genai_api_key`: Your API key for the Google GenAI SDK (only needed if `llm_engine` is `"google-genai"`).
 
 ### Example Combinations
 **Gemini Vision (Default)**

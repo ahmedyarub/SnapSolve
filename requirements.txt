@@ -2,3 +2,4 @@ keyboard
 pyttsx3
 pillow
 pystray
+google-genai

@@ -7,12 +7,13 @@ import keyboard
 
 from config import get_config, save_config
 from output import output_result, show_popup
-from processor import capture_and_process
+from processor import capture_and_process, PaddleOCREngine, OllamaEngine
 from selector import get_coordinates
 
 try:
     from PIL import Image
     import pystray
+
     HAS_PYSTRAY = True
 except ImportError:
     HAS_PYSTRAY = False
@@ -20,15 +21,19 @@ except ImportError:
 # Global state
 is_running = True
 is_processing = False
+ocr_engine_instance = None
+llm_engine_instance = None
 
 # Enable Windows DPI awareness to fix coordinate scaling issues
 if platform.system() == "Windows":
     import ctypes
+
     try:
         # 2 = PROCESS_PER_MONITOR_DPI_AWARE
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception as e:
         print(f"Warning: Failed to set DPI awareness: {e}")
+
 
 def create_tray_icon(on_exit):
     # Create a simple tray icon
@@ -41,6 +46,7 @@ def create_tray_icon(on_exit):
     menu = pystray.Menu(pystray.MenuItem('Exit', quit_action))
     icon = pystray.Icon("ScreenQA", img, "Screen Capture QA", menu)
     return icon
+
 
 def handle_capture(config):
     global is_processing
@@ -57,12 +63,16 @@ def handle_capture(config):
     def _capture():
         global is_processing
         try:
+            global ocr_engine_instance, llm_engine_instance
             result = capture_and_process(
                 config.get('coordinates'),
                 model=config.get('model', 'gemini-2.5-flash-lite'),
                 llm_engine=config.get('llm_engine', 'gemini'),
                 ocr_engine=config.get('ocr_engine', 'none'),
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
+                google_genai_api_key=config.get('google_genai_api_key', ''),
+                ocr_engine_instance=ocr_engine_instance,
+                llm_engine_instance=llm_engine_instance,
                 status_callback=status_update
             )
             print(f"Result: {result}")
@@ -75,6 +85,7 @@ def handle_capture(config):
 
     # Must run in a separate thread so we don't block the global keyboard hook
     threading.Thread(target=_capture, daemon=True).start()
+
 
 def handle_reselect(config):
     global is_processing
@@ -104,10 +115,12 @@ def handle_reselect(config):
         print(f"Error during reselection: {e}")
         is_processing = False
 
+
 def exit_app():
     global is_running
     is_running = False
     print("Exiting...")
+
 
 def main():
     global is_running
@@ -125,6 +138,21 @@ def main():
         else:
             print("No coordinates selected. Exiting.")
             sys.exit(1)
+
+    # Initialize Engines (Only pre-init Ollama and PaddleOCR)
+    print("Checking engine pre-initialization...")
+    global ocr_engine_instance, llm_engine_instance
+    ocr_type = config.get('ocr_engine', 'none')
+    if ocr_type == "paddleocr":
+        print("Starting PaddleOCR (this may take a moment to warmup)...")
+        ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+
+    llm_type = config.get('llm_engine', 'gemini')
+    model = config.get('model', 'gemini-2.5-flash-lite')
+    if llm_type == "ollama":
+        print("Initializing Ollama Engine...")
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
+                                           status_callback=lambda msg: print(f"Init status: {msg}"))
 
     hotkeys = config.get('hotkeys', [])
 
@@ -158,6 +186,7 @@ def main():
     # Cleanup
     keyboard.unhook_all()
     print("Goodbye!")
+
 
 if __name__ == '__main__':
     main()
