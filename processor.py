@@ -38,7 +38,7 @@ def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemin
         if ocr_engine == "paddleocr":
             if status_callback:
                 status_callback("Running PaddleOCR...")
-            start_time = time.time()
+
             try:
                 import warnings
                 # Silence C++ logs
@@ -46,11 +46,11 @@ def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemin
                 from paddleocr import PaddleOCR
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+                start_time = time.time()
                 ocr = PaddleOCR(
                     lang='en',
                     use_textline_orientation=False,
                     use_doc_unwarping=False,
-                    show_log=False
                 )
 
                 results = ocr.ocr(temp_file_path)
@@ -94,7 +94,7 @@ def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemin
 
 
         # Simple, fast prompt to ensure a short, direct answer
-        base_prompt = "answer the following question quickly and briefly"
+            base_prompt = "answer the following question quickly and briefly"
 
         if extracted_text:
             prompt = f"{base_prompt}: {extracted_text}"
