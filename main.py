@@ -63,6 +63,7 @@ def handle_capture(config):
                 llm_engine=config.get('llm_engine', 'gemini'),
                 ocr_engine=config.get('ocr_engine', 'none'),
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
+                google_genai_api_key=config.get('google_genai_api_key', ''),
                 status_callback=status_update
             )
             print(f"Result: {result}")

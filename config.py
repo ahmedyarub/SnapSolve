@@ -17,7 +17,8 @@ def load_config():
         'model': 'gemini-2.5-flash-lite',
         'llm_engine': 'gemini', # 'gemini' or 'ollama'
         'ocr_engine': 'none', # 'none' or 'paddleocr'
-        'ollama_url': 'http://localhost:11434'
+        'ollama_url': 'http://localhost:11434',
+        'google_genai_api_key': ''
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -65,9 +66,10 @@ def parse_args():
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
     parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
     parser.add_argument('--model', type=str, help='Model to use (default: gemini-2.5-flash-lite)')
-    parser.add_argument('--llm-engine', type=str, choices=['gemini', 'ollama'], help='LLM engine to use (default: gemini)')
+    parser.add_argument('--llm-engine', type=str, choices=['gemini', 'ollama', 'google-genai'], help='LLM engine to use (default: gemini)')
     parser.add_argument('--ocr-engine', type=str, choices=['none', 'paddleocr'], help='OCR engine to use (default: none)')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
+    parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
 
     return parser.parse_args()
 
@@ -111,5 +113,8 @@ def get_config():
 
     if args.ollama_url:
         config['ollama_url'] = args.ollama_url
+
+    if args.google_genai_api_key:
+        config['google_genai_api_key'] = args.google_genai_api_key
 
     return config

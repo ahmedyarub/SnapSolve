@@ -1,0 +1,23 @@
+{
+    "output_mode": [
+        "popup"
+    ],
+    "hotkeys": [
+        {
+            "action": "capture",
+            "key": "ctrl+alt+shift+s"
+        },
+        {
+            "action": "reselect",
+            "key": "ctrl+alt+shift+r"
+        }
+    ],
+    "coordinates": null,
+    "background": false,
+    "voice_id": null,
+    "model": "gemini-2.5-flash-lite",
+    "llm_engine": "gemini",
+    "ocr_engine": "none",
+    "ollama_url": "http://localhost:11434",
+    "google_genai_api_key": ""
+}
