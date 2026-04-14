@@ -5,10 +5,10 @@ import time
 
 import keyboard
 
-from config import get_config, save_config
-from output import output_result, show_popup
-from processor import capture_and_process, PaddleOCREngine, OllamaEngine
-from selector import get_coordinates
+from config.settings import get_config, save_config
+from core.output import output_result, show_popup
+from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
+from ui.selector import get_coordinates
 
 try:
     from PIL import Image
@@ -122,11 +122,44 @@ def exit_app():
     print("Exiting...")
 
 
+import json
+import os
+
+def load_models_data():
+    try:
+        models_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_models.json")
+        with open(models_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load llm_models.json: {e}")
+        return {}
+
+def validate_config(config):
+    llm_type = config.get('llm_engine', 'gemini')
+    model_id = config.get('model', 'gemini-2.5-flash-lite')
+    ocr_type = config.get('ocr_engine', 'none')
+
+    models_data = load_models_data()
+    models = models_data.get(llm_type, [])
+
+    supports_ocr = False
+    for m in models:
+        if m.get('id') == model_id:
+            supports_ocr = m.get('supports_ocr', False)
+            break
+
+    if not supports_ocr and ocr_type == 'none':
+        print(f"Error: Selected model '{model_id}' does not support built-in OCR and no OCR engine is configured.")
+        print("Please configure an OCR engine or select a model that supports OCR.")
+        sys.exit(1)
+
 def main():
     global is_running
 
     print("Initializing Screen Capture & Gemini QA App...")
     config = get_config()
+
+    validate_config(config)
 
     if not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
