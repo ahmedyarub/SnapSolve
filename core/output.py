@@ -23,9 +23,55 @@ def speak(text, voice_id=None):
     threading.Thread(target=_speak, daemon=True).start()
 
 import queue
+import re
 
 _ui_queue = queue.Queue()
 _ui_thread = None
+
+def render_markdown(text_widget, text_content):
+    # Configure tags
+    text_widget.tag_configure("bold", font=("Arial", 14, "bold"))
+    text_widget.tag_configure("italic", font=("Arial", 14, "italic"))
+    text_widget.tag_configure("header1", font=("Arial", 20, "bold"))
+    text_widget.tag_configure("header2", font=("Arial", 18, "bold"))
+    text_widget.tag_configure("header3", font=("Arial", 16, "bold"))
+
+    # Code block styling (dark background, monospaced font)
+    # Using #1e1e1e (dark gray) for code background so it stands out against the black frame
+    text_widget.tag_configure("code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4", lmargin1=10, lmargin2=10, rmargin=10)
+    text_widget.tag_configure("inline_code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4")
+
+    lines = text_content.splitlines()
+    in_code_block = False
+
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        if in_code_block:
+            text_widget.insert(tk.END, line + "\n", "code")
+        else:
+            if line.startswith("# "):
+                text_widget.insert(tk.END, line[2:] + "\n", "header1")
+            elif line.startswith("## "):
+                text_widget.insert(tk.END, line[3:] + "\n", "header2")
+            elif line.startswith("### "):
+                text_widget.insert(tk.END, line[4:] + "\n", "header3")
+            else:
+                # Basic inline formatting parsing
+                # This uses a regex to split by formatting markers, keeping the markers in the split result
+                parts = re.split(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)', line)
+                for part in parts:
+                    if part.startswith("**") and part.endswith("**") and len(part) > 4:
+                        text_widget.insert(tk.END, part[2:-2], "bold")
+                    elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
+                        text_widget.insert(tk.END, part[1:-1], "italic")
+                    elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+                        text_widget.insert(tk.END, part[1:-1], "inline_code")
+                    else:
+                        text_widget.insert(tk.END, part)
+                text_widget.insert(tk.END, "\n")
 
 def _ui_loop():
     root = tk.Tk()
@@ -127,7 +173,7 @@ def _ui_loop():
                     # Enable, insert, then disable to make read-only
                     text_widget.config(state=tk.NORMAL)
                     text_widget.delete(1.0, tk.END)
-                    text_widget.insert(tk.END, text_content)
+                    render_markdown(text_widget, text_content)
                     text_widget.config(state=tk.DISABLED)
 
                     # Dynamically calculate width and height based on content
