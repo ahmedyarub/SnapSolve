@@ -275,8 +275,16 @@ class ConfigUI:
         if self._save():
             self.root.destroy()
             main_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py")
-            # Run the main app
-            subprocess.Popen([sys.executable, main_path])
+
+            # Use specific flags on Windows to fully detach the child process so it survives PyCharm's run mode termination
+            if os.name == 'nt':
+                DETACHED_PROCESS = 0x00000008
+                CREATE_NEW_PROCESS_GROUP = 0x00000200
+                creationflags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                subprocess.Popen([sys.executable, main_path], creationflags=creationflags)
+            else:
+                # For non-Windows OS
+                subprocess.Popen([sys.executable, main_path], start_new_session=True)
 
 if __name__ == "__main__":
     root = tk.Tk()
