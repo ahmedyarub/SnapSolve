@@ -55,7 +55,8 @@ def load_config():
         'ollama_url': 'http://localhost:11434',
         'google_genai_api_key': '',
         'auto_close_results': False,
-        'popup_opacity': 0.8
+        'popup_opacity': 0.8,
+        'fallback_language': 'python'
     }
 
     # Ensure config directory exists
@@ -117,6 +118,7 @@ def parse_args():
     parser.add_argument('--auto-close-results', action='store_true', help='Auto close result popups')
     parser.add_argument('--no-auto-close-results', action='store_true', help='Do not auto close result popups')
     parser.add_argument('--popup-opacity', type=float, help='Opacity of the popup (0.0 to 1.0)')
+    parser.add_argument('--fallback-language', type=str, help='Fallback language for code blocks (default: python)')
 
     return parser.parse_args()
 
@@ -165,5 +167,8 @@ def get_config():
 
     if args.popup_opacity is not None:
         config['popup_opacity'] = args.popup_opacity
+
+    if args.fallback_language:
+        config['fallback_language'] = args.fallback_language
 
     return config
