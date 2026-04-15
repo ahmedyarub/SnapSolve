@@ -58,12 +58,22 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     def status_update(msg):
         if 'popup' in config.get('output_mode', ['popup']):
-            show_popup(msg, auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+            show_popup(msg, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
     def _capture():
         global is_processing
         try:
             global ocr_engine_instance, llm_engine_instance
+            accumulated_result = []
+
+            def chunk_callback(chunk_text):
+                if 'popup' in config.get('output_mode', ['popup']):
+                    accumulated_result.append(chunk_text)
+                    current_text = "".join(accumulated_result)
+                    # Use is_result=True so it expands to a big readable box with scroll,
+                    # and auto_close=None so it doesn't auto-close while streaming.
+                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True, fallback_language=config.get('fallback_language', 'python'))
+
             result = capture_and_process(
                 config.get('coordinates'),
                 prompt_text=active_prompt_text,
@@ -74,13 +84,17 @@ def handle_capture(config, active_profile, active_prompt_text):
                 google_genai_api_key=config.get('google_genai_api_key', ''),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
-                status_callback=status_update
+                status_callback=status_update,
+                chunk_callback=chunk_callback
             )
             print(f"Result: {result}")
-            # Pass the voice_id config if present
+            # The final call will trigger output_result to handle auto_close, TTS, etc.
+            # output_result does show_popup again with final text and configured auto-close.
             output_result(result, config.get('output_mode'), config.get('voice_id'), auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8), fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
             print(f"Error during processing: {e}")
+            if 'popup' in config.get('output_mode', ['popup']):
+                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
         is_processing = False
 
