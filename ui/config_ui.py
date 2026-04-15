@@ -12,6 +12,7 @@ import keyboard
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import get_config, save_config, load_profiles, save_profiles, load_prompts
 
+
 class ConfigUI:
     def __init__(self, root):
         self.root = root
@@ -30,7 +31,8 @@ class ConfigUI:
 
     def load_models(self):
         try:
-            models_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "llm_models.json")
+            models_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config",
+                                       "llm_models.json")
             with open(models_path, "r") as f:
                 return json.load(f)
         except Exception as e:
@@ -64,7 +66,8 @@ class ConfigUI:
         self.profile_combo.bind("<<ComboboxSelected>>", self.on_profile_selected)
 
         ttk.Button(profile_sel_frame, text="Add", command=self.add_profile, width=5).grid(row=0, column=1, padx=(5, 0))
-        ttk.Button(profile_sel_frame, text="Delete", command=self.delete_profile, width=6).grid(row=0, column=2, padx=(5, 0))
+        ttk.Button(profile_sel_frame, text="Delete", command=self.delete_profile, width=6).grid(row=0, column=2,
+                                                                                                padx=(5, 0))
 
         row += 1
 
@@ -106,8 +109,13 @@ class ConfigUI:
         capture_hk_frame = ttk.Frame(app_frame)
         capture_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         capture_hk_frame.columnconfigure(0, weight=1)
-        ttk.Entry(capture_hk_frame, textvariable=self.capture_hk_var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
-        ttk.Button(capture_hk_frame, text="Record", command=lambda: self.record_hotkey(self.capture_hk_var)).grid(row=0, column=1, padx=(5, 0))
+        ttk.Entry(capture_hk_frame, textvariable=self.capture_hk_var, state="readonly").grid(row=0, column=0,
+                                                                                             sticky=tk.EW)
+        ttk.Button(capture_hk_frame, text="Record", command=lambda: self.record_hotkey(self.capture_hk_var)).grid(row=0,
+                                                                                                                  column=1,
+                                                                                                                  padx=(
+                                                                                                                      5,
+                                                                                                                      0))
         app_row += 1
 
         ttk.Label(app_frame, text="Reselect Hotkey:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
@@ -115,13 +123,17 @@ class ConfigUI:
         reselect_hk_frame = ttk.Frame(app_frame)
         reselect_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         reselect_hk_frame.columnconfigure(0, weight=1)
-        ttk.Entry(reselect_hk_frame, textvariable=self.reselect_hk_var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
-        ttk.Button(reselect_hk_frame, text="Record", command=lambda: self.record_hotkey(self.reselect_hk_var)).grid(row=0, column=1, padx=(5, 0))
+        ttk.Entry(reselect_hk_frame, textvariable=self.reselect_hk_var, state="readonly").grid(row=0, column=0,
+                                                                                               sticky=tk.EW)
+        ttk.Button(reselect_hk_frame, text="Record", command=lambda: self.record_hotkey(self.reselect_hk_var)).grid(
+            row=0, column=1, padx=(5, 0))
         app_row += 1
 
         # Run in background
         self.bg_var = tk.BooleanVar()
-        ttk.Checkbutton(app_frame, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0, columnspan=2, sticky=tk.W, pady=5)
+        ttk.Checkbutton(app_frame, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
+                                                                                               columnspan=2,
+                                                                                               sticky=tk.W, pady=5)
         row += 1
 
         # --- Active Profile Configuration Section ---
@@ -316,7 +328,9 @@ class ConfigUI:
         record_win.transient(self.root)
         record_win.grab_set()
 
-        lbl = ttk.Label(record_win, text="Press your desired key combination...\n(e.g., Ctrl+Shift+A)\n\nPress Escape to cancel.", justify="center")
+        lbl = ttk.Label(record_win,
+                        text="Press your desired key combination...\n(e.g., Ctrl+Shift+A)\n\nPress Escape to cancel.",
+                        justify="center")
         lbl.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
 
         recorded_key = []
@@ -347,7 +361,6 @@ class ConfigUI:
         # Run recording in a separate thread so the UI doesn't freeze
         import threading
         threading.Thread(target=do_record, daemon=True).start()
-
 
     def update_models(self, event=None):
         llm = self.llm_var.get()
@@ -387,8 +400,8 @@ class ConfigUI:
 
         if not model_info.get('supports_ocr', False) and self.ocr_var.get() == 'none':
             messagebox.showerror("Configuration Error",
-                f"Model '{model_info['name']}' does not support built-in OCR. "
-                "You must select an OCR Engine (e.g., paddleocr) to use this model.")
+                                 f"Model '{model_info['name']}' does not support built-in OCR. "
+                                 "You must select an OCR Engine (e.g., paddleocr) to use this model.")
             return False
 
         fallback_idx = self.fallback_model_combo.current()
@@ -396,8 +409,8 @@ class ConfigUI:
             fallback_model_info = self.models_data[llm][fallback_idx - 1]
             if not fallback_model_info.get('supports_ocr', False) and self.ocr_var.get() == 'none':
                 messagebox.showerror("Configuration Error",
-                    f"Fallback Model '{fallback_model_info['name']}' does not support built-in OCR. "
-                    "You must select an OCR Engine (e.g., paddleocr) to use this model.")
+                                     f"Fallback Model '{fallback_model_info['name']}' does not support built-in OCR. "
+                                     "You must select an OCR Engine (e.g., paddleocr) to use this model.")
                 return False
 
         return True
@@ -458,6 +471,7 @@ class ConfigUI:
             else:
                 # For non-Windows OS
                 subprocess.Popen([sys.executable, main_path], start_new_session=True)
+
 
 if __name__ == "__main__":
     root = tk.Tk()

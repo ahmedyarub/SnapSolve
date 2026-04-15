@@ -67,11 +67,23 @@ def handle_capture(config, active_profile, active_prompt_text):
             accumulated_result = []
             accumulated_fallback = []
 
+            show_headers = False
+            fallback_model = active_profile.get('fallback_model', 'None')
+            main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
+            prompt_id = active_profile.get('prompt_id', 'default')
+
+            if fallback_model and fallback_model != "None" and prompt_id != "quick":
+                show_headers = True
+                accumulated_result.append(f"## Main Model ({main_model})\n\n")
+                accumulated_fallback.append(f"## Fallback Model ({fallback_model})\n\n")
+
             def chunk_callback(chunk_text, is_main=True, replace=False):
                 if 'popup' in config.get('output_mode', ['popup']):
                     if replace:
                         accumulated_fallback.clear()
                         accumulated_result.clear()
+                        if show_headers:
+                            accumulated_result.append(f"## Main Model ({main_model})\n\n")
 
                     if is_main:
                         accumulated_result.append(chunk_text)
@@ -82,7 +94,8 @@ def handle_capture(config, active_profile, active_prompt_text):
 
                     # Use is_result=True so it expands to a big readable box with scroll,
                     # and auto_close=None so it doesn't auto-close while streaming.
-                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True, fallback_language=config.get('fallback_language', 'python'))
+                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True,
+                               fallback_language=config.get('fallback_language', 'python'))
 
             result = capture_and_process(
                 config.get('coordinates'),
@@ -100,9 +113,21 @@ def handle_capture(config, active_profile, active_prompt_text):
                 fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None
             )
             print(f"Result: {result}")
+
+            final_result = result
+            if show_headers:
+                # If fallback text was rendered and we didn't clear it (main model failed), it means fallback succeeded.
+                # Since accumulated_result is pre-filled with the header, we check if it has exactly 1 element.
+                if accumulated_fallback and len(accumulated_result) == 1:
+                    final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
+                else:
+                    final_result = f"## Main Model ({main_model})\n\n{result}"
+
             # The final call will trigger output_result to handle auto_close, TTS, etc.
             # output_result does show_popup again with final text and configured auto-close.
-            output_result(result, config.get('output_mode'), config.get('voice_id'), auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8), fallback_language=config.get('fallback_language', 'python'))
+            output_result(final_result, config.get('output_mode'), config.get('voice_id'),
+                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
+                          fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
             print(f"Error during processing: {e}")
             if 'popup' in config.get('output_mode', ['popup']):
@@ -152,6 +177,7 @@ def exit_app():
 import json
 import os
 
+
 def load_models_data():
     try:
         models_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "llm_models.json")
@@ -160,6 +186,7 @@ def load_models_data():
     except Exception as e:
         print(f"Warning: Could not load llm_models.json: {e}")
         return {}
+
 
 def validate_config(active_profile):
     llm_type = active_profile.get('llm_engine', 'gemini')
@@ -189,9 +216,11 @@ def validate_config(active_profile):
                 break
 
         if not fallback_supports_ocr and ocr_type == 'none':
-            print(f"Error: Selected fallback model '{fallback_model_id}' does not support built-in OCR and no OCR engine is configured.")
+            print(
+                f"Error: Selected fallback model '{fallback_model_id}' does not support built-in OCR and no OCR engine is configured.")
             print("Please configure an OCR engine or select a fallback model that supports OCR.")
             sys.exit(1)
+
 
 def main():
     global is_running
@@ -237,9 +266,10 @@ def main():
         llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
                                            status_callback=lambda msg: print(f"Init status: {msg}"))
         if fallback_model and fallback_model != "None":
-             print("Initializing Fallback Ollama Engine...")
-             fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'),
-                                           status_callback=lambda msg: print(f"Init status: {msg}"))
+            print("Initializing Fallback Ollama Engine...")
+            fallback_llm_engine_instance = OllamaEngine(fallback_model,
+                                                        config.get('ollama_url', 'http://localhost:11434'),
+                                                        status_callback=lambda msg: print(f"Init status: {msg}"))
 
     hotkeys = config.get('hotkeys', [])
 
