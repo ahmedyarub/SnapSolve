@@ -5,19 +5,17 @@
     "hotkeys": [
         {
             "action": "capture",
-            "key": "ctrl+alt+shift+s"
+            "key": "ctrl+alt+shift+c"
         },
         {
             "action": "reselect",
-            "key": "ctrl+alt+shift+r"
+            "key": "ctrl+alt+shift+s"
         }
     ],
     "coordinates": null,
     "background": false,
     "voice_id": null,
-    "model": "gemini-2.5-flash-lite",
-    "llm_engine": "gemini",
-    "ocr_engine": "none",
+    "active_profile_id": "programming",
     "ollama_url": "http://localhost:11434",
     "google_genai_api_key": ""
 }
