@@ -1,0 +1,10 @@
+[
+  {
+    "id": "prof1",
+    "name": "Default Profile",
+    "llm_engine": "gemini",
+    "model": "gemini-2.5-flash-lite",
+    "ocr_engine": "none",
+    "prompt_id": "default"
+  }
+]

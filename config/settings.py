@@ -2,7 +2,44 @@ import argparse
 import json
 import os
 
-CONFIG_FILE = 'config.json'
+CONFIG_FILE = os.path.join('config', 'config.json')
+PROFILES_FILE = os.path.join('config', 'profiles.json')
+PROMPTS_FILE = os.path.join('config', 'prompts.json')
+
+def load_profiles():
+    if os.path.exists(PROFILES_FILE):
+        try:
+            with open(PROFILES_FILE, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warning: {PROFILES_FILE} is not a valid JSON. Using default profile.")
+    return [{
+        "id": "prof1",
+        "name": "Default Profile",
+        "llm_engine": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "ocr_engine": "none",
+        "prompt_id": "default"
+    }]
+
+def save_profiles(profiles):
+    with open(PROFILES_FILE, 'w') as f:
+        json.dump(profiles, f, indent=4)
+
+def load_prompts():
+    if os.path.exists(PROMPTS_FILE):
+        try:
+            with open(PROMPTS_FILE, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warning: {PROMPTS_FILE} is not a valid JSON.")
+    return [
+        {
+            "id": "default",
+            "description": "Quick answer",
+            "text": "answer the following question quickly and briefly"
+        }
+    ]
 
 def load_config():
     config = {
@@ -14,14 +51,21 @@ def load_config():
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
         'voice_id': None, # The TTS voice/playback device ID
-        'model': 'gemini-2.5-flash-lite',
-        'llm_engine': 'gemini', # 'gemini' or 'ollama'
-        'ocr_engine': 'none', # 'none' or 'paddleocr'
+        'active_profile_id': 'prof1',
         'ollama_url': 'http://localhost:11434',
         'google_genai_api_key': '',
         'auto_close_results': False,
         'popup_opacity': 0.8
     }
+
+    # Ensure config directory exists
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+    # Legacy config loading from root if it exists
+    legacy_config = 'config.json'
+    if os.path.exists(legacy_config) and not os.path.exists(CONFIG_FILE):
+        import shutil
+        shutil.move(legacy_config, CONFIG_FILE)
 
     if os.path.exists(CONFIG_FILE):
         try:
@@ -67,9 +111,7 @@ def parse_args():
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
     parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
-    parser.add_argument('--model', type=str, help='Model to use (default: gemini-2.5-flash-lite)')
-    parser.add_argument('--llm-engine', type=str, choices=['gemini', 'ollama', 'google-genai'], help='LLM engine to use (default: gemini)')
-    parser.add_argument('--ocr-engine', type=str, choices=['none', 'paddleocr'], help='OCR engine to use (default: none)')
+    parser.add_argument('--active-profile', type=str, help='Active profile ID')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
     parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
     parser.add_argument('--auto-close-results', action='store_true', help='Auto close result popups')
@@ -107,14 +149,8 @@ def get_config():
     if args.voice_id:
         config['voice_id'] = args.voice_id
 
-    if args.model:
-        config['model'] = args.model
-
-    if args.llm_engine:
-        config['llm_engine'] = args.llm_engine
-
-    if args.ocr_engine:
-        config['ocr_engine'] = args.ocr_engine
+    if args.active_profile:
+        config['active_profile_id'] = args.active_profile
 
     if args.ollama_url:
         config['ollama_url'] = args.ollama_url

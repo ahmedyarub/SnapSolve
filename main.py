@@ -5,7 +5,7 @@ import time
 
 import keyboard
 
-from config.settings import get_config, save_config
+from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.output import output_result, show_popup
 from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
 from ui.selector import get_coordinates
@@ -48,7 +48,7 @@ def create_tray_icon(on_exit):
     return icon
 
 
-def handle_capture(config):
+def handle_capture(config, active_profile, active_prompt_text):
     global is_processing
     if is_processing:
         return
@@ -66,9 +66,10 @@ def handle_capture(config):
             global ocr_engine_instance, llm_engine_instance
             result = capture_and_process(
                 config.get('coordinates'),
-                model=config.get('model', 'gemini-2.5-flash-lite'),
-                llm_engine=config.get('llm_engine', 'gemini'),
-                ocr_engine=config.get('ocr_engine', 'none'),
+                prompt_text=active_prompt_text,
+                model=active_profile.get('model', 'gemini-2.5-flash-lite'),
+                llm_engine=active_profile.get('llm_engine', 'gemini'),
+                ocr_engine=active_profile.get('ocr_engine', 'none'),
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 google_genai_api_key=config.get('google_genai_api_key', ''),
                 ocr_engine_instance=ocr_engine_instance,
@@ -127,17 +128,17 @@ import os
 
 def load_models_data():
     try:
-        models_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_models.json")
+        models_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "llm_models.json")
         with open(models_path, "r") as f:
             return json.load(f)
     except Exception as e:
         print(f"Warning: Could not load llm_models.json: {e}")
         return {}
 
-def validate_config(config):
-    llm_type = config.get('llm_engine', 'gemini')
-    model_id = config.get('model', 'gemini-2.5-flash-lite')
-    ocr_type = config.get('ocr_engine', 'none')
+def validate_config(active_profile):
+    llm_type = active_profile.get('llm_engine', 'gemini')
+    model_id = active_profile.get('model', 'gemini-2.5-flash-lite')
+    ocr_type = active_profile.get('ocr_engine', 'none')
 
     models_data = load_models_data()
     models = models_data.get(llm_type, [])
@@ -158,8 +159,17 @@ def main():
 
     print("Initializing Screen Capture & Gemini QA App...")
     config = get_config()
+    profiles = load_profiles()
+    prompts = load_prompts()
 
-    validate_config(config)
+    active_profile_id = config.get('active_profile_id', 'prof1')
+    active_profile = next((p for p in profiles if p.get('id') == active_profile_id), profiles[0] if profiles else {})
+
+    prompt_id = active_profile.get('prompt_id', 'default')
+    active_prompt = next((p for p in prompts if p.get('id') == prompt_id), prompts[0] if prompts else {})
+    active_prompt_text = active_prompt.get('text', 'answer the following question quickly and briefly')
+
+    validate_config(active_profile)
 
     if not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
@@ -175,13 +185,13 @@ def main():
     # Initialize Engines (Only pre-init Ollama and PaddleOCR)
     print("Checking engine pre-initialization...")
     global ocr_engine_instance, llm_engine_instance
-    ocr_type = config.get('ocr_engine', 'none')
+    ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
         print("Starting PaddleOCR (this may take a moment to warmup)...")
         ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
 
-    llm_type = config.get('llm_engine', 'gemini')
-    model = config.get('model', 'gemini-2.5-flash-lite')
+    llm_type = active_profile.get('llm_engine', 'gemini')
+    model = active_profile.get('model', 'gemini-2.5-flash-lite')
     if llm_type == "ollama":
         print("Initializing Ollama Engine...")
         llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
@@ -198,7 +208,7 @@ def main():
         print(f"Listening for '{action}' hotkey: {key}")
 
         if action == 'capture':
-            keyboard.add_hotkey(key, handle_capture, args=[config])
+            keyboard.add_hotkey(key, handle_capture, args=[config, active_profile, active_prompt_text])
         elif action == 'reselect':
             keyboard.add_hotkey(key, handle_reselect, args=[config])
 

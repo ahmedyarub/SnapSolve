@@ -288,7 +288,7 @@ class GoogleGenAIEngine(LLMEngine):
             return f"Error calling Google GenAI API: {str(e)}"
 
 
-def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
+def capture_and_process(coords, prompt_text="answer the following question quickly and briefly", model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
                         llm_engine_instance=None, status_callback=None):
     if not coords or len(coords) != 4:
@@ -338,13 +338,10 @@ def capture_and_process(coords, model="gemini-2.5-flash-lite", llm_engine="gemin
             else:
                 llm = GeminiCLIEngine(model)
 
-        # Simple, fast prompt to ensure a short, direct answer
-        base_prompt = "answer the following question quickly and briefly"
-
         if extracted_text:
-            prompt = f"{base_prompt}: {extracted_text}"
+            prompt = f"{prompt_text}: {extracted_text}"
         else:
-            prompt = f"Read the question in this image and {base_prompt}."
+            prompt = prompt_text
 
         ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback)
         return ans
