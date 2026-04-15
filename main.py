@@ -24,6 +24,10 @@ is_processing = False
 ocr_engine_instance = None
 llm_engine_instance = None
 
+# Multi-capture state
+is_multi_capturing = False
+multi_capture_texts = []
+
 # Enable Windows DPI awareness to fix coordinate scaling issues
 if platform.system() == "Windows":
     import ctypes
@@ -137,6 +141,200 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     # Must run in a separate thread so we don't block the global keyboard hook
     threading.Thread(target=_capture, daemon=True).start()
+
+
+def handle_multi_capture(config, active_profile, active_prompt_text):
+    global is_processing, is_multi_capturing, multi_capture_texts
+    if is_processing:
+        return
+
+    is_processing = True
+
+    def _multi_capture():
+        global is_processing, is_multi_capturing, multi_capture_texts, ocr_engine_instance
+        try:
+            ocr_type = active_profile.get('ocr_engine', 'none')
+            if ocr_type == 'none':
+                if 'popup' in config.get('output_mode', ['popup']):
+                    show_popup("Error: Multi-capture requires an OCR engine to be defined in the active profile.", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                return
+
+            if not is_multi_capturing:
+                is_multi_capturing = True
+                multi_capture_texts = []
+
+            if 'popup' in config.get('output_mode', ['popup']):
+                show_popup("Multiple capture mode", auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
+
+            # Get coordinates specifically for this capture (don't update config)
+            coords = get_coordinates()
+            if not coords:
+                print("Multi-capture: Selection cancelled.")
+                return
+
+            def status_update(msg):
+                if 'popup' in config.get('output_mode', ['popup']):
+                    show_popup(msg, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
+
+            # Extract text via capture_and_process but tell it to just extract and stop, or do it manually here.
+            # Let's do it manually since we just need OCR.
+            import tempfile
+            from PIL import ImageGrab
+            import os
+
+            status_update("Capturing screen...")
+            bbox = tuple(coords)
+            img = ImageGrab.grab(bbox=bbox)
+
+            temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            temp_file_path = temp_file.name
+            temp_file.close()
+
+            img.save(temp_file_path)
+
+            ocr = ocr_engine_instance
+            if not ocr:
+                from core.processor import PaddleOCREngine, NoOCREngine
+                if ocr_type == "paddleocr":
+                    ocr = PaddleOCREngine()
+                else:
+                    ocr = NoOCREngine()
+
+            extracted_text = None
+            try:
+                extracted_text = ocr.extract_text(temp_file_path, status_update)
+            except Exception as e:
+                status_update(f"Error during OCR: {str(e)}")
+            finally:
+                if os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except OSError:
+                        pass
+
+            if extracted_text:
+                multi_capture_texts.append(extracted_text)
+                status_update(f"Captured {len(multi_capture_texts)} images... Multiple capture mode")
+            else:
+                status_update(f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode")
+
+        except Exception as e:
+            print(f"Error during multi-capture: {e}")
+            if 'popup' in config.get('output_mode', ['popup']):
+                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+        finally:
+            is_processing = False
+
+    threading.Thread(target=_multi_capture, daemon=True).start()
+
+
+def handle_end_multi_capture(config, active_profile, active_prompt_text):
+    global is_processing, is_multi_capturing, multi_capture_texts
+    if is_processing:
+        return
+
+    if not is_multi_capturing:
+        return
+
+    is_processing = True
+
+    def _end_multi_capture():
+        global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance
+        try:
+            if not multi_capture_texts:
+                if 'popup' in config.get('output_mode', ['popup']):
+                    show_popup("No text captured in multi-capture mode.", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                is_multi_capturing = False
+                return
+
+            combined_text = "\n\n".join(multi_capture_texts)
+            print(f"Combined Text:\n{combined_text}")
+
+            def status_update(msg):
+                if 'popup' in config.get('output_mode', ['popup']):
+                    show_popup(msg, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
+
+            accumulated_result = []
+            accumulated_fallback = []
+
+            show_headers = False
+            fallback_model = active_profile.get('fallback_model', 'None')
+            main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
+            prompt_id = active_profile.get('prompt_id', 'default')
+
+            if fallback_model and fallback_model != "None" and prompt_id != "quick":
+                show_headers = True
+                accumulated_result.append(f"## Main Model ({main_model})\n\n")
+                accumulated_fallback.append(f"## Fallback Model ({fallback_model})\n\n")
+
+            def chunk_callback(chunk_text, is_main=True, replace=False):
+                if 'popup' in config.get('output_mode', ['popup']):
+                    if replace:
+                        accumulated_fallback.clear()
+                        accumulated_result.clear()
+                        if show_headers:
+                            accumulated_result.append(f"## Main Model ({main_model})\n\n")
+
+                    if is_main:
+                        accumulated_result.append(chunk_text)
+                        current_text = "".join(accumulated_result)
+                    else:
+                        accumulated_fallback.append(chunk_text)
+                        current_text = "".join(accumulated_fallback)
+
+                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True,
+                               fallback_language=config.get('fallback_language', 'python'))
+
+            # Send the combined text to process
+            result = capture_and_process(
+                None, # No coordinates needed since we have pre_extracted_text
+                prompt_text=active_prompt_text,
+                model=active_profile.get('model', 'gemini-2.5-flash-lite'),
+                llm_engine=active_profile.get('llm_engine', 'gemini'),
+                ocr_engine=active_profile.get('ocr_engine', 'none'),
+                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
+                google_genai_api_key=config.get('google_genai_api_key', ''),
+                ocr_engine_instance=ocr_engine_instance,
+                llm_engine_instance=llm_engine_instance,
+                status_callback=status_update,
+                chunk_callback=chunk_callback,
+                fallback_model=active_profile.get('fallback_model', 'None'),
+                fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
+                pre_extracted_text=combined_text
+            )
+            print(f"Result: {result}")
+
+            final_result = result
+            if show_headers:
+                if accumulated_fallback and len(accumulated_result) == 1:
+                    final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
+                else:
+                    final_result = f"## Main Model ({main_model})\n\n{result}"
+
+            output_result(final_result, config.get('output_mode'), config.get('voice_id'),
+                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
+                          fallback_language=config.get('fallback_language', 'python'))
+
+        except Exception as e:
+            print(f"Error during processing multi-capture: {e}")
+            if 'popup' in config.get('output_mode', ['popup']):
+                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+        finally:
+            is_processing = False
+            is_multi_capturing = False
+            multi_capture_texts = []
+
+    threading.Thread(target=_end_multi_capture, daemon=True).start()
+
+
+def handle_cancel_multi_capture(config):
+    global is_processing, is_multi_capturing, multi_capture_texts
+    if is_multi_capturing:
+        is_multi_capturing = False
+        multi_capture_texts = []
+        print("Multi-capture canceled.")
+        if 'popup' in config.get('output_mode', ['popup']):
+            show_popup("Multi-capture canceled", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
 
 def handle_reselect(config):
@@ -285,6 +483,12 @@ def main():
             keyboard.add_hotkey(key, handle_capture, args=[config, active_profile, active_prompt_text])
         elif action == 'reselect':
             keyboard.add_hotkey(key, handle_reselect, args=[config])
+        elif action == 'multi_capture':
+            keyboard.add_hotkey(key, handle_multi_capture, args=[config, active_profile, active_prompt_text])
+        elif action == 'end_multi_capture':
+            keyboard.add_hotkey(key, handle_end_multi_capture, args=[config, active_profile, active_prompt_text])
+        elif action == 'cancel_multi_capture':
+            keyboard.add_hotkey(key, handle_cancel_multi_capture, args=[config])
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode...")
