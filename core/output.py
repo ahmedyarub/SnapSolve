@@ -110,13 +110,15 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
             else:
                 # Basic inline formatting parsing
                 # This uses a regex to split by formatting markers, keeping the markers in the split result
-                parts = re.split(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)', line)
+                parts = re.split(r'(\*\*.*?\*\*|\*(?!\s)[^\*]+(?<!\s)\*|\`.*?\`|\$[^\$]+\$)', line)
                 for part in parts:
                     if part.startswith("**") and part.endswith("**") and len(part) > 4:
                         text_widget.insert(tk.END, part[2:-2], "bold")
                     elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
                         text_widget.insert(tk.END, part[1:-1], "italic")
                     elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+                        text_widget.insert(tk.END, part[1:-1], "inline_code")
+                    elif part.startswith("$") and part.endswith("$") and len(part) > 2:
                         text_widget.insert(tk.END, part[1:-1], "inline_code")
                     else:
                         text_widget.insert(tk.END, part)
