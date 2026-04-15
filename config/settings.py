@@ -18,7 +18,9 @@ def load_config():
         'llm_engine': 'gemini', # 'gemini' or 'ollama'
         'ocr_engine': 'none', # 'none' or 'paddleocr'
         'ollama_url': 'http://localhost:11434',
-        'google_genai_api_key': ''
+        'google_genai_api_key': '',
+        'auto_close_results': False,
+        'popup_opacity': 0.8
     }
 
     if os.path.exists(CONFIG_FILE):
@@ -70,6 +72,9 @@ def parse_args():
     parser.add_argument('--ocr-engine', type=str, choices=['none', 'paddleocr'], help='OCR engine to use (default: none)')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
     parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
+    parser.add_argument('--auto-close-results', action='store_true', help='Auto close result popups')
+    parser.add_argument('--no-auto-close-results', action='store_true', help='Do not auto close result popups')
+    parser.add_argument('--popup-opacity', type=float, help='Opacity of the popup (0.0 to 1.0)')
 
     return parser.parse_args()
 
@@ -116,5 +121,13 @@ def get_config():
 
     if args.google_genai_api_key:
         config['google_genai_api_key'] = args.google_genai_api_key
+
+    if args.auto_close_results:
+        config['auto_close_results'] = True
+    elif args.no_auto_close_results:
+        config['auto_close_results'] = False
+
+    if args.popup_opacity is not None:
+        config['popup_opacity'] = args.popup_opacity
 
     return config

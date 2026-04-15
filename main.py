@@ -58,7 +58,7 @@ def handle_capture(config):
 
     def status_update(msg):
         if 'popup' in config.get('output_mode', ['popup']):
-            show_popup(msg, auto_close=None)
+            show_popup(msg, auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
     def _capture():
         global is_processing
@@ -77,7 +77,7 @@ def handle_capture(config):
             )
             print(f"Result: {result}")
             # Pass the voice_id config if present
-            output_result(result, config.get('output_mode'), config.get('voice_id'))
+            output_result(result, config.get('output_mode'), config.get('voice_id'), auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8))
         except Exception as e:
             print(f"Error during processing: {e}")
 
