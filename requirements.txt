@@ -5,3 +5,4 @@ pystray
 google-genai
 darkdetect
 sv_ttk
+pygments

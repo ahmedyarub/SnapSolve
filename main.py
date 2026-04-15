@@ -77,7 +77,7 @@ def handle_capture(config):
             )
             print(f"Result: {result}")
             # Pass the voice_id config if present
-            output_result(result, config.get('output_mode'), config.get('voice_id'), auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8))
+            output_result(result, config.get('output_mode'), config.get('voice_id'), auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8), fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
             print(f"Error during processing: {e}")
 
