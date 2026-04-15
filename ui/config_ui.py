@@ -146,6 +146,13 @@ class ConfigUI:
         self.model_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
         prof_row += 1
 
+        # Fallback Model
+        ttk.Label(prof_cfg_frame, text="Fallback Model:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
+        self.fallback_model_var = tk.StringVar()
+        self.fallback_model_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.fallback_model_var, state="readonly")
+        self.fallback_model_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
+        prof_row += 1
+
         # OCR Engine
         ttk.Label(prof_cfg_frame, text="OCR Engine:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
         self.ocr_var = tk.StringVar()
@@ -228,6 +235,13 @@ class ConfigUI:
         elif model_ids:
             self.model_combo.current(0)
 
+        current_fallback_model = profile.get('fallback_model', 'None')
+        fallback_model_ids = ['None'] + [m.get('id') for m in self.models_data.get(self.llm_var.get(), [])]
+        if current_fallback_model in fallback_model_ids:
+            self.fallback_model_combo.current(fallback_model_ids.index(current_fallback_model))
+        else:
+            self.fallback_model_combo.current(0)
+
         self.ocr_var.set(profile.get('ocr_engine', 'none'))
 
         prompt_id = profile.get('prompt_id', 'default')
@@ -287,6 +301,7 @@ class ConfigUI:
         if idx >= 0:
             self.profiles[idx]['llm_engine'] = self.llm_var.get()
             self.profiles[idx]['model'] = self.get_selected_model_id()
+            self.profiles[idx]['fallback_model'] = self.get_selected_fallback_model_id()
             self.profiles[idx]['ocr_engine'] = self.ocr_var.get()
 
             prompt_idx = self.prompt_combo.current()
@@ -342,12 +357,24 @@ class ConfigUI:
         if model_names:
             self.model_combo.current(0)
 
+        fallback_model_names = ["None"] + model_names
+        self.fallback_model_combo['values'] = fallback_model_names
+        if fallback_model_names:
+            self.fallback_model_combo.current(0)
+
     def get_selected_model_id(self):
         idx = self.model_combo.current()
         if idx >= 0:
             llm = self.llm_var.get()
             return self.models_data[llm][idx]['id']
         return ""
+
+    def get_selected_fallback_model_id(self):
+        idx = self.fallback_model_combo.current()
+        if idx > 0:
+            llm = self.llm_var.get()
+            return self.models_data[llm][idx - 1]['id']
+        return "None"
 
     def validate_settings(self):
         idx = self.model_combo.current()
@@ -363,6 +390,15 @@ class ConfigUI:
                 f"Model '{model_info['name']}' does not support built-in OCR. "
                 "You must select an OCR Engine (e.g., paddleocr) to use this model.")
             return False
+
+        fallback_idx = self.fallback_model_combo.current()
+        if fallback_idx > 0:
+            fallback_model_info = self.models_data[llm][fallback_idx - 1]
+            if not fallback_model_info.get('supports_ocr', False) and self.ocr_var.get() == 'none':
+                messagebox.showerror("Configuration Error",
+                    f"Fallback Model '{fallback_model_info['name']}' does not support built-in OCR. "
+                    "You must select an OCR Engine (e.g., paddleocr) to use this model.")
+                return False
 
         return True
 

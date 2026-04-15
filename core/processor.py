@@ -311,9 +311,11 @@ class GoogleGenAIEngine(LLMEngine):
             return f"Error calling Google GenAI API: {str(e)}"
 
 
+import threading
+
 def capture_and_process(coords, prompt_text="answer the following question quickly and briefly", model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
-                        llm_engine_instance=None, status_callback=None, chunk_callback=None):
+                        llm_engine_instance=None, status_callback=None, chunk_callback=None, fallback_model=None, fallback_llm_engine_instance=None):
     if not coords or len(coords) != 4:
         return "Error: Invalid coordinates. Please run coordinate selection again."
 
@@ -366,8 +368,85 @@ def capture_and_process(coords, prompt_text="answer the following question quick
         else:
             prompt = prompt_text
 
-        ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, chunk_callback)
-        return ans
+        if not fallback_model or fallback_model == "None":
+            ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, chunk_callback)
+            return ans
+
+        # Fallback model logic
+        fallback_llm = fallback_llm_engine_instance
+        if not fallback_llm:
+            if llm_engine == "ollama":
+                fallback_llm = OllamaEngine(fallback_model, ollama_url)
+            elif llm_engine == "google-genai":
+                fallback_llm = GoogleGenAIEngine(fallback_model, google_genai_api_key)
+            else:
+                fallback_llm = GeminiCLIEngine(fallback_model)
+
+        results = {}
+        threads = []
+        lock = threading.Lock()
+
+        main_started = [False]
+        fallback_started = [False]
+
+        main_finished = threading.Event()
+        main_success = [False]
+
+        def run_main():
+            def main_chunk_callback(chunk):
+                with lock:
+                    main_started[0] = True
+                    if chunk_callback and not fallback_started[0]:
+                        chunk_callback(chunk, is_main=True, replace=False)
+            try:
+                ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, main_chunk_callback)
+                with lock:
+                    results['main'] = ans
+                    main_success[0] = True
+                    if chunk_callback and fallback_started[0]:
+                        chunk_callback(ans, is_main=True, replace=True)
+            except Exception as e:
+                with lock:
+                    results['main_error'] = str(e)
+            finally:
+                main_finished.set()
+
+        def run_fallback():
+            def fallback_chunk_callback(chunk):
+                with lock:
+                    if not main_started[0] and not main_success[0]:
+                        fallback_started[0] = True
+                        if chunk_callback:
+                            chunk_callback(chunk, is_main=False, replace=False)
+            try:
+                ans = fallback_llm.generate_answer(prompt, temp_file_path, extracted_text, None, fallback_chunk_callback)
+                with lock:
+                    results['fallback'] = ans
+            except Exception as e:
+                with lock:
+                    results['fallback_error'] = str(e)
+
+        main_thread = threading.Thread(target=run_main, daemon=True)
+        fallback_thread = threading.Thread(target=run_fallback, daemon=True)
+
+        main_thread.start()
+        fallback_thread.start()
+
+        main_thread.join()
+
+        if main_success[0] and 'main' in results:
+            return results['main']
+
+        # Main model failed.
+        # If fallback hasn't finished yet, we need to wait for it.
+        fallback_thread.join()
+
+        if 'fallback' in results:
+            return results['fallback']
+        elif 'main_error' in results:
+            return f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
+        else:
+             return f"Error processing with both models."
 
     except Exception as e:
         return f"Error processing: {str(e)}"

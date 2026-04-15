@@ -63,13 +63,23 @@ def handle_capture(config, active_profile, active_prompt_text):
     def _capture():
         global is_processing
         try:
-            global ocr_engine_instance, llm_engine_instance
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
             accumulated_result = []
+            accumulated_fallback = []
 
-            def chunk_callback(chunk_text):
+            def chunk_callback(chunk_text, is_main=True, replace=False):
                 if 'popup' in config.get('output_mode', ['popup']):
-                    accumulated_result.append(chunk_text)
-                    current_text = "".join(accumulated_result)
+                    if replace:
+                        accumulated_fallback.clear()
+                        accumulated_result.clear()
+
+                    if is_main:
+                        accumulated_result.append(chunk_text)
+                        current_text = "".join(accumulated_result)
+                    else:
+                        accumulated_fallback.append(chunk_text)
+                        current_text = "".join(accumulated_fallback)
+
                     # Use is_result=True so it expands to a big readable box with scroll,
                     # and auto_close=None so it doesn't auto-close while streaming.
                     show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True, fallback_language=config.get('fallback_language', 'python'))
@@ -85,7 +95,9 @@ def handle_capture(config, active_profile, active_prompt_text):
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update,
-                chunk_callback=chunk_callback
+                chunk_callback=chunk_callback,
+                fallback_model=active_profile.get('fallback_model', 'None'),
+                fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None
             )
             print(f"Result: {result}")
             # The final call will trigger output_result to handle auto_close, TTS, etc.
@@ -152,6 +164,7 @@ def load_models_data():
 def validate_config(active_profile):
     llm_type = active_profile.get('llm_engine', 'gemini')
     model_id = active_profile.get('model', 'gemini-2.5-flash-lite')
+    fallback_model_id = active_profile.get('fallback_model', 'None')
     ocr_type = active_profile.get('ocr_engine', 'none')
 
     models_data = load_models_data()
@@ -167,6 +180,18 @@ def validate_config(active_profile):
         print(f"Error: Selected model '{model_id}' does not support built-in OCR and no OCR engine is configured.")
         print("Please configure an OCR engine or select a model that supports OCR.")
         sys.exit(1)
+
+    if fallback_model_id and fallback_model_id != "None":
+        fallback_supports_ocr = False
+        for m in models:
+            if m.get('id') == fallback_model_id:
+                fallback_supports_ocr = m.get('supports_ocr', False)
+                break
+
+        if not fallback_supports_ocr and ocr_type == 'none':
+            print(f"Error: Selected fallback model '{fallback_model_id}' does not support built-in OCR and no OCR engine is configured.")
+            print("Please configure an OCR engine or select a fallback model that supports OCR.")
+            sys.exit(1)
 
 def main():
     global is_running
@@ -198,7 +223,7 @@ def main():
 
     # Initialize Engines (Only pre-init Ollama and PaddleOCR)
     print("Checking engine pre-initialization...")
-    global ocr_engine_instance, llm_engine_instance
+    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
         print("Starting PaddleOCR (this may take a moment to warmup)...")
@@ -206,9 +231,14 @@ def main():
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
+    fallback_model = active_profile.get('fallback_model', 'None')
     if llm_type == "ollama":
         print("Initializing Ollama Engine...")
         llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
+                                           status_callback=lambda msg: print(f"Init status: {msg}"))
+        if fallback_model and fallback_model != "None":
+             print("Initializing Fallback Ollama Engine...")
+             fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'),
                                            status_callback=lambda msg: print(f"Init status: {msg}"))
 
     hotkeys = config.get('hotkeys', [])
