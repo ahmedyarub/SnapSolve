@@ -80,7 +80,7 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
             elif part.startswith("`") and part.endswith("`") and len(part) > 2:
                 text_widget.insert(tk.END, part[1:-1], "inline_code")
             elif part.startswith("$") and part.endswith("$") and len(part) > 2:
-                text_widget.insert(tk.END, part[1:-1], "inline_code")
+                text_widget.insert(tk.END, part[1:-1], "italic")
             else:
                 text_widget.insert(tk.END, part)
         text_widget.insert(tk.END, "\n")
