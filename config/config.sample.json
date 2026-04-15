@@ -18,5 +18,7 @@
     "active_profile_id": "programming",
     "ollama_url": "http://localhost:11434",
     "google_genai_api_key": "",
+    "auto_close_results": false,
+    "popup_opacity": 0.9,
     "fallback_language": "python"
 }

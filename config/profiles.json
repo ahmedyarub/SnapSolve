@@ -12,6 +12,7 @@
     "name": "Detailed programming responses",
     "llm_engine": "google-genai",
     "model": "gemini-3-pro-preview",
+    "fallback_model": "gemini-3-flash-preview",
     "ocr_engine": "paddleocr",
     "prompt_id": "detailed"
   }
