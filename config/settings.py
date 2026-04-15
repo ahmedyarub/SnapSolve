@@ -46,7 +46,10 @@ def load_config():
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
         'hotkeys': [
             {'action': 'capture', 'key': 'ctrl+alt+shift+s'},
-            {'action': 'reselect', 'key': 'ctrl+alt+shift+r'}
+            {'action': 'reselect', 'key': 'ctrl+alt+shift+r'},
+            {'action': 'multi_capture', 'key': 'ctrl+alt+shift+m'},
+            {'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'},
+            {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'}
         ],
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
@@ -88,6 +91,12 @@ def load_config():
                         file_config['hotkeys'].append({'action': 'capture', 'key': 'ctrl+alt+shift+s'})
                     if 'reselect' not in current_actions:
                         file_config['hotkeys'].append({'action': 'reselect', 'key': 'ctrl+alt+shift+r'})
+                    if 'multi_capture' not in current_actions:
+                        file_config['hotkeys'].append({'action': 'multi_capture', 'key': 'ctrl+alt+shift+m'})
+                    if 'end_multi_capture' not in current_actions:
+                        file_config['hotkeys'].append({'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'})
+                    if 'cancel_multi_capture' not in current_actions:
+                        file_config['hotkeys'].append({'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'})
 
                 config.update(file_config)
         except json.JSONDecodeError:
