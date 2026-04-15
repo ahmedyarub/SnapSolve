@@ -299,11 +299,20 @@ class GoogleGenAIEngine(LLMEngine):
 
             print("[GoogleGenAIEngine] Stream started, waiting for chunks...")
             ans_chunks = []
+            buffer = ""
             for i, chunk in enumerate(response_stream):
                 print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
                 ans_chunks.append(chunk.text)
-                if chunk_callback:
-                    chunk_callback(chunk.text)
+                buffer += chunk.text
+                if "\n" in buffer:
+                    last_newline_idx = buffer.rindex("\n")
+                    complete_lines = buffer[:last_newline_idx + 1]
+                    buffer = buffer[last_newline_idx + 1:]
+                    if chunk_callback:
+                        chunk_callback(complete_lines)
+
+            if buffer and chunk_callback:
+                chunk_callback(buffer)
 
             ans = "".join(ans_chunks)
 
