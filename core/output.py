@@ -45,6 +45,9 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
     text_widget.tag_configure("code_block_bg", font=("Courier", 12), background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
     text_widget.tag_configure("inline_code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4")
 
+    # Table style tag
+    text_widget.tag_configure("table", font=("Courier", 12))
+
     # Pygments Dracula style tags
     style = get_style_by_name('dracula')
     available_tags = set()
@@ -61,6 +64,99 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
     in_code_block = False
     current_code = []
     current_lang = ""
+
+    in_table = False
+    current_table = []
+
+    def format_line_inline(line):
+        # Basic inline formatting parsing
+        # This uses a regex to split by formatting markers, keeping the markers in the split result
+        parts = re.split(r'(\*\*.*?\*\*|\*(?!\s)[^\*]+(?<!\s)\*|\`.*?\`|\$[^\$]+\$)', line)
+        for part in parts:
+            if part.startswith("**") and part.endswith("**") and len(part) > 4:
+                text_widget.insert(tk.END, part[2:-2], "bold")
+            elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
+                text_widget.insert(tk.END, part[1:-1], "italic")
+            elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+                text_widget.insert(tk.END, part[1:-1], "inline_code")
+            elif part.startswith("$") and part.endswith("$") and len(part) > 2:
+                text_widget.insert(tk.END, part[1:-1], "inline_code")
+            else:
+                text_widget.insert(tk.END, part)
+        text_widget.insert(tk.END, "\n")
+
+    def flush_table():
+        if not current_table:
+            return
+
+        # Verify it's a real table: does it have a separator row?
+        # A separator row typically consists of pipes and dashes/colons.
+        has_separator = False
+        for row in current_table:
+            # Quick check if it could be a separator
+            stripped = row.strip()
+            if not stripped:
+                continue
+            cols = [col.strip() for col in stripped.strip('|').split('|')]
+            if all(set(col) <= {'-', ':', ' '} and len(col.strip()) > 0 for col in cols if col.strip()):
+                has_separator = True
+                break
+
+        if not has_separator:
+            # Not a real table, render lines normally
+            for row in current_table:
+                # Handle horizontal rules
+                if row.strip() == "---":
+                    text_widget.insert(tk.END, "───────────────\n")
+                    continue
+                # Handle bullets
+                if re.match(r'^\s*\*\s+', row):
+                    row = row.replace("*", "•", 1)
+
+                if row.startswith("# "):
+                    text_widget.insert(tk.END, row[2:] + "\n", "header1")
+                elif row.startswith("## "):
+                    text_widget.insert(tk.END, row[3:] + "\n", "header2")
+                elif row.startswith("### "):
+                    text_widget.insert(tk.END, row[4:] + "\n", "header3")
+                else:
+                    format_line_inline(row)
+            current_table.clear()
+            return
+
+        # Split rows into columns
+        parsed_rows = []
+        for row in current_table:
+            # Simple markdown table parsing: split by | and strip whitespace
+            cols = [col.strip() for col in row.strip().strip('|').split('|')]
+            parsed_rows.append(cols)
+
+        # Determine max width for each column
+        col_widths = []
+        for row in parsed_rows:
+            for i, col in enumerate(row):
+                if i >= len(col_widths):
+                    col_widths.append(len(col))
+                else:
+                    col_widths[i] = max(col_widths[i], len(col))
+
+        # Format rows with padding
+        for row in parsed_rows:
+            # Check if this is a separator row (e.g., |---|---|)
+            is_separator = all(set(col.strip()) <= {'-', ':'} and len(col.strip()) > 0 for col in row if col.strip())
+
+            formatted_cols = []
+            for i, col in enumerate(row):
+                width = col_widths[i] if i < len(col_widths) else len(col)
+                if is_separator:
+                    formatted_cols.append("-" * width)
+                else:
+                    formatted_cols.append(col.ljust(width))
+
+            formatted_row = " | ".join(formatted_cols)
+            text_widget.insert(tk.END, f"| {formatted_row} |\n", "table")
+
+        current_table.clear()
 
     def flush_code_block():
         code_text = "\n".join(current_code)
@@ -87,6 +183,9 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
 
     for line in lines:
         if line.strip().startswith("```"):
+            if in_table:
+                in_table = False
+                flush_table()
             if not in_code_block:
                 in_code_block = True
                 current_code = []
@@ -101,6 +200,18 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
         if in_code_block:
             current_code.append(line)
         else:
+            # Check for table rows (lines containing | with optional whitespace)
+            # Standard markdown tables typically start with | or have | somewhere in the line to separate columns.
+            # We'll trigger on any line that contains '|' and isn't just empty space, since it could be a row.
+            if "|" in line and line.strip() != "":
+                if not in_table:
+                    in_table = True
+                current_table.append(line)
+                continue
+            elif in_table:
+                in_table = False
+                flush_table()
+
             if line.startswith("# "):
                 text_widget.insert(tk.END, line[2:] + "\n", "header1")
             elif line.startswith("## "):
@@ -108,24 +219,22 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
             elif line.startswith("### "):
                 text_widget.insert(tk.END, line[4:] + "\n", "header3")
             else:
-                # Basic inline formatting parsing
-                # This uses a regex to split by formatting markers, keeping the markers in the split result
-                parts = re.split(r'(\*\*.*?\*\*|\*(?!\s)[^\*]+(?<!\s)\*|\`.*?\`|\$[^\$]+\$)', line)
-                for part in parts:
-                    if part.startswith("**") and part.endswith("**") and len(part) > 4:
-                        text_widget.insert(tk.END, part[2:-2], "bold")
-                    elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
-                        text_widget.insert(tk.END, part[1:-1], "italic")
-                    elif part.startswith("`") and part.endswith("`") and len(part) > 2:
-                        text_widget.insert(tk.END, part[1:-1], "inline_code")
-                    elif part.startswith("$") and part.endswith("$") and len(part) > 2:
-                        text_widget.insert(tk.END, part[1:-1], "inline_code")
-                    else:
-                        text_widget.insert(tk.END, part)
-                text_widget.insert(tk.END, "\n")
+                # Handle horizontal rules
+                if line.strip() == "---":
+                    text_widget.insert(tk.END, "───────────────\n")
+                    continue
+
+                # Handle bullets (lines starting with optional whitespace and a *)
+                if re.match(r'^\s*\*\s+', line):
+                    line = line.replace("*", "•", 1)
+
+                format_line_inline(line)
 
     if in_code_block:
         flush_code_block()
+
+    if in_table:
+        flush_table()
 
 def _ui_loop():
     root = tk.Tk()
