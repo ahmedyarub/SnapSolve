@@ -24,11 +24,15 @@ def speak(text, voice_id=None):
 
 import queue
 import re
+from pygments import lex
+from pygments.lexers import get_lexer_by_name, guess_lexer
+from pygments.styles import get_style_by_name
+from pygments.util import ClassNotFound
 
 _ui_queue = queue.Queue()
 _ui_thread = None
 
-def render_markdown(text_widget, text_content):
+def render_markdown(text_widget, text_content, fallback_language="python"):
     # Configure tags
     text_widget.tag_configure("bold", font=("Arial", 14, "bold"))
     text_widget.tag_configure("italic", font=("Arial", 14, "italic"))
@@ -36,21 +40,66 @@ def render_markdown(text_widget, text_content):
     text_widget.tag_configure("header2", font=("Arial", 18, "bold"))
     text_widget.tag_configure("header3", font=("Arial", 16, "bold"))
 
-    # Code block styling (dark background, monospaced font)
-    # Using #1e1e1e (dark gray) for code background so it stands out against the black frame
-    text_widget.tag_configure("code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4", lmargin1=10, lmargin2=10, rmargin=10)
+    # Base Code block styling
+    bg_color = "#282a36" # Dracula background
+    text_widget.tag_configure("code_block_bg", font=("Courier", 12), background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
     text_widget.tag_configure("inline_code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4")
+
+    # Pygments Dracula style tags
+    style = get_style_by_name('dracula')
+    available_tags = set()
+    for token, styledef in style:
+        tag_name = f"pygments_{str(token)}"
+        available_tags.add(tag_name)
+        if styledef['color']:
+            text_widget.tag_configure(tag_name, font=("Courier", 12), foreground=f"#{styledef['color']}", background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
+        else:
+            # Default text color for Dracula
+            text_widget.tag_configure(tag_name, font=("Courier", 12), foreground="#f8f8f2", background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
 
     lines = text_content.splitlines()
     in_code_block = False
+    current_code = []
+    current_lang = ""
+
+    def flush_code_block():
+        code_text = "\n".join(current_code)
+        try:
+            lexer = get_lexer_by_name(current_lang)
+        except ClassNotFound:
+            try:
+                lexer = get_lexer_by_name(fallback_language)
+            except ClassNotFound:
+                try:
+                    lexer = guess_lexer(code_text)
+                except ClassNotFound:
+                    from pygments.lexers.special import TextLexer
+                    lexer = TextLexer()
+
+        for ttype, value in lex(code_text + "\n", lexer):
+            tag_name = f"pygments_{str(ttype)}"
+            # Fallback to parent token types if specific style is missing
+            while tag_name not in available_tags and "." in tag_name:
+                tag_name = tag_name.rsplit(".", 1)[0]
+            if tag_name not in available_tags:
+                tag_name = "code_block_bg" # Fallback base style
+            text_widget.insert(tk.END, value, tag_name)
 
     for line in lines:
         if line.strip().startswith("```"):
-            in_code_block = not in_code_block
+            if not in_code_block:
+                in_code_block = True
+                current_code = []
+                current_lang = line.strip()[3:].strip()
+                if not current_lang:
+                    current_lang = fallback_language
+            else:
+                in_code_block = False
+                flush_code_block()
             continue
 
         if in_code_block:
-            text_widget.insert(tk.END, line + "\n", "code")
+            current_code.append(line)
         else:
             if line.startswith("# "):
                 text_widget.insert(tk.END, line[2:] + "\n", "header1")
@@ -72,6 +121,9 @@ def render_markdown(text_widget, text_content):
                     else:
                         text_widget.insert(tk.END, part)
                 text_widget.insert(tk.END, "\n")
+
+    if in_code_block:
+        flush_code_block()
 
 def _ui_loop():
     root = tk.Tk()
@@ -154,6 +206,7 @@ def _ui_loop():
                 auto_close = msg.get("auto_close", 5000)
                 opacity = msg.get("opacity", 0.8)
                 is_result = msg.get("is_result", False)
+                fallback_lang = msg.get("fallback_language", "python")
 
                 root.attributes("-alpha", opacity)
 
@@ -173,7 +226,7 @@ def _ui_loop():
                     # Enable, insert, then disable to make read-only
                     text_widget.config(state=tk.NORMAL)
                     text_widget.delete(1.0, tk.END)
-                    render_markdown(text_widget, text_content)
+                    render_markdown(text_widget, text_content, fallback_lang)
                     text_widget.config(state=tk.DISABLED)
 
                     # Dynamically calculate width and height based on content
@@ -219,11 +272,11 @@ def init_ui():
         _ui_thread = threading.Thread(target=_ui_loop, daemon=True)
         _ui_thread.start()
 
-def show_popup(text, auto_close=5000, opacity=0.8, is_result=False):
+def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
     init_ui()
-    _ui_queue.put({"text": text, "auto_close": auto_close, "opacity": opacity, "is_result": is_result})
+    _ui_queue.put({"text": text, "auto_close": auto_close, "opacity": opacity, "is_result": is_result, "fallback_language": fallback_language})
 
-def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8):
+def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
     if not output_modes:
         output_modes = ['popup'] # Default
 
@@ -231,4 +284,4 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
         speak(text, voice_id)
 
     if 'popup' in output_modes:
-        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True)
+        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)

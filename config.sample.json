@@ -19,5 +19,6 @@
     "llm_engine": "gemini",
     "ocr_engine": "none",
     "ollama_url": "http://localhost:11434",
-    "google_genai_api_key": ""
+    "google_genai_api_key": "",
+    "fallback_language": "python"
 }
