@@ -151,6 +151,7 @@ class OllamaEngine(LLMEngine):
             print(f"Ollama warmup failed: {str(e)}")
 
     def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None) -> str:
+        print(f"[OllamaEngine] Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing with Ollama...")
 
@@ -168,6 +169,7 @@ class OllamaEngine(LLMEngine):
                 payload["images"] = [encoded_string]
 
         try:
+            print(f"[OllamaEngine] Sending request...")
             req = urllib.request.Request(
                 f"{self.ollama_url.rstrip('/')}/api/generate",
                 data=json.dumps(payload).encode('utf-8'),
@@ -178,15 +180,17 @@ class OllamaEngine(LLMEngine):
                 data = json.loads(response.read().decode('utf-8'))
                 ans = data.get("response", "").strip()
         except Exception as e:
+            print(f"[OllamaEngine] Error calling Ollama API: {str(e)}")
             return f"Error calling Ollama API: {str(e)}"
 
         elapsed_ms = (time.time() - start_time) * 1000
-        print(f"Ollama took {elapsed_ms:.2f} ms")
+        print(f"[OllamaEngine] Request finished successfully in {elapsed_ms:.2f} ms")
         return ans
 
 
 class GeminiCLIEngine(LLMEngine):
     def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None) -> str:
+        print(f"[GeminiCLIEngine] Request started for model: {self.model}")
         start_time = time.time()
         # We use the -p flag for a single prompt and -o json for easy parsing
         gemini_cmd = shutil.which("gemini")
@@ -247,44 +251,61 @@ class GoogleGenAIEngine(LLMEngine):
     def __init__(self, model: str, api_key: str):
         super().__init__(model)
         self.api_key = api_key
+        print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
 
     def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None) -> str:
         if status_callback:
             status_callback("Processing with Google GenAI...")
 
+        print(f"[GoogleGenAIEngine] Request started for model: {self.model}")
+        print(f"[GoogleGenAIEngine] Extracted text provided: {bool(extracted_text)}")
+
         try:
             from google import genai
             from google.genai import types
+            print("[GoogleGenAIEngine] SDK imported successfully.")
         except ImportError:
+            print("[GoogleGenAIEngine] Error: google-genai SDK not installed.")
             return "Error: google-genai is not installed. Please install it to use the 'google-genai' engine."
 
         if not self.api_key:
+            print("[GoogleGenAIEngine] Error: API key is missing.")
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
 
         start_time = time.time()
 
         try:
+            print("[GoogleGenAIEngine] Initializing client...")
             client = genai.Client(api_key=self.api_key)
 
             contents = []
             contents.append(prompt)
 
             if not extracted_text:
+                print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
                 from PIL import Image
                 img = Image.open(image_path)
                 contents.append(img)
 
-            response = client.models.generate_content(
+            print("[GoogleGenAIEngine] Calling generate_content_stream...")
+            response_stream = client.models.generate_content_stream(
                 model=self.model,
                 contents=contents,
             )
 
-            ans = response.text
+            print("[GoogleGenAIEngine] Stream started, waiting for chunks...")
+            ans_chunks = []
+            for i, chunk in enumerate(response_stream):
+                print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
+                ans_chunks.append(chunk.text)
+
+            ans = "".join(ans_chunks)
 
             elapsed_ms = (time.time() - start_time) * 1000
-            print(f"Google GenAI took {elapsed_ms:.2f} ms")
+            print(f"[GoogleGenAIEngine] Request finished successfully in {elapsed_ms:.2f} ms")
             return ans
         except Exception as e:
+            print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"
 
 
