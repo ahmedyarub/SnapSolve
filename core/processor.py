@@ -116,7 +116,7 @@ class LLMEngine(abc.ABC):
         self.model = model
 
     @abc.abstractmethod
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None, enable_stitching=True,
                         chunk_callback=None) -> str:
         pass
 
@@ -151,7 +151,7 @@ class OllamaEngine(LLMEngine):
                 status_callback(f"Ollama warmup failed: {str(e)}")
             print(f"Ollama warmup failed: {str(e)}")
 
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None, enable_stitching=True,
                         chunk_callback=None) -> str:
         print(f"[OllamaEngine] Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
@@ -161,7 +161,7 @@ class OllamaEngine(LLMEngine):
 
         # Inject history
         full_prompt = prompt
-        if session_manager:
+        if session_manager and enable_stitching:
             history = session_manager.get_history()
             if history:
                 history_text = "Previous conversation:\n"
@@ -204,7 +204,7 @@ class OllamaEngine(LLMEngine):
 
 
 class GeminiCLIEngine(LLMEngine):
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None, enable_stitching=True,
                         chunk_callback=None) -> str:
         print(f"[GeminiCLIEngine] Request started for model: {self.model}")
         start_time = time.time()
@@ -214,7 +214,7 @@ class GeminiCLIEngine(LLMEngine):
             return "Error: Could not find 'gemini' executable in PATH."
 
         full_prompt = prompt
-        if session_manager:
+        if session_manager and enable_stitching:
             history = session_manager.get_history()
             if history:
                 history_text = "Previous conversation:\n"
@@ -224,8 +224,7 @@ class GeminiCLIEngine(LLMEngine):
                 history_text += "Current request:\n"
                 full_prompt = history_text + prompt
 
-        # Escape double quotes for shell
-        safe_prompt = full_prompt.replace('"', '\\"')
+        safe_prompt = full_prompt
 
         if extracted_text:
             # If we have extracted text, just send the text prompt without the image
@@ -283,7 +282,7 @@ class GoogleGenAIEngine(LLMEngine):
         self.api_key = api_key
         print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
 
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None, enable_stitching=True,
                         chunk_callback=None) -> str:
         if status_callback:
             status_callback("Processing with Google GenAI...")
@@ -311,7 +310,7 @@ class GoogleGenAIEngine(LLMEngine):
 
             contents = []
 
-            if session_manager:
+            if session_manager and enable_stitching:
                 history = session_manager.get_history()
                 for h in history:
                     # Map previous interactions to content objects
@@ -329,9 +328,25 @@ class GoogleGenAIEngine(LLMEngine):
 
             if not extracted_text:
                 print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
-                from PIL import Image
-                img = Image.open(image_path)
-                contents.append(img)
+                with open(image_path, "rb") as f:
+                    image_bytes = f.read()
+
+                # Guess mime type based on extension
+                import mimetypes
+                mime_type, _ = mimetypes.guess_type(image_path)
+                if not mime_type:
+                    mime_type = 'image/png'
+
+                current_parts.append(
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime_type,
+                    )
+                )
+
+            contents.append(types.Content(role="user", parts=current_parts))
+
+            print("[GoogleGenAIEngine] Sending request to API...")
 
             print("[GoogleGenAIEngine] Calling generate_content_stream...")
             response_stream = client.models.generate_content_stream(
@@ -369,7 +384,7 @@ class GoogleGenAIEngine(LLMEngine):
 import threading
 
 
-def capture_and_process(coords, prompt_text="answer the following question quickly and briefly", session_manager=None,
+def capture_and_process(coords, prompt_text="answer the following question quickly and briefly", session_manager=None, enable_stitching=True,
                         model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
                         llm_engine_instance=None, status_callback=None, chunk_callback=None, fallback_model=None,
@@ -463,7 +478,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                         chunk_callback(chunk, is_main=True, replace=False)
 
             try:
-                ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, session_manager, main_chunk_callback)
+                ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, session_manager, enable_stitching, main_chunk_callback)
                 with lock:
                     # In this application, API errors are often returned as strings starting with "Error"
                     if isinstance(ans, str) and ans.startswith("Error"):
@@ -490,7 +505,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                             chunk_callback(chunk, is_main=False, replace=False)
 
             try:
-                ans = fallback_llm.generate_answer(prompt, temp_file_path, extracted_text, None, session_manager,
+                ans = fallback_llm.generate_answer(prompt, temp_file_path, extracted_text, None, session_manager, enable_stitching,
                                                    fallback_chunk_callback)
                 with lock:
                     results['fallback'] = ans
@@ -515,7 +530,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                     # but if there was NO capture and just text passed directly, maybe temp_file_path is None?
                     # wait, capture_and_process creates a temp file even for warmups.
                     # let's just pass temp_file_path, it's defined in the method wrapper
-                    session_manager.append_interaction(prompt_text, temp_file_path, final_result, extracted_text)
+                    session_manager.append_interaction(prompt, temp_file_path, final_result, extracted_text)
                 except Exception as e:
                     print(f"Failed to append to session manager: {e}")
             return final_result
@@ -535,7 +550,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
             try:
                 # `pre_extracted_text` doesn't exist here, handle correctly:
                 is_direct_text = locals().get('pre_extracted_text', None) is not None
-                session_manager.append_interaction(prompt_text, temp_file_path if not is_direct_text else None, final_result, extracted_text)
+                session_manager.append_interaction(prompt, temp_file_path if not is_direct_text else None, final_result, extracted_text)
             except Exception as e:
                 print(f"Failed to append to session manager: {e}")
 

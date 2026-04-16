@@ -118,6 +118,7 @@ def handle_capture(config, active_profile, active_prompt_text):
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 google_genai_api_key=config.get('google_genai_api_key', ''),
                 session_manager=session_manager,
+                enable_stitching=active_profile.get('enable_stitching', True),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update,
@@ -309,6 +310,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 google_genai_api_key=config.get('google_genai_api_key', ''),
                 session_manager=session_manager,
+                enable_stitching=active_profile.get('enable_stitching', True),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update,
@@ -359,6 +361,24 @@ def handle_new_chat_session(config):
 
             # Then show the new status popup
             show_popup(f"New Chat Session Started\nID: {session_id}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+
+def handle_toggle_stitching(config, active_profile):
+    current = active_profile.get('enable_stitching', True)
+    active_profile['enable_stitching'] = not current
+
+    # Save the profiles
+    profiles = load_profiles()
+    for p in profiles:
+        if p['id'] == active_profile['id']:
+            p['enable_stitching'] = not current
+            break
+
+    from config.settings import save_profiles
+    save_profiles(profiles)
+
+    state_str = "Enabled" if not current else "Disabled"
+    if 'popup' in config.get('output_mode', ['popup']):
+        show_popup(f"Chat Stitching {state_str}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
 def handle_toggle_panel(config):
     # Toggle control panel state internally
@@ -482,7 +502,8 @@ def main():
         'reselect': lambda: handle_reselect(config),
         'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
         'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
-        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config)
+        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
+        'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile)
     }
     set_app_callbacks(callbacks)
 
@@ -546,6 +567,8 @@ def main():
             keyboard.add_hotkey(key, handle_toggle_panel, args=[config])
         elif action == 'new_chat_session':
             keyboard.add_hotkey(key, handle_new_chat_session, args=[config])
+        elif action == 'toggle_stitching':
+            keyboard.add_hotkey(key, handle_toggle_stitching, args=[config, active_profile])
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode...")

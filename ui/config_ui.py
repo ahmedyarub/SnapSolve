@@ -103,6 +103,11 @@ class ConfigUI:
         ttk.Checkbutton(app_tab, text="Show Control Panel on Startup", variable=self.show_control_panel_var).grid(row=app_row, column=0,
                                                                                                columnspan=2,
                                                                                                sticky=tk.W, pady=5)
+        app_row += 1
+
+        # Save Images
+        self.save_images_var = tk.BooleanVar()
+        ttk.Checkbutton(app_tab, text="Save chat images", variable=self.save_images_var).grid(row=app_row, column=0, columnspan=2, sticky=tk.W, pady=5)
 
         # =========================================================
         # TAB 2: Profile Settings
@@ -173,6 +178,10 @@ class ConfigUI:
         self.prompt_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
         prof_row += 1
 
+        self.enable_stitching_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(prof_cfg_frame, text="Enable Context Stitching (Chat History)", variable=self.enable_stitching_var).grid(row=prof_row, column=0, columnspan=2, sticky=tk.W, pady=5)
+        prof_row += 1
+
         # =========================================================
         # TAB 3: Keyboard Shortcuts
         # =========================================================
@@ -210,6 +219,14 @@ class ConfigUI:
 
         self.toggle_panel_hk_var = tk.StringVar()
         create_hotkey_row(hk_tab, "🎛️ Toggle Panel:", self.toggle_panel_hk_var, hk_row)
+        hk_row += 1
+
+        self.new_chat_session_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "🆕 New Session:", self.new_chat_session_hk_var, hk_row)
+        hk_row += 1
+
+        self.toggle_stitching_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "🧵 Toggle Stitching:", self.toggle_stitching_hk_var, hk_row)
         hk_row += 1
 
         # =========================================================
@@ -257,9 +274,14 @@ class ConfigUI:
                 self.cancel_multi_hk_var.set(hk.get('key', ''))
             elif hk.get('action') == 'toggle_panel':
                 self.toggle_panel_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'new_chat_session':
+                self.new_chat_session_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'toggle_stitching':
+                self.toggle_stitching_hk_var.set(hk.get('key', ''))
 
         self.bg_var.set(self.config.get('background', False))
         self.show_control_panel_var.set(self.config.get('show_control_panel', False))
+        self.save_images_var.set(self.config.get('save_images', False))
 
     def update_profile_combo(self):
         profile_names = [f"{p['name']} ({p['id']})" for p in self.profiles]
@@ -483,6 +505,8 @@ class ConfigUI:
         updated_hotkeys.append({'action': 'end_multi_capture', 'key': self.end_multi_hk_var.get()})
         updated_hotkeys.append({'action': 'cancel_multi_capture', 'key': self.cancel_multi_hk_var.get()})
         updated_hotkeys.append({'action': 'toggle_panel', 'key': self.toggle_panel_hk_var.get()})
+        updated_hotkeys.append({'action': 'new_chat_session', 'key': self.new_chat_session_hk_var.get()})
+        updated_hotkeys.append({'action': 'toggle_stitching', 'key': self.toggle_stitching_hk_var.get()})
 
         # Remove empty keys so we don't bind empty strings
         updated_hotkeys = [hk for hk in updated_hotkeys if hk['key']]
@@ -490,6 +514,7 @@ class ConfigUI:
 
         self.config['background'] = self.bg_var.get()
         self.config['show_control_panel'] = self.show_control_panel_var.get()
+        self.config['save_images'] = self.save_images_var.get()
 
         # Remove old legacy keys from config if they exist
         for k in ['llm_engine', 'ocr_engine', 'model']:

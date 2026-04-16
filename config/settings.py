@@ -19,7 +19,8 @@ def load_profiles():
         "llm_engine": "gemini",
         "model": "gemini-2.5-flash-lite",
         "ocr_engine": "none",
-        "prompt_id": "default"
+        "prompt_id": "default",
+        "enable_stitching": True
     }]
 
 def save_profiles(profiles):
@@ -51,7 +52,8 @@ def load_config():
             {'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'},
             {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'},
             {'action': 'toggle_panel', 'key': 'ctrl+alt+p'},
-            {'action': 'new_chat_session', 'key': 'ctrl+alt+shift+c'}
+            {'action': 'new_chat_session', 'key': 'ctrl+alt+shift+c'},
+            {'action': 'toggle_stitching', 'key': 'ctrl+alt+shift+v'}
         ],
         'save_images': False,
         'coordinates': None, # [x1, y1, x2, y2]
