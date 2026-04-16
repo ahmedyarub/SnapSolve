@@ -129,9 +129,28 @@ class ConfigUI:
             row=0, column=1, padx=(5, 0))
         app_row += 1
 
+        # Toggle Panel Hotkey
+        ttk.Label(app_frame, text="Toggle Panel Hotkey:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        self.toggle_panel_hk_var = tk.StringVar()
+        toggle_panel_hk_frame = ttk.Frame(app_frame)
+        toggle_panel_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
+        toggle_panel_hk_frame.columnconfigure(0, weight=1)
+        ttk.Entry(toggle_panel_hk_frame, textvariable=self.toggle_panel_hk_var, state="readonly").grid(row=0, column=0,
+                                                                                               sticky=tk.EW)
+        ttk.Button(toggle_panel_hk_frame, text="Record", command=lambda: self.record_hotkey(self.toggle_panel_hk_var)).grid(
+            row=0, column=1, padx=(5, 0))
+        app_row += 1
+
         # Run in background
         self.bg_var = tk.BooleanVar()
         ttk.Checkbutton(app_frame, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
+                                                                                               columnspan=2,
+                                                                                               sticky=tk.W, pady=5)
+        app_row += 1
+
+        # Show Control Panel on Startup
+        self.show_control_panel_var = tk.BooleanVar()
+        ttk.Checkbutton(app_frame, text="Show Control Panel on Startup", variable=self.show_control_panel_var).grid(row=app_row, column=0,
                                                                                                columnspan=2,
                                                                                                sticky=tk.W, pady=5)
         row += 1
@@ -219,8 +238,11 @@ class ConfigUI:
                 self.capture_hk_var.set(hk.get('key', ''))
             elif hk.get('action') == 'reselect':
                 self.reselect_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'toggle_panel':
+                self.toggle_panel_hk_var.set(hk.get('key', ''))
 
         self.bg_var.set(self.config.get('background', False))
+        self.show_control_panel_var.set(self.config.get('show_control_panel', False))
 
     def update_profile_combo(self):
         profile_names = [f"{p['name']} ({p['id']})" for p in self.profiles]
@@ -437,12 +459,22 @@ class ConfigUI:
         vid = self.voice_id_var.get()
         self.config['voice_id'] = vid if vid else None
 
-        self.config['hotkeys'] = [
-            {'action': 'capture', 'key': self.capture_hk_var.get()},
-            {'action': 'reselect', 'key': self.reselect_hk_var.get()}
-        ]
+        # We need to preserve other hotkeys (multi_capture etc) that are not exposed in the simple config UI
+        # so we fetch existing ones and update just capture, reselect, and toggle_panel
+        existing_hotkeys = self.config.get('hotkeys', [])
+        updated_hotkeys = []
+        for hk in existing_hotkeys:
+            if hk['action'] not in ('capture', 'reselect', 'toggle_panel'):
+                updated_hotkeys.append(hk)
+
+        updated_hotkeys.append({'action': 'capture', 'key': self.capture_hk_var.get()})
+        updated_hotkeys.append({'action': 'reselect', 'key': self.reselect_hk_var.get()})
+        updated_hotkeys.append({'action': 'toggle_panel', 'key': self.toggle_panel_hk_var.get()})
+
+        self.config['hotkeys'] = updated_hotkeys
 
         self.config['background'] = self.bg_var.get()
+        self.config['show_control_panel'] = self.show_control_panel_var.get()
 
         # Remove old legacy keys from config if they exist
         for k in ['llm_engine', 'ocr_engine', 'model']:
