@@ -6,7 +6,7 @@ import time
 import keyboard
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
-from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks
+from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state
 from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
 from ui.selector import get_coordinates
 
@@ -39,7 +39,7 @@ if platform.system() == "Windows":
         print(f"Warning: Failed to set DPI awareness: {e}")
 
 
-def create_tray_icon(on_exit):
+def create_tray_icon(on_exit, config):
     # Create a simple tray icon
     img = Image.new('RGB', (64, 64), color=(73, 109, 137))
 
@@ -47,7 +47,13 @@ def create_tray_icon(on_exit):
         icon.stop()
         on_exit()
 
-    menu = pystray.Menu(pystray.MenuItem('Exit', quit_action))
+    def toggle_panel_action(icon, item):
+        toggle_control_panel()
+
+    menu = pystray.Menu(
+        pystray.MenuItem('Toggle Panel', toggle_panel_action),
+        pystray.MenuItem('Exit', quit_action)
+    )
     icon = pystray.Icon("ScreenQA", img, "Screen Capture QA", menu)
     return icon
 
@@ -162,6 +168,7 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             if not is_multi_capturing:
                 is_multi_capturing = True
                 multi_capture_texts = []
+                update_multi_state(True)
 
             if 'popup' in config.get('output_mode', ['popup']):
                 show_popup("Multiple capture mode", auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
@@ -238,6 +245,9 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
     is_processing = True
 
+    # Immediately update UI state to hide buttons before processing starts
+    update_multi_state(False)
+
     def _end_multi_capture():
         global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance
         try:
@@ -245,6 +255,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 if 'popup' in config.get('output_mode', ['popup']):
                     show_popup("No text captured in multi-capture mode.", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
                 is_multi_capturing = False
+                update_multi_state(False)
                 return
 
             combined_text = "\n\n".join(multi_capture_texts)
@@ -328,12 +339,8 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
 
 def handle_toggle_panel(config):
-    # Simply flip the config setting and call toggle
-    show = not config.get('show_control_panel', False)
-    config['show_control_panel'] = show
-    # Do not save to config.json here unless we want it persistent. The user said it can be toggled by hotkey.
-    # If they toggle by hotkey, let's keep it temporary for the session, or they can use the config UI to save it.
-    toggle_control_panel(show)
+    # Toggle control panel state internally
+    toggle_control_panel()
 
 
 def handle_cancel_multi_capture(config):
@@ -341,6 +348,7 @@ def handle_cancel_multi_capture(config):
     if is_multi_capturing:
         is_multi_capturing = False
         multi_capture_texts = []
+        update_multi_state(False)
         print("Multi-capture canceled.")
         if 'popup' in config.get('output_mode', ['popup']):
             show_popup("Multi-capture canceled", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
@@ -516,7 +524,7 @@ def main():
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode...")
-        icon = create_tray_icon(exit_app)
+        icon = create_tray_icon(exit_app, config)
 
         # This blocks until the icon is stopped
         icon.run()
