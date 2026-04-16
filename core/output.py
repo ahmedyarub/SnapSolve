@@ -346,6 +346,14 @@ def _ui_loop():
             except Exception as e:
                 print(f"Error calling {action}: {e}")
 
+    # Top bar for close button
+    panel_top_frame = tk.Frame(panel_frame, bg="#1e1e1e")
+    panel_top_frame.pack(fill=tk.X, side=tk.TOP)
+    panel_close_btn = tk.Button(panel_top_frame, text="✕", bg="#1e1e1e", fg="gray", bd=0, font=("Arial", 10), command=lambda: toggle_panel(False))
+    panel_close_btn.pack(side=tk.RIGHT, padx=5, pady=2)
+    panel_close_btn.bind("<Enter>", lambda e: panel_close_btn.config(fg="white"))
+    panel_close_btn.bind("<Leave>", lambda e: panel_close_btn.config(fg="gray"))
+
     # Buttons for the panel
     btn_config = {'bg': '#2d2d2d', 'fg': 'white', 'font': ('Segoe UI Emoji', 14), 'bd': 0, 'padx': 10, 'pady': 5}
     btn_capture = tk.Button(panel_frame, text="📸 Capture", command=lambda: call_main_action('capture'), **btn_config)
@@ -354,14 +362,14 @@ def _ui_loop():
     btn_reselect = tk.Button(panel_frame, text="🎯 Reselect", command=lambda: call_main_action('reselect'), **btn_config)
     btn_reselect.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-    btn_multi = tk.Button(panel_frame, text="➕ Multi", command=lambda: call_main_action('multi_capture'), **btn_config)
+    btn_multi = tk.Button(panel_frame, text="➕ Multi-select", command=lambda: call_main_action('multi_capture'), **btn_config)
     btn_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
 
     btn_end_multi = tk.Button(panel_frame, text="✅ End Multi", command=lambda: call_main_action('end_multi_capture'), **btn_config)
-    btn_end_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+    # Pack these later based on state
 
     btn_cancel_multi = tk.Button(panel_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
-    btn_cancel_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+    # Pack these later based on state
 
     # Hover effects
     for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi]:
@@ -381,6 +389,16 @@ def _ui_loop():
         else:
             panel_window.withdraw()
 
+    def set_multi_state(in_progress):
+        if in_progress:
+            btn_end_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+            btn_cancel_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+        else:
+            btn_end_multi.pack_forget()
+            btn_cancel_multi.pack_forget()
+        if is_panel_visible[0]:
+            position_panel()
+
     def process_queue():
         try:
             while True:
@@ -389,6 +407,9 @@ def _ui_loop():
                 # Check for control panel messages
                 if msg.get("type") == "toggle_panel":
                     toggle_panel(msg.get("show"))
+                    continue
+                elif msg.get("type") == "set_multi_state":
+                    set_multi_state(msg.get("in_progress"))
                     continue
 
                 text_content = msg.get("text", "")
@@ -464,6 +485,10 @@ def init_ui():
 def toggle_control_panel(show=None):
     init_ui()
     _ui_queue.put({"type": "toggle_panel", "show": show})
+
+def update_multi_state(in_progress):
+    init_ui()
+    _ui_queue.put({"type": "set_multi_state", "in_progress": in_progress})
 
 def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
     init_ui()

@@ -47,117 +47,90 @@ class ConfigUI:
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        row = 0
+        # --- Notebook for Tabs ---
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        # --- Profile Section ---
-        profile_frame = ttk.LabelFrame(main_frame, text="Profile Settings", padding="5")
-        profile_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
-        profile_frame.columnconfigure(1, weight=1)
+        app_tab = ttk.Frame(notebook, padding="10")
+        prof_tab = ttk.Frame(notebook, padding="10")
+        hk_tab = ttk.Frame(notebook, padding="10")
 
-        ttk.Label(profile_frame, text="Active Profile:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        notebook.add(app_tab, text="Application Settings")
+        notebook.add(prof_tab, text="Profile Settings")
+        notebook.add(hk_tab, text="Keyboard Shortcuts")
 
-        profile_sel_frame = ttk.Frame(profile_frame)
-        profile_sel_frame.grid(row=0, column=1, sticky=tk.EW, pady=5, padx=5)
-        profile_sel_frame.columnconfigure(0, weight=1)
-
-        self.profile_var = tk.StringVar()
-        self.profile_combo = ttk.Combobox(profile_sel_frame, textvariable=self.profile_var, state="readonly")
-        self.profile_combo.grid(row=0, column=0, sticky=tk.EW)
-        self.profile_combo.bind("<<ComboboxSelected>>", self.on_profile_selected)
-
-        ttk.Button(profile_sel_frame, text="Add", command=self.add_profile, width=5).grid(row=0, column=1, padx=(5, 0))
-        ttk.Button(profile_sel_frame, text="Delete", command=self.delete_profile, width=6).grid(row=0, column=2,
-                                                                                                padx=(5, 0))
-
-        row += 1
-
-        # --- App Settings Section ---
-        app_frame = ttk.LabelFrame(main_frame, text="Application Settings", padding="5")
-        app_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
-        app_frame.columnconfigure(1, weight=1)
+        # =========================================================
+        # TAB 1: Application Settings
+        # =========================================================
+        app_tab.columnconfigure(1, weight=1)
         app_row = 0
 
         # Output Mode
-        ttk.Label(app_frame, text="Output Mode:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        ttk.Label(app_tab, text="Output Mode:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
         self.output_var = tk.StringVar()
-        output_combo = ttk.Combobox(app_frame, textvariable=self.output_var, state="readonly")
+        output_combo = ttk.Combobox(app_tab, textvariable=self.output_var, state="readonly")
         output_combo['values'] = ('popup', 'audio', 'both')
         output_combo.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         app_row += 1
 
         # Ollama URL
-        ttk.Label(app_frame, text="Ollama URL:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        ttk.Label(app_tab, text="Ollama URL:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
         self.ollama_url_var = tk.StringVar()
-        ttk.Entry(app_frame, textvariable=self.ollama_url_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
+        ttk.Entry(app_tab, textvariable=self.ollama_url_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         app_row += 1
 
         # Google GenAI API Key
-        ttk.Label(app_frame, text="Google GenAI API Key:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        ttk.Label(app_tab, text="Google GenAI API Key:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
         self.api_key_var = tk.StringVar()
-        ttk.Entry(app_frame, textvariable=self.api_key_var, show="*").grid(row=app_row, column=1, sticky=tk.EW, pady=5)
+        ttk.Entry(app_tab, textvariable=self.api_key_var, show="*").grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         app_row += 1
 
         # Voice ID
-        ttk.Label(app_frame, text="Voice ID (TTS):").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        ttk.Label(app_tab, text="Voice ID (TTS):").grid(row=app_row, column=0, sticky=tk.W, pady=5)
         self.voice_id_var = tk.StringVar()
-        ttk.Entry(app_frame, textvariable=self.voice_id_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Hotkeys
-        ttk.Label(app_frame, text="Capture Hotkey:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.capture_hk_var = tk.StringVar()
-        capture_hk_frame = ttk.Frame(app_frame)
-        capture_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        capture_hk_frame.columnconfigure(0, weight=1)
-        ttk.Entry(capture_hk_frame, textvariable=self.capture_hk_var, state="readonly").grid(row=0, column=0,
-                                                                                             sticky=tk.EW)
-        ttk.Button(capture_hk_frame, text="Record", command=lambda: self.record_hotkey(self.capture_hk_var)).grid(row=0,
-                                                                                                                  column=1,
-                                                                                                                  padx=(
-                                                                                                                      5,
-                                                                                                                      0))
-        app_row += 1
-
-        ttk.Label(app_frame, text="Reselect Hotkey:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.reselect_hk_var = tk.StringVar()
-        reselect_hk_frame = ttk.Frame(app_frame)
-        reselect_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        reselect_hk_frame.columnconfigure(0, weight=1)
-        ttk.Entry(reselect_hk_frame, textvariable=self.reselect_hk_var, state="readonly").grid(row=0, column=0,
-                                                                                               sticky=tk.EW)
-        ttk.Button(reselect_hk_frame, text="Record", command=lambda: self.record_hotkey(self.reselect_hk_var)).grid(
-            row=0, column=1, padx=(5, 0))
-        app_row += 1
-
-        # Toggle Panel Hotkey
-        ttk.Label(app_frame, text="Toggle Panel Hotkey:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.toggle_panel_hk_var = tk.StringVar()
-        toggle_panel_hk_frame = ttk.Frame(app_frame)
-        toggle_panel_hk_frame.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        toggle_panel_hk_frame.columnconfigure(0, weight=1)
-        ttk.Entry(toggle_panel_hk_frame, textvariable=self.toggle_panel_hk_var, state="readonly").grid(row=0, column=0,
-                                                                                               sticky=tk.EW)
-        ttk.Button(toggle_panel_hk_frame, text="Record", command=lambda: self.record_hotkey(self.toggle_panel_hk_var)).grid(
-            row=0, column=1, padx=(5, 0))
+        ttk.Entry(app_tab, textvariable=self.voice_id_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         app_row += 1
 
         # Run in background
         self.bg_var = tk.BooleanVar()
-        ttk.Checkbutton(app_frame, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
+        ttk.Checkbutton(app_tab, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
                                                                                                columnspan=2,
                                                                                                sticky=tk.W, pady=5)
         app_row += 1
 
         # Show Control Panel on Startup
         self.show_control_panel_var = tk.BooleanVar()
-        ttk.Checkbutton(app_frame, text="Show Control Panel on Startup", variable=self.show_control_panel_var).grid(row=app_row, column=0,
+        ttk.Checkbutton(app_tab, text="Show Control Panel on Startup", variable=self.show_control_panel_var).grid(row=app_row, column=0,
                                                                                                columnspan=2,
                                                                                                sticky=tk.W, pady=5)
-        row += 1
 
-        # --- Active Profile Configuration Section ---
-        prof_cfg_frame = ttk.LabelFrame(main_frame, text="Profile Properties", padding="5")
-        prof_cfg_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
+        # =========================================================
+        # TAB 2: Profile Settings
+        # =========================================================
+        prof_tab.columnconfigure(0, weight=1)
+        prof_tab_row = 0
+
+        # --- Profile Selection ---
+        profile_sel_frame = ttk.LabelFrame(prof_tab, text="Select Profile", padding="5")
+        profile_sel_frame.grid(row=prof_tab_row, column=0, sticky=tk.EW, pady=(0, 10))
+        profile_sel_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(profile_sel_frame, text="Active Profile:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+
+        self.profile_var = tk.StringVar()
+        self.profile_combo = ttk.Combobox(profile_sel_frame, textvariable=self.profile_var, state="readonly")
+        self.profile_combo.grid(row=0, column=1, sticky=tk.EW, pady=5)
+        self.profile_combo.bind("<<ComboboxSelected>>", self.on_profile_selected)
+
+        ttk.Button(profile_sel_frame, text="Add", command=self.add_profile, width=5).grid(row=0, column=2, padx=(5, 0))
+        ttk.Button(profile_sel_frame, text="Delete", command=self.delete_profile, width=6).grid(row=0, column=3,
+                                                                                                padx=(5, 5))
+
+        prof_tab_row += 1
+
+        # --- Profile Properties ---
+        prof_cfg_frame = ttk.LabelFrame(prof_tab, text="Profile Properties", padding="5")
+        prof_cfg_frame.grid(row=prof_tab_row, column=0, sticky=tk.EW, pady=(0, 10))
         prof_cfg_frame.columnconfigure(1, weight=1)
         prof_row = 0
 
@@ -200,16 +173,54 @@ class ConfigUI:
         self.prompt_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
         prof_row += 1
 
-        row += 1
+        # =========================================================
+        # TAB 3: Keyboard Shortcuts
+        # =========================================================
+        hk_tab.columnconfigure(1, weight=1)
+        hk_row = 0
 
-        # Buttons
+        # Helper for creating hotkey rows
+        def create_hotkey_row(parent, label_text, var, row):
+            ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky=tk.W, pady=5)
+            hk_frame = ttk.Frame(parent)
+            hk_frame.grid(row=row, column=1, sticky=tk.EW, pady=5)
+            hk_frame.columnconfigure(0, weight=1)
+            ttk.Entry(hk_frame, textvariable=var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
+            ttk.Button(hk_frame, text="Record", command=lambda v=var: self.record_hotkey(v)).grid(row=0, column=1, padx=(5, 0))
+
+        self.capture_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "📸 Capture:", self.capture_hk_var, hk_row)
+        hk_row += 1
+
+        self.reselect_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "🎯 Reselect:", self.reselect_hk_var, hk_row)
+        hk_row += 1
+
+        self.multi_capture_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "➕ Multi-select:", self.multi_capture_hk_var, hk_row)
+        hk_row += 1
+
+        self.end_multi_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "✅ End Multi:", self.end_multi_hk_var, hk_row)
+        hk_row += 1
+
+        self.cancel_multi_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "❌ Cancel Multi:", self.cancel_multi_hk_var, hk_row)
+        hk_row += 1
+
+        self.toggle_panel_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "🎛️ Toggle Panel:", self.toggle_panel_hk_var, hk_row)
+        hk_row += 1
+
+        # =========================================================
+        # Global Buttons
+        # =========================================================
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=row, column=0, columnspan=2, pady=20)
+        btn_frame.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Button(btn_frame, text="Save", command=self.save_config).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Save & Run App", command=self.save_and_run).pack(side=tk.LEFT, padx=5)
 
-        main_frame.columnconfigure(1, weight=1)
 
     def load_current_settings(self):
         # Update Profiles Combo
@@ -238,6 +249,12 @@ class ConfigUI:
                 self.capture_hk_var.set(hk.get('key', ''))
             elif hk.get('action') == 'reselect':
                 self.reselect_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'multi_capture':
+                self.multi_capture_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'end_multi_capture':
+                self.end_multi_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'cancel_multi_capture':
+                self.cancel_multi_hk_var.set(hk.get('key', ''))
             elif hk.get('action') == 'toggle_panel':
                 self.toggle_panel_hk_var.set(hk.get('key', ''))
 
@@ -459,18 +476,16 @@ class ConfigUI:
         vid = self.voice_id_var.get()
         self.config['voice_id'] = vid if vid else None
 
-        # We need to preserve other hotkeys (multi_capture etc) that are not exposed in the simple config UI
-        # so we fetch existing ones and update just capture, reselect, and toggle_panel
-        existing_hotkeys = self.config.get('hotkeys', [])
         updated_hotkeys = []
-        for hk in existing_hotkeys:
-            if hk['action'] not in ('capture', 'reselect', 'toggle_panel'):
-                updated_hotkeys.append(hk)
-
         updated_hotkeys.append({'action': 'capture', 'key': self.capture_hk_var.get()})
         updated_hotkeys.append({'action': 'reselect', 'key': self.reselect_hk_var.get()})
+        updated_hotkeys.append({'action': 'multi_capture', 'key': self.multi_capture_hk_var.get()})
+        updated_hotkeys.append({'action': 'end_multi_capture', 'key': self.end_multi_hk_var.get()})
+        updated_hotkeys.append({'action': 'cancel_multi_capture', 'key': self.cancel_multi_hk_var.get()})
         updated_hotkeys.append({'action': 'toggle_panel', 'key': self.toggle_panel_hk_var.get()})
 
+        # Remove empty keys so we don't bind empty strings
+        updated_hotkeys = [hk for hk in updated_hotkeys if hk['key']]
         self.config['hotkeys'] = updated_hotkeys
 
         self.config['background'] = self.bg_var.get()
