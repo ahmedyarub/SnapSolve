@@ -129,7 +129,8 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 chunk_callback=chunk_callback,
                 fallback_model=active_profile.get('fallback_model', 'None'),
                 fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                pre_extracted_text=None
+                pre_extracted_text=None,
+                skip_capture=True
             )
             print(f"Result: {result}")
 

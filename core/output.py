@@ -441,8 +441,7 @@ def _ui_loop():
     text_input_frame = tk.Frame(text_input_window, bg="#1e1e1e", bd=2, relief=tk.RAISED)
     text_input_frame.pack(fill=tk.BOTH, expand=True)
 
-    text_entry_var = tk.StringVar()
-    text_entry = tk.Entry(text_input_frame, textvariable=text_entry_var, bg="#2d2d2d", fg="white", font=("Arial", 16), insertbackground="white", relief=tk.FLAT)
+    text_entry = tk.Text(text_input_frame, bg="#2d2d2d", fg="white", font=("Arial", 16), insertbackground="white", relief=tk.FLAT, wrap=tk.WORD, height=1)
     text_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
     def position_text_input():
@@ -450,21 +449,45 @@ def _ui_loop():
         ws = text_input_window.winfo_screenwidth()
         hs = text_input_window.winfo_screenheight()
         w = int(ws * 0.6) # 60% of screen width
-        h = 50
+
+        # Calculate height based on actual display lines, counting wrapping
+        display_lines_tuple = text_entry.count("1.0", "end", "displaylines")
+        # .count can return None if the widget is empty or unmapped
+        lines = display_lines_tuple[0] if display_lines_tuple else 1
+
+        h = max(50, (lines * 24) + 26) # Approx 24px per line + padding
+
+        # Limit max height
+        if h > int(hs * 0.4):
+            h = int(hs * 0.4)
+
         x = (ws - w) // 2
         y = hs - h - 50
         text_input_window.geometry(f"{w}x{h}+{x}+{y}")
 
+    def on_text_change(event):
+        position_text_input()
+
+    text_entry.bind("<KeyRelease>", on_text_change)
+
     def on_text_enter(event):
+        # Allow Shift+Enter for new line
+        if event.state & 0x0001:
+            return None # Process default behavior (insert newline)
+
         if is_processing_state[0]:
-            return
-        text = text_entry_var.get().strip()
+            return "break"
+
+        text = text_entry.get("1.0", tk.END).strip()
         if text:
             # Clear text
-            text_entry_var.set("")
+            text_entry.delete("1.0", tk.END)
+            position_text_input()
             # Call main action manually and pass the text
             if 'text_submit' in _app_callbacks:
                 threading.Thread(target=_app_callbacks['text_submit'], args=(text,), daemon=True).start()
+
+        return "break" # Prevent default newline insertion
 
     text_entry.bind("<Return>", on_text_enter)
 

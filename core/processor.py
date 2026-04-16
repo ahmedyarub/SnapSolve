@@ -388,12 +388,12 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                         model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
                         llm_engine_instance=None, status_callback=None, chunk_callback=None, fallback_model=None,
-                        fallback_llm_engine_instance=None, pre_extracted_text=None):
+                        fallback_llm_engine_instance=None, pre_extracted_text=None, skip_capture=False):
 
     temp_file_path = None
     extracted_text = pre_extracted_text
 
-    if not pre_extracted_text:
+    if not skip_capture and pre_extracted_text is None:
         if not coords or len(coords) != 4:
             return "Error: Invalid coordinates. Please run coordinate selection again."
 
@@ -414,7 +414,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
         temp_file.close()
 
     try:
-        if not pre_extracted_text:
+        if not skip_capture and pre_extracted_text is None:
             # Save image to temporary file
             img.save(temp_file_path)
 
