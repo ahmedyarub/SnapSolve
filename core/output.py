@@ -444,6 +444,11 @@ def _ui_loop():
     text_entry = tk.Text(text_input_frame, bg="#2d2d2d", fg="white", font=("Arial", 16), insertbackground="white", relief=tk.FLAT, wrap=tk.WORD, height=1)
     text_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+    import tkinter.font as tkfont
+    # Get the dynamic pixel height of one line from the font, respecting DPI scaling
+    entry_font = tkfont.Font(font=text_entry['font'])
+    line_space = entry_font.metrics("linespace")
+
     def position_text_input():
         text_input_window.update_idletasks()
         ws = text_input_window.winfo_screenwidth()
@@ -456,19 +461,24 @@ def _ui_loop():
         text_entry.update_idletasks() # Ensure geometry is calculated
 
         try:
+            # Check "end-1c" first
             bbox = text_entry.bbox("end-1c")
+            # If text box is completely empty, it might fail to get "end-1c", try "1.0"
+            if not bbox:
+                bbox = text_entry.bbox("1.0")
+
             if bbox:
                 text_height = bbox[1] + bbox[3]
             else:
-                # Fallback if empty or not fully mapped
+                # Fallback if empty or not fully mapped, use dynamic line_space instead of hardcoded 24
                 display_lines_tuple = text_entry.count("1.0", "end", "displaylines")
                 lines = display_lines_tuple[0] if display_lines_tuple else 1
-                text_height = lines * 24
+                text_height = lines * line_space
         except Exception:
-            text_height = 24
+            text_height = line_space
 
         # Add padding (e.g. 20 for internal text padding, plus external frame paddings)
-        h = max(50, text_height + 30)
+        h = max(line_space + 30, text_height + 30)
 
         # Limit max height to 40% of screen
         if h > int(hs * 0.4):
@@ -511,6 +521,8 @@ def _ui_loop():
         if show and active_source[0] == "text":
             text_input_window.attributes("-alpha", opacity)
             text_input_window.deiconify()
+            # Force mapping before calculating bbox
+            text_input_window.update()
             position_text_input()
             text_entry.focus_set()
         else:
