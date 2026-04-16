@@ -356,30 +356,57 @@ def _ui_loop():
 
     # Buttons for the panel
     btn_config = {'bg': '#2d2d2d', 'fg': 'white', 'font': ('Segoe UI Emoji', 14), 'bd': 0, 'padx': 10, 'pady': 5}
-    btn_capture = tk.Button(panel_frame, text="📸 Capture", command=lambda: call_main_action('capture'), **btn_config)
+
+    # We will use this frame specifically for image source buttons so we can pack/unpack them easily
+    image_buttons_frame = tk.Frame(panel_frame, bg="#1e1e1e")
+    image_buttons_frame.pack(side=tk.TOP, fill=tk.X)
+
+    btn_capture = tk.Button(image_buttons_frame, text="📸 Capture", command=lambda: call_main_action('capture'), **btn_config)
     btn_capture.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-    btn_reselect = tk.Button(panel_frame, text="🎯 Reselect", command=lambda: call_main_action('reselect'), **btn_config)
+    btn_reselect = tk.Button(image_buttons_frame, text="🎯 Reselect", command=lambda: call_main_action('reselect'), **btn_config)
     btn_reselect.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-    btn_multi = tk.Button(panel_frame, text="➕ Multi-select", command=lambda: call_main_action('multi_capture'), **btn_config)
+    btn_multi = tk.Button(image_buttons_frame, text="➕ Multi-select", command=lambda: call_main_action('multi_capture'), **btn_config)
     btn_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-    btn_end_multi = tk.Button(panel_frame, text="✅ End Multi", command=lambda: call_main_action('end_multi_capture'), **btn_config)
+    btn_end_multi = tk.Button(image_buttons_frame, text="✅ End Multi", command=lambda: call_main_action('end_multi_capture'), **btn_config)
     # Pack these later based on state
 
-    btn_cancel_multi = tk.Button(panel_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
+    btn_cancel_multi = tk.Button(image_buttons_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
     # Pack these later based on state
 
     btn_stitching = tk.Button(panel_frame, text="🧵 Toggle Stitching", command=lambda: call_main_action('toggle_stitching'), **btn_config)
     btn_stitching.pack(side=tk.TOP, fill=tk.X, pady=2)
 
+    btn_cycle_source = tk.Button(panel_frame, text="🔄 Cycle Source", command=lambda: call_main_action('cycle_source'), **btn_config)
+    btn_cycle_source.pack(side=tk.TOP, fill=tk.X, pady=2)
+
     # Hover effects
-    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi, btn_stitching]:
+    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi, btn_stitching, btn_cycle_source]:
         btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#3e3e3e"))
         btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#2d2d2d"))
 
     is_panel_visible = [False]
+    active_source = ["image"] # image or text
+    is_processing_state = [False]
+
+    def update_panel_buttons():
+        # Update visibility based on source
+        if active_source[0] == "text":
+            image_buttons_frame.pack_forget()
+        else:
+            image_buttons_frame.pack(side=tk.TOP, fill=tk.X, before=btn_stitching)
+
+        # Update enabled state based on processing
+        state = tk.DISABLED if is_processing_state[0] else tk.NORMAL
+        btn_capture.config(state=state)
+        btn_reselect.config(state=state)
+        btn_multi.config(state=state)
+        btn_end_multi.config(state=state)
+        btn_cancel_multi.config(state=state)
+        btn_stitching.config(state=state)
+        btn_cycle_source.config(state=state)
 
     def toggle_panel(show=None):
         if show is None:
@@ -402,6 +429,74 @@ def _ui_loop():
         if is_panel_visible[0]:
             position_panel()
 
+    # Text Input Window
+    text_input_window = tk.Toplevel(root)
+    text_input_window.attributes("-topmost", True)
+    text_input_window.overrideredirect(True)
+    # We will dynamically set the alpha later, default to 0.8
+    text_input_window.attributes("-alpha", 0.8)
+    text_input_window.withdraw() # Hidden initially
+    text_input_window.config(bg="#1e1e1e")
+
+    text_input_frame = tk.Frame(text_input_window, bg="#1e1e1e", bd=2, relief=tk.RAISED)
+    text_input_frame.pack(fill=tk.BOTH, expand=True)
+
+    text_entry_var = tk.StringVar()
+    text_entry = tk.Entry(text_input_frame, textvariable=text_entry_var, bg="#2d2d2d", fg="white", font=("Arial", 16), insertbackground="white", relief=tk.FLAT)
+    text_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    def position_text_input():
+        text_input_window.update_idletasks()
+        ws = text_input_window.winfo_screenwidth()
+        hs = text_input_window.winfo_screenheight()
+        w = int(ws * 0.6) # 60% of screen width
+        h = 50
+        x = (ws - w) // 2
+        y = hs - h - 50
+        text_input_window.geometry(f"{w}x{h}+{x}+{y}")
+
+    def on_text_enter(event):
+        if is_processing_state[0]:
+            return
+        text = text_entry_var.get().strip()
+        if text:
+            # Clear text
+            text_entry_var.set("")
+            # Call main action manually and pass the text
+            if 'text_submit' in _app_callbacks:
+                threading.Thread(target=_app_callbacks['text_submit'], args=(text,), daemon=True).start()
+
+    text_entry.bind("<Return>", on_text_enter)
+
+    def toggle_text_input(show=None, opacity=0.8):
+        if show is None:
+            show = (active_source[0] == "text")
+
+        if show and active_source[0] == "text":
+            text_input_window.attributes("-alpha", opacity)
+            text_input_window.deiconify()
+            position_text_input()
+            text_entry.focus_set()
+        else:
+            text_input_window.withdraw()
+
+    def set_source(source_name, opacity=0.8):
+        active_source[0] = source_name
+        update_panel_buttons()
+        toggle_text_input(source_name == "text", opacity=opacity)
+        if is_panel_visible[0]:
+            position_panel()
+
+    def update_processing_state(is_processing):
+        is_processing_state[0] = is_processing
+        update_panel_buttons()
+        if is_processing:
+            text_entry.config(state=tk.DISABLED)
+        else:
+            text_entry.config(state=tk.NORMAL)
+            if active_source[0] == "text":
+                text_entry.focus_set()
+
     def process_queue():
         try:
             while True:
@@ -413,6 +508,12 @@ def _ui_loop():
                     continue
                 elif msg.get("type") == "set_multi_state":
                     set_multi_state(msg.get("in_progress"))
+                    continue
+                elif msg.get("type") == "set_source":
+                    set_source(msg.get("source_name"), msg.get("opacity", 0.8))
+                    continue
+                elif msg.get("type") == "set_processing_state":
+                    update_processing_state(msg.get("is_processing"))
                     continue
 
                 text_content = msg.get("text", "")
@@ -492,6 +593,14 @@ def toggle_control_panel(show=None):
 def update_multi_state(in_progress):
     init_ui()
     _ui_queue.put({"type": "set_multi_state", "in_progress": in_progress})
+
+def set_active_source_ui(source_name, opacity=0.8):
+    init_ui()
+    _ui_queue.put({"type": "set_source", "source_name": source_name, "opacity": opacity})
+
+def set_app_processing_state(is_processing):
+    init_ui()
+    _ui_queue.put({"type": "set_processing_state", "is_processing": is_processing})
 
 def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
     init_ui()
