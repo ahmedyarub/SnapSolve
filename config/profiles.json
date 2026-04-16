@@ -1,19 +1,21 @@
 [
-  {
-    "id": "quick",
-    "name": "Quick and short answers",
-    "llm_engine": "google-genai",
-    "model": "gemini-2.5-flash-lite",
-    "ocr_engine": "paddleocr",
-    "prompt_id": "quick"
-  },
-  {
-    "id": "programming",
-    "name": "Detailed programming responses",
-    "llm_engine": "google-genai",
-    "model": "gemini-3-pro-preview",
-    "fallback_model": "gemini-3-flash-preview",
-    "ocr_engine": "paddleocr",
-    "prompt_id": "detailed"
-  }
+    {
+        "id": "quick",
+        "name": "Quick and short answers",
+        "llm_engine": "google-genai",
+        "model": "gemini-2.5-flash-lite",
+        "ocr_engine": "paddleocr",
+        "prompt_id": "quick",
+        "enable_stitching": false
+    },
+    {
+        "id": "programming",
+        "name": "Detailed programming responses",
+        "llm_engine": "google-genai",
+        "model": "gemini-3-pro-preview",
+        "fallback_model": "gemini-3-flash-preview",
+        "ocr_engine": "paddleocr",
+        "prompt_id": "detailed",
+        "enable_stitching": true
+    }
 ]
