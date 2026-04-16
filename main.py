@@ -245,6 +245,9 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
     is_processing = True
 
+    # Immediately update UI state to hide buttons before processing starts
+    update_multi_state(False)
+
     def _end_multi_capture():
         global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance
         try:
@@ -331,7 +334,6 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             is_processing = False
             is_multi_capturing = False
             multi_capture_texts = []
-            update_multi_state(False)
 
     threading.Thread(target=_end_multi_capture, daemon=True).start()
 
