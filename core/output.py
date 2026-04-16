@@ -450,14 +450,27 @@ def _ui_loop():
         hs = text_input_window.winfo_screenheight()
         w = int(ws * 0.6) # 60% of screen width
 
-        # Calculate height based on actual display lines, counting wrapping
-        display_lines_tuple = text_entry.count("1.0", "end", "displaylines")
-        # .count can return None if the widget is empty or unmapped
-        lines = display_lines_tuple[0] if display_lines_tuple else 1
+        # To get the exact pixel height respecting DPI and wrapping, we use the bounding box
+        # of the last character. bbox returns (x, y, width, height) relative to the widget.
+        # So y + height gives us the total text height in pixels.
+        text_entry.update_idletasks() # Ensure geometry is calculated
 
-        h = max(50, (lines * 24) + 26) # Approx 24px per line + padding
+        try:
+            bbox = text_entry.bbox("end-1c")
+            if bbox:
+                text_height = bbox[1] + bbox[3]
+            else:
+                # Fallback if empty or not fully mapped
+                display_lines_tuple = text_entry.count("1.0", "end", "displaylines")
+                lines = display_lines_tuple[0] if display_lines_tuple else 1
+                text_height = lines * 24
+        except Exception:
+            text_height = 24
 
-        # Limit max height
+        # Add padding (e.g. 20 for internal text padding, plus external frame paddings)
+        h = max(50, text_height + 30)
+
+        # Limit max height to 40% of screen
         if h > int(hs * 0.4):
             h = int(hs * 0.4)
 

@@ -177,7 +177,7 @@ class OllamaEngine(LLMEngine):
             "stream": False
         }
 
-        if not extracted_text:
+        if not extracted_text and image_path:
             # Need to send image if no text was extracted
             with open(image_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
@@ -226,7 +226,7 @@ class GeminiCLIEngine(LLMEngine):
 
         safe_prompt = full_prompt
 
-        if extracted_text:
+        if extracted_text or not image_path:
             # If we have extracted text, just send the text prompt without the image
             combined_prompt = f'"{safe_prompt}"'
 
@@ -326,7 +326,7 @@ class GoogleGenAIEngine(LLMEngine):
             current_parts = []
             current_parts.append(types.Part.from_text(text=prompt))
 
-            if not extracted_text:
+            if not extracted_text and image_path:
                 print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
                 with open(image_path, "rb") as f:
                     image_bytes = f.read()
@@ -427,7 +427,8 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                     ocr = NoOCREngine()
 
             try:
-                extracted_text = ocr.extract_text(temp_file_path, status_callback)
+                if temp_file_path:
+                    extracted_text = ocr.extract_text(temp_file_path, status_callback)
             except Exception as e:
                 return str(e)
 
