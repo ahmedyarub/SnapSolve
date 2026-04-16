@@ -116,7 +116,7 @@ class LLMEngine(abc.ABC):
         self.model = model
 
     @abc.abstractmethod
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
                         chunk_callback=None) -> str:
         pass
 
@@ -151,16 +151,29 @@ class OllamaEngine(LLMEngine):
                 status_callback(f"Ollama warmup failed: {str(e)}")
             print(f"Ollama warmup failed: {str(e)}")
 
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
                         chunk_callback=None) -> str:
         print(f"[OllamaEngine] Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing with Ollama...")
 
         start_time = time.time()
+
+        # Inject history
+        full_prompt = prompt
+        if session_manager:
+            history = session_manager.get_history()
+            if history:
+                history_text = "Previous conversation:\n"
+                for h in history:
+                    history_text += f"User: {h.get('prompt', '')}\n"
+                    history_text += f"Assistant: {h.get('response', '')}\n\n"
+                history_text += "Current request:\n"
+                full_prompt = history_text + prompt
+
         payload = {
             "model": self.model,
-            "prompt": prompt,
+            "prompt": full_prompt,
             "stream": False
         }
 
@@ -191,7 +204,7 @@ class OllamaEngine(LLMEngine):
 
 
 class GeminiCLIEngine(LLMEngine):
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
                         chunk_callback=None) -> str:
         print(f"[GeminiCLIEngine] Request started for model: {self.model}")
         start_time = time.time()
@@ -200,9 +213,23 @@ class GeminiCLIEngine(LLMEngine):
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
+        full_prompt = prompt
+        if session_manager:
+            history = session_manager.get_history()
+            if history:
+                history_text = "Previous conversation:\n"
+                for h in history:
+                    history_text += f"User: {h.get('prompt', '')}\n"
+                    history_text += f"Assistant: {h.get('response', '')}\n\n"
+                history_text += "Current request:\n"
+                full_prompt = history_text + prompt
+
+        # Escape double quotes for shell
+        safe_prompt = full_prompt.replace('"', '\\"')
+
         if extracted_text:
             # If we have extracted text, just send the text prompt without the image
-            combined_prompt = f'"{prompt}"'
+            combined_prompt = f'"{safe_prompt}"'
 
             cmd_args = [
                 gemini_cmd,
@@ -212,7 +239,7 @@ class GeminiCLIEngine(LLMEngine):
             ]
         else:
             # Ensure the prompt is properly wrapped and the path is prefixed with @
-            combined_prompt = f'"{prompt} @{image_path}"'
+            combined_prompt = f'"{safe_prompt} @{image_path}"'
 
             # Get directory path and ensure it has a trailing slash and is wrapped in quotes
             temp_dir = os.path.dirname(image_path)
@@ -256,7 +283,7 @@ class GoogleGenAIEngine(LLMEngine):
         self.api_key = api_key
         print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
 
-    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None,
+    def generate_answer(self, prompt: str, image_path: str, extracted_text: str, status_callback=None, session_manager=None,
                         chunk_callback=None) -> str:
         if status_callback:
             status_callback("Processing with Google GenAI...")
@@ -283,7 +310,22 @@ class GoogleGenAIEngine(LLMEngine):
             client = genai.Client(api_key=self.api_key)
 
             contents = []
-            contents.append(prompt)
+
+            if session_manager:
+                history = session_manager.get_history()
+                for h in history:
+                    # Map previous interactions to content objects
+                    contents.append(types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=h.get('prompt', ''))]
+                    ))
+                    contents.append(types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=h.get('response', ''))]
+                    ))
+
+            current_parts = []
+            current_parts.append(types.Part.from_text(text=prompt))
 
             if not extracted_text:
                 print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
@@ -327,7 +369,7 @@ class GoogleGenAIEngine(LLMEngine):
 import threading
 
 
-def capture_and_process(coords, prompt_text="answer the following question quickly and briefly",
+def capture_and_process(coords, prompt_text="answer the following question quickly and briefly", session_manager=None,
                         model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
                         llm_engine_instance=None, status_callback=None, chunk_callback=None, fallback_model=None,
@@ -421,7 +463,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                         chunk_callback(chunk, is_main=True, replace=False)
 
             try:
-                ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, main_chunk_callback)
+                ans = llm.generate_answer(prompt, temp_file_path, extracted_text, status_callback, session_manager, main_chunk_callback)
                 with lock:
                     # In this application, API errors are often returned as strings starting with "Error"
                     if isinstance(ans, str) and ans.startswith("Error"):
@@ -448,7 +490,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                             chunk_callback(chunk, is_main=False, replace=False)
 
             try:
-                ans = fallback_llm.generate_answer(prompt, temp_file_path, extracted_text, None,
+                ans = fallback_llm.generate_answer(prompt, temp_file_path, extracted_text, None, session_manager,
                                                    fallback_chunk_callback)
                 with lock:
                     results['fallback'] = ans
@@ -465,18 +507,39 @@ def capture_and_process(coords, prompt_text="answer the following question quick
         main_thread.join()
 
         if main_success[0] and 'main' in results:
-            return results['main']
+            final_result = results['main']
+            if session_manager and final_result and not final_result.startswith("Error"):
+                try:
+                    # check if we have a direct string path or just using image
+                    # in capture_and_process, we pass temp_file_path.
+                    # but if there was NO capture and just text passed directly, maybe temp_file_path is None?
+                    # wait, capture_and_process creates a temp file even for warmups.
+                    # let's just pass temp_file_path, it's defined in the method wrapper
+                    session_manager.append_interaction(prompt_text, temp_file_path, final_result, extracted_text)
+                except Exception as e:
+                    print(f"Failed to append to session manager: {e}")
+            return final_result
 
         # Main model failed.
         # If fallback hasn't finished yet, we need to wait for it.
         fallback_thread.join()
 
         if 'fallback' in results:
-            return results['fallback']
+            final_result = results['fallback']
         elif 'main_error' in results:
-            return f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
+            final_result = f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
         else:
-            return f"Error processing with both models."
+            final_result = f"Error processing with both models."
+
+        if session_manager and final_result and not final_result.startswith("Error"):
+            try:
+                # `pre_extracted_text` doesn't exist here, handle correctly:
+                is_direct_text = locals().get('pre_extracted_text', None) is not None
+                session_manager.append_interaction(prompt_text, temp_file_path if not is_direct_text else None, final_result, extracted_text)
+            except Exception as e:
+                print(f"Failed to append to session manager: {e}")
+
+        return final_result
 
     except Exception as e:
         return f"Error processing: {str(e)}"

@@ -50,8 +50,10 @@ def load_config():
             {'action': 'multi_capture', 'key': 'ctrl+alt+shift+m'},
             {'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'},
             {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'},
-            {'action': 'toggle_panel', 'key': 'ctrl+alt+p'}
+            {'action': 'toggle_panel', 'key': 'ctrl+alt+p'},
+            {'action': 'new_chat_session', 'key': 'ctrl+alt+shift+c'}
         ],
+        'save_images': False,
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
         'voice_id': None, # The TTS voice/playback device ID
@@ -134,6 +136,8 @@ def parse_args():
     parser.add_argument('--fallback-language', type=str, help='Fallback language for code blocks (default: python)')
     parser.add_argument('--show-control-panel', action='store_true', help='Show the control panel overlay')
     parser.add_argument('--hide-control-panel', action='store_true', help='Hide the control panel overlay')
+    parser.add_argument('--continue-last', action='store_true', help='Continue the last chat session')
+    parser.add_argument('--continue-session', type=str, help='Continue a specific chat session by ID')
 
     return parser.parse_args()
 
@@ -190,5 +194,12 @@ def get_config():
         config['show_control_panel'] = True
     elif args.hide_control_panel:
         config['show_control_panel'] = False
+
+    if args.continue_last:
+        config['continue_last'] = True
+
+    if args.continue_session:
+        config['continue_session'] = args.continue_session
+
 
     return config
