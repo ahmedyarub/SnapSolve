@@ -371,8 +371,11 @@ def _ui_loop():
     btn_cancel_multi = tk.Button(panel_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
     # Pack these later based on state
 
+    btn_stitching = tk.Button(panel_frame, text="🧵 Toggle Stitching", command=lambda: call_main_action('toggle_stitching'), **btn_config)
+    btn_stitching.pack(side=tk.TOP, fill=tk.X, pady=2)
+
     # Hover effects
-    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi]:
+    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi, btn_stitching]:
         btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#3e3e3e"))
         btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#2d2d2d"))
 

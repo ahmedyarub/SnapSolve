@@ -8,6 +8,7 @@ import keyboard
 from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state
 from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
+from core.session_manager import SessionManager
 from ui.selector import get_coordinates
 
 try:
@@ -23,6 +24,7 @@ is_running = True
 is_processing = False
 ocr_engine_instance = None
 llm_engine_instance = None
+session_manager = None
 
 # Multi-capture state
 is_multi_capturing = False
@@ -115,6 +117,8 @@ def handle_capture(config, active_profile, active_prompt_text):
                 ocr_engine=active_profile.get('ocr_engine', 'none'),
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 google_genai_api_key=config.get('google_genai_api_key', ''),
+                session_manager=session_manager,
+                enable_stitching=active_profile.get('enable_stitching', True),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update,
@@ -305,6 +309,8 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 ocr_engine=active_profile.get('ocr_engine', 'none'),
                 ollama_url=config.get('ollama_url', 'http://localhost:11434'),
                 google_genai_api_key=config.get('google_genai_api_key', ''),
+                session_manager=session_manager,
+                enable_stitching=active_profile.get('enable_stitching', True),
                 ocr_engine_instance=ocr_engine_instance,
                 llm_engine_instance=llm_engine_instance,
                 status_callback=status_update,
@@ -337,6 +343,42 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
     threading.Thread(target=_end_multi_capture, daemon=True).start()
 
+
+def handle_new_chat_session(config):
+    global session_manager
+    if session_manager:
+        session_id = session_manager.start_new_session()
+        # Visual reset and popup
+        if 'popup' in config.get('output_mode', ['popup']):
+            # Find and destroy any open result popups first
+            from ui.popups import active_popups
+            for popup in list(active_popups):
+                try:
+                    popup.destroy()
+                    active_popups.remove(popup)
+                except Exception:
+                    pass
+
+            # Then show the new status popup
+            show_popup(f"New Chat Session Started\nID: {session_id}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+
+def handle_toggle_stitching(config, active_profile):
+    current = active_profile.get('enable_stitching', True)
+    active_profile['enable_stitching'] = not current
+
+    # Save the profiles
+    profiles = load_profiles()
+    for p in profiles:
+        if p['id'] == active_profile['id']:
+            p['enable_stitching'] = not current
+            break
+
+    from config.settings import save_profiles
+    save_profiles(profiles)
+
+    state_str = "Enabled" if not current else "Disabled"
+    if 'popup' in config.get('output_mode', ['popup']):
+        show_popup(f"Chat Stitching {state_str}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
 def handle_toggle_panel(config):
     # Toggle control panel state internally
@@ -460,7 +502,8 @@ def main():
         'reselect': lambda: handle_reselect(config),
         'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
         'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
-        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config)
+        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
+        'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile)
     }
     set_app_callbacks(callbacks)
 
@@ -480,7 +523,8 @@ def main():
 
     # Initialize Engines (Only pre-init Ollama and PaddleOCR)
     print("Checking engine pre-initialization...")
-    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, session_manager
+    session_manager = SessionManager(config)
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
         print("Starting PaddleOCR (this may take a moment to warmup)...")
@@ -521,6 +565,10 @@ def main():
             keyboard.add_hotkey(key, handle_cancel_multi_capture, args=[config])
         elif action == 'toggle_panel':
             keyboard.add_hotkey(key, handle_toggle_panel, args=[config])
+        elif action == 'new_chat_session':
+            keyboard.add_hotkey(key, handle_new_chat_session, args=[config])
+        elif action == 'toggle_stitching':
+            keyboard.add_hotkey(key, handle_toggle_stitching, args=[config, active_profile])
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode...")
