@@ -46,14 +46,14 @@ def load_config():
     config = {
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
         'hotkeys': [
-            {'action': 'capture', 'key': 'ctrl+alt+shift+s'},
-            {'action': 'reselect', 'key': 'ctrl+alt+shift+r'},
+            {'action': 'capture', 'key': 'ctrl+alt+shift+c'},
+            {'action': 'reselect', 'key': 'ctrl+alt+shift+s'},
             {'action': 'multi_capture', 'key': 'ctrl+alt+shift+m'},
             {'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'},
             {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'},
-            {'action': 'toggle_panel', 'key': 'ctrl+alt+p'},
-            {'action': 'new_chat_session', 'key': 'ctrl+alt+shift+c'},
-            {'action': 'toggle_stitching', 'key': 'ctrl+alt+shift+v'}
+            {'action': 'toggle_panel', 'key': 'ctrl+alt+shift+p'},
+            {'action': 'new_chat_session', 'key': 'ctrl+alt+shift+h'},
+            {'action': 'toggle_stitching', 'key': 'ctrl+alt+shift+i'}
         ],
         'save_images': False,
         'coordinates': None, # [x1, y1, x2, y2]
