@@ -65,7 +65,8 @@ def load_config():
         'auto_close_results': False,
         'popup_opacity': 0.8,
         'fallback_language': 'python',
-        'show_control_panel': False
+        'show_control_panel': False,
+        'default_source': 'text'
     }
 
     # Ensure config directory exists
@@ -140,6 +141,7 @@ def parse_args():
     parser.add_argument('--hide-control-panel', action='store_true', help='Hide the control panel overlay')
     parser.add_argument('--continue-last', action='store_true', help='Continue the last chat session')
     parser.add_argument('--continue-session', type=str, help='Continue a specific chat session by ID')
+    parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
 
     return parser.parse_args()
 
@@ -203,5 +205,7 @@ def get_config():
     if args.continue_session:
         config['continue_session'] = args.continue_session
 
+    if args.default_source:
+        config['default_source'] = args.default_source
 
     return config

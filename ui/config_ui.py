@@ -91,6 +91,14 @@ class ConfigUI:
         ttk.Entry(app_tab, textvariable=self.voice_id_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
         app_row += 1
 
+        # Default Source
+        ttk.Label(app_tab, text="Default Source:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
+        self.default_source_var = tk.StringVar()
+        ds_combo = ttk.Combobox(app_tab, textvariable=self.default_source_var, state="readonly")
+        ds_combo['values'] = ('text', 'image')
+        ds_combo.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
+        app_row += 1
+
         # Run in background
         self.bg_var = tk.BooleanVar()
         ttk.Checkbutton(app_tab, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
@@ -229,6 +237,10 @@ class ConfigUI:
         create_hotkey_row(hk_tab, "🧵 Toggle Stitching:", self.toggle_stitching_hk_var, hk_row)
         hk_row += 1
 
+        self.cycle_source_hk_var = tk.StringVar()
+        create_hotkey_row(hk_tab, "🔄 Cycle Source:", self.cycle_source_hk_var, hk_row)
+        hk_row += 1
+
         # =========================================================
         # Global Buttons
         # =========================================================
@@ -260,6 +272,8 @@ class ConfigUI:
         vid = self.config.get('voice_id')
         self.voice_id_var.set(vid if vid else '')
 
+        self.default_source_var.set(self.config.get('default_source', 'text'))
+
         hotkeys = self.config.get('hotkeys', [])
         for hk in hotkeys:
             if hk.get('action') == 'capture':
@@ -278,6 +292,8 @@ class ConfigUI:
                 self.new_chat_session_hk_var.set(hk.get('key', ''))
             elif hk.get('action') == 'toggle_stitching':
                 self.toggle_stitching_hk_var.set(hk.get('key', ''))
+            elif hk.get('action') == 'cycle_source':
+                self.cycle_source_hk_var.set(hk.get('key', ''))
 
         self.bg_var.set(self.config.get('background', False))
         self.show_control_panel_var.set(self.config.get('show_control_panel', False))
@@ -494,6 +510,7 @@ class ConfigUI:
         self.config['active_profile_id'] = self.active_profile_id
         self.config['ollama_url'] = self.ollama_url_var.get()
         self.config['google_genai_api_key'] = self.api_key_var.get()
+        self.config['default_source'] = self.default_source_var.get()
 
         vid = self.voice_id_var.get()
         self.config['voice_id'] = vid if vid else None
@@ -507,6 +524,7 @@ class ConfigUI:
         updated_hotkeys.append({'action': 'toggle_panel', 'key': self.toggle_panel_hk_var.get()})
         updated_hotkeys.append({'action': 'new_chat_session', 'key': self.new_chat_session_hk_var.get()})
         updated_hotkeys.append({'action': 'toggle_stitching', 'key': self.toggle_stitching_hk_var.get()})
+        updated_hotkeys.append({'action': 'cycle_source', 'key': self.cycle_source_hk_var.get()})
 
         # Remove empty keys so we don't bind empty strings
         updated_hotkeys = [hk for hk in updated_hotkeys if hk['key']]

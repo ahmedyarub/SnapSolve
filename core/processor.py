@@ -177,7 +177,7 @@ class OllamaEngine(LLMEngine):
             "stream": False
         }
 
-        if not extracted_text:
+        if not extracted_text and image_path:
             # Need to send image if no text was extracted
             with open(image_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
@@ -226,7 +226,7 @@ class GeminiCLIEngine(LLMEngine):
 
         safe_prompt = full_prompt
 
-        if extracted_text:
+        if extracted_text or not image_path:
             # If we have extracted text, just send the text prompt without the image
             combined_prompt = f'"{safe_prompt}"'
 
@@ -326,7 +326,7 @@ class GoogleGenAIEngine(LLMEngine):
             current_parts = []
             current_parts.append(types.Part.from_text(text=prompt))
 
-            if not extracted_text:
+            if not extracted_text and image_path:
                 print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
                 with open(image_path, "rb") as f:
                     image_bytes = f.read()
@@ -388,12 +388,12 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                         model="gemini-2.5-flash-lite", llm_engine="gemini", ocr_engine="none",
                         ollama_url="http://localhost:11434", google_genai_api_key="", ocr_engine_instance=None,
                         llm_engine_instance=None, status_callback=None, chunk_callback=None, fallback_model=None,
-                        fallback_llm_engine_instance=None, pre_extracted_text=None):
+                        fallback_llm_engine_instance=None, pre_extracted_text=None, skip_capture=False):
 
     temp_file_path = None
     extracted_text = pre_extracted_text
 
-    if not pre_extracted_text:
+    if not skip_capture and pre_extracted_text is None:
         if not coords or len(coords) != 4:
             return "Error: Invalid coordinates. Please run coordinate selection again."
 
@@ -414,7 +414,7 @@ def capture_and_process(coords, prompt_text="answer the following question quick
         temp_file.close()
 
     try:
-        if not pre_extracted_text:
+        if not skip_capture and pre_extracted_text is None:
             # Save image to temporary file
             img.save(temp_file_path)
 
@@ -427,7 +427,8 @@ def capture_and_process(coords, prompt_text="answer the following question quick
                     ocr = NoOCREngine()
 
             try:
-                extracted_text = ocr.extract_text(temp_file_path, status_callback)
+                if temp_file_path:
+                    extracted_text = ocr.extract_text(temp_file_path, status_callback)
             except Exception as e:
                 return str(e)
 
