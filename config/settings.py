@@ -49,7 +49,8 @@ def load_config():
             {'action': 'reselect', 'key': 'ctrl+alt+shift+r'},
             {'action': 'multi_capture', 'key': 'ctrl+alt+shift+m'},
             {'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'},
-            {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'}
+            {'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'},
+            {'action': 'toggle_panel', 'key': 'ctrl+alt+p'}
         ],
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
@@ -59,7 +60,8 @@ def load_config():
         'google_genai_api_key': '',
         'auto_close_results': False,
         'popup_opacity': 0.8,
-        'fallback_language': 'python'
+        'fallback_language': 'python',
+        'show_control_panel': False
     }
 
     # Ensure config directory exists
@@ -97,6 +99,8 @@ def load_config():
                         file_config['hotkeys'].append({'action': 'end_multi_capture', 'key': 'ctrl+alt+shift+n'})
                     if 'cancel_multi_capture' not in current_actions:
                         file_config['hotkeys'].append({'action': 'cancel_multi_capture', 'key': 'ctrl+alt+t'})
+                    if 'toggle_panel' not in current_actions:
+                        file_config['hotkeys'].append({'action': 'toggle_panel', 'key': 'ctrl+alt+p'})
 
                 config.update(file_config)
         except json.JSONDecodeError:
@@ -128,6 +132,8 @@ def parse_args():
     parser.add_argument('--no-auto-close-results', action='store_true', help='Do not auto close result popups')
     parser.add_argument('--popup-opacity', type=float, help='Opacity of the popup (0.0 to 1.0)')
     parser.add_argument('--fallback-language', type=str, help='Fallback language for code blocks (default: python)')
+    parser.add_argument('--show-control-panel', action='store_true', help='Show the control panel overlay')
+    parser.add_argument('--hide-control-panel', action='store_true', help='Hide the control panel overlay')
 
     return parser.parse_args()
 
@@ -179,5 +185,10 @@ def get_config():
 
     if args.fallback_language:
         config['fallback_language'] = args.fallback_language
+
+    if args.show_control_panel:
+        config['show_control_panel'] = True
+    elif args.hide_control_panel:
+        config['show_control_panel'] = False
 
     return config

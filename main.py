@@ -6,7 +6,7 @@ import time
 import keyboard
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
-from core.output import output_result, show_popup
+from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks
 from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
 from ui.selector import get_coordinates
 
@@ -327,6 +327,15 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
     threading.Thread(target=_end_multi_capture, daemon=True).start()
 
 
+def handle_toggle_panel(config):
+    # Simply flip the config setting and call toggle
+    show = not config.get('show_control_panel', False)
+    config['show_control_panel'] = show
+    # Do not save to config.json here unless we want it persistent. The user said it can be toggled by hotkey.
+    # If they toggle by hotkey, let's keep it temporary for the session, or they can use the config UI to save it.
+    toggle_control_panel(show)
+
+
 def handle_cancel_multi_capture(config):
     global is_processing, is_multi_capturing, multi_capture_texts
     if is_multi_capturing:
@@ -437,6 +446,19 @@ def main():
 
     validate_config(active_profile)
 
+    # Set up UI callbacks before starting the main loop
+    callbacks = {
+        'capture': lambda: handle_capture(config, active_profile, active_prompt_text),
+        'reselect': lambda: handle_reselect(config),
+        'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
+        'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
+        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config)
+    }
+    set_app_callbacks(callbacks)
+
+    if config.get('show_control_panel', False):
+        toggle_control_panel(True)
+
     if not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
         coords = get_coordinates()
@@ -489,6 +511,8 @@ def main():
             keyboard.add_hotkey(key, handle_end_multi_capture, args=[config, active_profile, active_prompt_text])
         elif action == 'cancel_multi_capture':
             keyboard.add_hotkey(key, handle_cancel_multi_capture, args=[config])
+        elif action == 'toggle_panel':
+            keyboard.add_hotkey(key, handle_toggle_panel, args=[config])
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode...")

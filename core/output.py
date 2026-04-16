@@ -31,6 +31,7 @@ from pygments.util import ClassNotFound
 
 _ui_queue = queue.Queue()
 _ui_thread = None
+_app_callbacks = {}
 
 def render_markdown(text_widget, text_content, fallback_language="python"):
     # Configure tags
@@ -236,6 +237,10 @@ def render_markdown(text_widget, text_content, fallback_language="python"):
     if in_table:
         flush_table()
 
+def set_app_callbacks(callbacks):
+    global _app_callbacks
+    _app_callbacks = callbacks
+
 def _ui_loop():
     root = tk.Tk()
     root.attributes("-topmost", True)
@@ -309,10 +314,83 @@ def _ui_loop():
 
     close_timer = [None]
 
+    # Control Panel Window
+    panel_window = tk.Toplevel(root)
+    panel_window.attributes("-topmost", True)
+    panel_window.overrideredirect(True)
+    panel_window.attributes("-alpha", 0.9)
+    panel_window.withdraw() # Hidden initially
+    panel_window.config(bg="#1e1e1e")
+
+    panel_frame = tk.Frame(panel_window, bg="#1e1e1e", bd=2, relief=tk.RAISED)
+    panel_frame.pack(fill=tk.BOTH, expand=True)
+
+    # Position panel in bottom left
+    def position_panel():
+        panel_window.update_idletasks()
+        w = panel_window.winfo_reqwidth()
+        h = panel_window.winfo_reqheight()
+        ws = panel_window.winfo_screenwidth()
+        hs = panel_window.winfo_screenheight()
+        # Bottom left corner with a small margin
+        x = 20
+        y = hs - h - 50
+        panel_window.geometry(f"{w}x{h}+{x}+{y}")
+
+    def call_main_action(action):
+        if action in _app_callbacks:
+            # We must use threading or safely dispatch it to main since we don't want to block UI thread
+            # Actually, the callbacks in main.py use their own threads, so it's safe to just call them
+            try:
+                _app_callbacks[action]()
+            except Exception as e:
+                print(f"Error calling {action}: {e}")
+
+    # Buttons for the panel
+    btn_config = {'bg': '#2d2d2d', 'fg': 'white', 'font': ('Segoe UI Emoji', 14), 'bd': 0, 'padx': 10, 'pady': 5}
+    btn_capture = tk.Button(panel_frame, text="📸 Capture", command=lambda: call_main_action('capture'), **btn_config)
+    btn_capture.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+    btn_reselect = tk.Button(panel_frame, text="🎯 Reselect", command=lambda: call_main_action('reselect'), **btn_config)
+    btn_reselect.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+    btn_multi = tk.Button(panel_frame, text="➕ Multi", command=lambda: call_main_action('multi_capture'), **btn_config)
+    btn_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+    btn_end_multi = tk.Button(panel_frame, text="✅ End Multi", command=lambda: call_main_action('end_multi_capture'), **btn_config)
+    btn_end_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+    btn_cancel_multi = tk.Button(panel_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
+    btn_cancel_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+    # Hover effects
+    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi]:
+        btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#3e3e3e"))
+        btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#2d2d2d"))
+
+    is_panel_visible = [False]
+
+    def toggle_panel(show=None):
+        if show is None:
+            show = not is_panel_visible[0]
+
+        is_panel_visible[0] = show
+        if show:
+            panel_window.deiconify()
+            position_panel()
+        else:
+            panel_window.withdraw()
+
     def process_queue():
         try:
             while True:
                 msg = _ui_queue.get_nowait()
+
+                # Check for control panel messages
+                if msg.get("type") == "toggle_panel":
+                    toggle_panel(msg.get("show"))
+                    continue
+
                 text_content = msg.get("text", "")
                 auto_close = msg.get("auto_close", 5000)
                 opacity = msg.get("opacity", 0.8)
@@ -382,6 +460,10 @@ def init_ui():
     if _ui_thread is None:
         _ui_thread = threading.Thread(target=_ui_loop, daemon=True)
         _ui_thread.start()
+
+def toggle_control_panel(show=None):
+    init_ui()
+    _ui_queue.put({"type": "toggle_panel", "show": show})
 
 def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
     init_ui()
