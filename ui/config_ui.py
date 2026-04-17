@@ -62,10 +62,18 @@ class ConfigUI(QDialog):
         self.setup_shortcuts_tab()
 
         # Buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        button_box.accepted.connect(self.save_all)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.btn_save_run = self.button_box.addButton("Save and Run", QDialogButtonBox.ButtonRole.ActionRole)
+        self.button_box.accepted.connect(self.save_all)
+        self.button_box.rejected.connect(self.reject)
+        self.btn_save_run.clicked.connect(self.save_and_run)
+        layout.addWidget(self.button_box)
+
+        self.should_run = False
+
+    def save_and_run(self):
+        self.should_run = True
+        self.save_all()
 
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
@@ -290,12 +298,29 @@ def open_config_ui(config_path, models_path, profiles_path, prompts_path):
 
     dialog = ConfigUI(config_path, models_path, profiles_path, prompts_path)
     dialog.exec()
+    should_run = dialog.should_run
 
     if is_temp_app:
         app.quit()
 
+    return should_run
+
 if __name__ == "__main__":
     import sys
+    import os
+
+    # Temporarily create app for the config UI if run directly
     from PyQt6.QtWidgets import QApplication
-    app = QApplication(sys.argv)
-    open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json", "config/prompts.json")
+    # Only create if it doesn't exist
+    if not QApplication.instance():
+        app = QApplication(sys.argv)
+
+    should_run = open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json", "config/prompts.json")
+
+    if should_run:
+        print("Launching application...")
+        # Since we are executing as a script, we can run main.py via subprocess or import it.
+        # It's cleaner to exec into main.py
+        import subprocess
+        subprocess.Popen([sys.executable, "main.py"])
+        sys.exit(0)

@@ -14,8 +14,14 @@ class UISignals(QObject):
     show_popup = pyqtSignal(dict)
     close_popup = pyqtSignal()
 
+class SelectorSignals(QObject):
+    request_coords = pyqtSignal()
+    coords_ready = pyqtSignal(object)
+
 ui_signals = UISignals()
+selector_signals = SelectorSignals()
 _app_callbacks = {}
+
 
 # --- Audio TTS ---
 def speak(text, voice_id=None):
@@ -319,6 +325,7 @@ class UIManager(QObject):
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
+
     def _init_ui(self):
         if not QApplication.instance():
             return # Should not happen, main.py creates it
@@ -403,16 +410,7 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
     if 'popup' in output_modes:
         show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)
 
-# Add to UI signals
-class SelectorSignals(QObject):
-    request_coords = pyqtSignal()
-    coords_ready = pyqtSignal(object)
-
-selector_signals = SelectorSignals()
-
 def _handle_request_coords():
     from ui.selector import _get_coordinates_impl
     coords = _get_coordinates_impl()
     selector_signals.coords_ready.emit(coords)
-
-# Attach handler to main thread via init_ui_manager
