@@ -4,6 +4,19 @@ A very fast and simple application that captures a user-defined rectangular area
 
 The answer is outputted via a frameless popup notification and/or local Text-to-Speech (TTS).
 
+## Features Overview
+*   **Fast Screen Capture:** Capture user-defined areas with minimal overhead.
+*   **Multiple LLM Backends:** Use Gemini (via CLI or API), or a local Ollama server.
+*   **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
+*   **Chat History:** Maintain conversational context over multiple queries.
+*   **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
+*   **Advanced OCR:** Optional PaddleOCR integration for reliable text extraction before prompting.
+*   **Flexible Output Sinks:** Render rich markdown answers in a floating popup and/or read them aloud via TTS.
+*   **Background Mode:** Run the app seamlessly from your system tray.
+
+For a full, detailed breakdown of all features, see [FEATURES.md](FEATURES.md).
+For technical details regarding how data flows through the application, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Setup & Installation
 
 1. Install Python 3.8+
