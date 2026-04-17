@@ -9,11 +9,12 @@ class CoordinateSelector(QWidget):
         self.callback = callback
         self.loop = loop
 
-        # Translucent background
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        # Frameless and Always on Top
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: rgba(128, 128, 128, 76);") # ~0.3 alpha (255 * 0.3)
+
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.start_x = None
         self.start_y = None
@@ -66,18 +67,28 @@ class CoordinateSelector(QWidget):
         self.close()
 
     def paintEvent(self, event):
+        painter = QPainter(self)
+        # Fill the entire screen with a semi-transparent dark gray mask
+        painter.fillRect(self.rect(), QColor(50, 50, 50, 76))
+
         if self.is_drawing and self.start_x is not None and self.end_x is not None:
-            painter = QPainter()
-            painter.begin(self)
+            # Draw the red selection rectangle outline
             pen = QPen(QColor('red'))
             pen.setWidth(3)
             painter.setPen(pen)
+
             x1 = min(self.start_x, self.end_x)
             y1 = min(self.start_y, self.end_y)
             width = abs(self.end_x - self.start_x)
             height = abs(self.end_y - self.start_y)
+
+            # To clear the mask inside the selection box, we can change composition mode
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(x1, y1, width, height, Qt.GlobalColor.transparent)
+
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             painter.drawRect(x1, y1, width, height)
-            painter.end()
+
 _active_selector = None
 
 def _get_coordinates_impl(callback=None):
@@ -102,6 +113,9 @@ def _get_coordinates_impl(callback=None):
         screen_rect = app.primaryScreen().virtualGeometry()
         selector.setGeometry(screen_rect)
         selector.showFullScreen()
+        selector.raise_()
+        selector.activateWindow()
+        selector.setFocus()
     else:
         # Blocking mode for first run
         from PyQt6.QtCore import QEventLoop
@@ -110,6 +124,9 @@ def _get_coordinates_impl(callback=None):
         screen_rect = app.primaryScreen().virtualGeometry()
         selector.setGeometry(screen_rect)
         selector.showFullScreen()
+        selector.raise_()
+        selector.activateWindow()
+        selector.setFocus()
         loop.exec()
 
         coords = selector.coordinates
