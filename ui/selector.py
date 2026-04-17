@@ -1,70 +1,119 @@
-import tkinter as tk
+from PyQt6.QtWidgets import QWidget, QApplication
+from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
+import sys
 
-class CoordinateSelector:
+class CoordinateSelector(QWidget):
     def __init__(self):
-        self.root = tk.Tk()
-        # Make the window transparent and cover the whole screen
-        self.root.attributes("-alpha", 0.3)
-        self.root.attributes("-fullscreen", True)
-        # Ensure it stays on top of all other windows
-        self.root.attributes("-topmost", True)
-        self.root.config(cursor="cross")
+        super().__init__()
+        # Translucent background
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background-color: rgba(128, 128, 128, 76);") # ~0.3 alpha (255 * 0.3)
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
 
-        # Set up variables to store coordinates
         self.start_x = None
         self.start_y = None
-        self.rect = None
+        self.end_x = None
+        self.end_y = None
+        self.is_drawing = False
         self.coordinates = None
 
-        # Bind mouse events
-        self.canvas = tk.Canvas(self.root, cursor="cross", bg="gray")
-        self.canvas.pack(fill="both", expand=True)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.start_x = int(event.position().x())
+            self.start_y = int(event.position().y())
+            self.end_x = self.start_x
+            self.end_y = self.start_y
+            self.is_drawing = True
+            self.update()
 
-        self.canvas.bind("<ButtonPress-1>", self.on_button_press)
-        self.canvas.bind("<B1-Motion>", self.on_move_press)
-        self.canvas.bind("<ButtonRelease-1>", self.on_button_release)
+    def mouseMoveEvent(self, event):
+        if self.is_drawing:
+            self.end_x = int(event.position().x())
+            self.end_y = int(event.position().y())
+            self.update()
 
-        # Bind escape key to cancel
-        self.root.bind("<Escape>", self.cancel)
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.end_x = int(event.position().x())
+            self.end_y = int(event.position().y())
+            self.is_drawing = False
 
-    def on_button_press(self, event):
-        # Save starting coordinates
-        self.start_x = event.x
-        self.start_y = event.y
+            x1 = min(self.start_x, self.end_x)
+            y1 = min(self.start_y, self.end_y)
+            x2 = max(self.start_x, self.end_x)
+            y2 = max(self.start_y, self.end_y)
 
-        # Create rectangle if not yet created
-        if not self.rect:
-            self.rect = self.canvas.create_rectangle(self.start_x, self.start_y, self.start_x, self.start_y, outline='red', width=3)
+            if x2 - x1 > 10 and y2 - y1 > 10:
+                self.coordinates = [x1, y1, x2, y2]
 
-    def on_move_press(self, event):
-        cur_x, cur_y = (event.x, event.y)
+            self.close()
 
-        # Expand rectangle as you drag the mouse
-        self.canvas.coords(self.rect, self.start_x, self.start_y, cur_x, cur_y)
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.coordinates = None
+            self.close()
 
-    def on_button_release(self, event):
-        # Determine final coordinates
-        end_x, end_y = (event.x, event.y)
+    def paintEvent(self, event):
+        if self.is_drawing and self.start_x is not None and self.end_x is not None:
+            painter = QPainter(self)
+            pen = QPen(QColor('red'))
+            pen.setWidth(3)
+            painter.setPen(pen)
+            # Draw the interior (transparent since the widget is translucent)
+            # The widget itself is styled, but paintEvent draws over it.
+            # QWidget with WA_TranslucentBackground allows the stylesheet to act as background.
+            x1 = min(self.start_x, self.end_x)
+            y1 = min(self.start_y, self.end_y)
+            width = abs(self.end_x - self.start_x)
+            height = abs(self.end_y - self.start_y)
+            painter.drawRect(x1, y1, width, height)
 
-        # Ensure x1 < x2 and y1 < y2
-        x1 = min(self.start_x, end_x)
-        y1 = min(self.start_y, end_y)
-        x2 = max(self.start_x, end_x)
-        y2 = max(self.start_y, end_y)
+def _get_coordinates_impl():
+    # If QApplication is not already created, create a temporary one
+    # Note: when integrated in main.py, QApplication will already exist.
+    app = QApplication.instance()
+    is_temp_app = False
+    if not app:
+        app = QApplication(sys.argv)
+        is_temp_app = True
 
-        # Save coordinates if the area is valid
-        if x2 - x1 > 10 and y2 - y1 > 10:
-            self.coordinates = [x1, y1, x2, y2]
+    selector = CoordinateSelector()
+    # To cover multiple screens, we can get the virtual geometry
+    screen_rect = app.primaryScreen().virtualGeometry()
+    selector.setGeometry(screen_rect)
+    selector.showFullScreen()
 
-        self.root.quit()
+    # We must start a local event loop if we want this to block like Tkinter's mainloop() did
+    from PyQt6.QtCore import QEventLoop
+    loop = QEventLoop()
+    selector.destroyed.connect(loop.quit)
+    # also handle close event
+    selector.closeEvent = lambda e: loop.quit()
 
-    def cancel(self, event):
-        self.coordinates = None
-        self.root.quit()
+    selector.show()
+    loop.exec()
+
+    coords = selector.coordinates
+
+    if is_temp_app:
+        app.quit()
+
+    return coords
 
 def get_coordinates():
-    selector = CoordinateSelector()
-    selector.root.mainloop()
-    coords = selector.coordinates
-    selector.root.destroy()
+    from core.output import selector_signals
+    import queue
+    q = queue.Queue()
+
+    def on_ready(coords):
+        q.put(coords)
+
+    selector_signals.coords_ready.connect(on_ready)
+    selector_signals.request_coords.emit()
+
+    # Wait for the main thread to finish and emit the signal
+    coords = q.get()
+    selector_signals.coords_ready.disconnect(on_ready)
     return coords

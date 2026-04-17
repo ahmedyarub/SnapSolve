@@ -4,6 +4,9 @@ import threading
 import time
 
 import keyboard
+import sys
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, set_active_source_ui, set_app_processing_state
@@ -458,7 +461,11 @@ def exit_app():
     global is_running
     is_running = False
     print("Exiting...")
-
+    app = QApplication.instance()
+    if app:
+        app.quit()
+    keyboard.unhook_all()
+    sys.exit(0)
 
 import json
 import os
@@ -511,7 +518,16 @@ def validate_config(active_profile):
 def main():
     global is_running, active_source_instance
 
+    # Initialize PyQt application in the main thread
+    app = QApplication.instance()
+    if not app:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+        app = QApplication(sys.argv)
+        # Needed for tray icon to keep app alive if windows are closed
+        app.setQuitOnLastWindowClosed(False)
+
     print("Initializing Screen Capture & Gemini QA App...")
+
     config = get_config()
     profiles = load_profiles()
     prompts = load_prompts()
@@ -543,6 +559,9 @@ def main():
         'cycle_source': lambda: handle_cycle_source(config),
         'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
     }
+        # Initialize the UI Manager and set callbacks
+    from core.output import init_ui_manager
+    init_ui_manager()
     set_app_callbacks(callbacks)
 
     # Initialize the UI with the active source before showing the panel
@@ -647,18 +666,22 @@ def main():
             keyboard.add_hotkey(key, handle_cycle_source, args=[config])
 
     if config.get('background', False) and HAS_PYSTRAY:
-        print("Running in background tray mode...")
-        icon = create_tray_icon(exit_app, config)
-
-        # This blocks until the icon is stopped
-        icon.run()
+        print("Running in background tray mode with pystray...")
+        import threading
+        def run_tray():
+            icon = create_tray_icon(exit_app, config)
+            icon.run()
+        threading.Thread(target=run_tray, daemon=True).start()
     else:
-        print("Running in console mode. Press Ctrl+C to exit.")
-        try:
-            while is_running:
-                time.sleep(0.1)
-        except KeyboardInterrupt:
-            exit_app()
+        print("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")
+        import signal
+        signal.signal(signal.SIGINT, lambda sig, frame: exit_app())
+        from PyQt6.QtCore import QTimer
+        timer = QTimer()
+        timer.start(500)
+        timer.timeout.connect(lambda: None)
+
+    sys.exit(app.exec())
 
     # Cleanup
     keyboard.unhook_all()
