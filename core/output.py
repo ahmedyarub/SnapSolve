@@ -1,5 +1,6 @@
 import pyttsx3
 import threading
+import json
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QScrollArea
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
@@ -59,8 +60,9 @@ class PopupWidget(QWidget):
         self.top_bar.addWidget(self.close_btn)
         self.layout.addLayout(self.top_bar)
 
-        # WebEngine View for Markdown/Math
+                # WebEngine View for Markdown/Math
         self.web_view = QWebEngineView()
+        self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.setStyleSheet("background-color: transparent; border: none;")
         self.layout.addWidget(self.web_view)
 
@@ -155,11 +157,11 @@ class PopupWidget(QWidget):
 
         self.setWindowOpacity(opacity)
 
-        # Escape backticks, newlines, and single quotes for JS injection
-        js_text = text.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+                # Safely serialize string for JS injection using json.dumps
+        js_text = json.dumps(text)
 
         # Update via JS evaluation
-        self.web_view.page().runJavaScript(f"updateContent(`{js_text}`);")
+        self.web_view.page().runJavaScript(f"updateContent({js_text});")
 
         # Determine size and position
         screen = QApplication.primaryScreen().size()
@@ -412,5 +414,5 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 
 def _handle_request_coords():
     from ui.selector import _get_coordinates_impl
-    coords = _get_coordinates_impl()
-    selector_signals.coords_ready.emit(coords)
+    # Pass emit directly as the callback to the async implementation
+    _get_coordinates_impl(callback=selector_signals.coords_ready.emit)

@@ -57,22 +57,19 @@ class CoordinateSelector(QWidget):
 
     def paintEvent(self, event):
         if self.is_drawing and self.start_x is not None and self.end_x is not None:
-            painter = QPainter(self)
+            painter = QPainter()
+            painter.begin(self)
             pen = QPen(QColor('red'))
             pen.setWidth(3)
             painter.setPen(pen)
-            # Draw the interior (transparent since the widget is translucent)
-            # The widget itself is styled, but paintEvent draws over it.
-            # QWidget with WA_TranslucentBackground allows the stylesheet to act as background.
             x1 = min(self.start_x, self.end_x)
             y1 = min(self.start_y, self.end_y)
             width = abs(self.end_x - self.start_x)
             height = abs(self.end_y - self.start_y)
             painter.drawRect(x1, y1, width, height)
+            painter.end()
 
-def _get_coordinates_impl():
-    # If QApplication is not already created, create a temporary one
-    # Note: when integrated in main.py, QApplication will already exist.
+def _get_coordinates_impl(callback=None):
     app = QApplication.instance()
     is_temp_app = False
     if not app:
@@ -80,40 +77,49 @@ def _get_coordinates_impl():
         is_temp_app = True
 
     selector = CoordinateSelector()
-    # To cover multiple screens, we can get the virtual geometry
     screen_rect = app.primaryScreen().virtualGeometry()
     selector.setGeometry(screen_rect)
     selector.showFullScreen()
 
-    # We must start a local event loop if we want this to block like Tkinter's mainloop() did
-    from PyQt6.QtCore import QEventLoop
-    loop = QEventLoop()
-    selector.destroyed.connect(loop.quit)
-    # also handle close event
-    selector.closeEvent = lambda e: loop.quit()
+    # We remove the blocking loop if we have a callback
+    if callback:
+        def on_close():
+            callback(selector.coordinates)
+            if is_temp_app:
+                app.quit()
+        # Override closeEvent to trigger callback
+        original_closeEvent = selector.closeEvent
+        def new_closeEvent(event):
+            on_close()
+            original_closeEvent(event)
+        selector.closeEvent = new_closeEvent
+        selector.show()
+    else:
+        # Blocking mode for first run
+        from PyQt6.QtCore import QEventLoop
+        loop = QEventLoop()
+        selector.destroyed.connect(loop.quit)
+        selector.closeEvent = lambda e: loop.quit()
+        selector.show()
+        loop.exec()
 
-    selector.show()
-    loop.exec()
+        coords = selector.coordinates
+        if is_temp_app:
+            app.quit()
+        return coords
 
-    coords = selector.coordinates
+def get_coordinates(callback=None):
+    if callback is None:
+        # Blocking mode fallback for startup if no Qt event loop is running yet
+        return _get_coordinates_impl()
 
-    if is_temp_app:
-        app.quit()
-
-    return coords
-
-def get_coordinates():
     from core.output import selector_signals
-    import queue
-    q = queue.Queue()
+    # Connect the unique callback for this specific request
+    # To prevent multiple connections, we use a single shot connection approach or disconnect after
 
     def on_ready(coords):
-        q.put(coords)
+        selector_signals.coords_ready.disconnect(on_ready)
+        callback(coords)
 
     selector_signals.coords_ready.connect(on_ready)
     selector_signals.request_coords.emit()
-
-    # Wait for the main thread to finish and emit the signal
-    coords = q.get()
-    selector_signals.coords_ready.disconnect(on_ready)
-    return coords
