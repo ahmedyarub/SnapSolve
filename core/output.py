@@ -214,7 +214,7 @@ class PanelWidget(QWidget):
 
         # Buttons
         self.buttons = {}
-        btn_style = "QPushButton { background-color: #2d2d2d; color: white; border: none; padding: 8px; border-radius: 4px; font-size: 14px;} QPushButton:hover { background-color: #3e3e3e; } QPushButton:disabled { color: #777; }"
+        btn_style = "QPushButton { background-color: rgba(45, 45, 45, 180); color: white; border: none; padding: 8px; border-radius: 4px; font-size: 14px;} QPushButton:hover { background-color: rgba(62, 62, 62, 220); } QPushButton:disabled { color: #777; }"
 
         def create_btn(name, text, action):
             btn = QPushButton(text)
@@ -280,7 +280,7 @@ class TextInputWidget(QWidget):
         self.layout.setContentsMargins(10, 10, 10, 10)
 
         self.text_edit = QTextEdit()
-        self.text_edit.setStyleSheet("background-color: #2d2d2d; color: white; border: none; font-size: 16px; padding: 5px;")
+        self.text_edit.setStyleSheet("background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;")
         # Handle Enter key to submit, Shift+Enter for new line
         self.text_edit.installEventFilter(self)
         self.layout.addWidget(self.text_edit)

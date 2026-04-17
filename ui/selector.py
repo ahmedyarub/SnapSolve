@@ -50,7 +50,9 @@ class CoordinateSelector(QWidget):
             y2 = max(self.start_y, self.end_y)
 
             if x2 - x1 > 10 and y2 - y1 > 10:
-                self.coordinates = [x1, y1, x2, y2]
+                # Apply DPI scaling back to physical pixels for PIL.ImageGrab
+                ratio = self.window().windowHandle().screen().devicePixelRatio() if self.window().windowHandle() else QApplication.primaryScreen().devicePixelRatio()
+                self.coordinates = [int(x1 * ratio), int(y1 * ratio), int(x2 * ratio), int(y2 * ratio)]
 
             self.finish()
 
