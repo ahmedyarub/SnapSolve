@@ -4,8 +4,11 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
 import sys
 
 class CoordinateSelector(QWidget):
-    def __init__(self):
+    def __init__(self, callback=None, loop=None):
         super().__init__()
+        self.callback = callback
+        self.loop = loop
+
         # Translucent background
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -48,12 +51,19 @@ class CoordinateSelector(QWidget):
             if x2 - x1 > 10 and y2 - y1 > 10:
                 self.coordinates = [x1, y1, x2, y2]
 
-            self.close()
+            self.finish()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.coordinates = None
-            self.close()
+            self.finish()
+
+    def finish(self):
+        if self.callback:
+            self.callback(self.coordinates)
+        if self.loop:
+            self.loop.quit()
+        self.close()
 
     def paintEvent(self, event):
         if self.is_drawing and self.start_x is not None and self.end_x is not None:
@@ -68,39 +78,38 @@ class CoordinateSelector(QWidget):
             height = abs(self.end_y - self.start_y)
             painter.drawRect(x1, y1, width, height)
             painter.end()
+_active_selector = None
 
 def _get_coordinates_impl(callback=None):
+    global _active_selector
     app = QApplication.instance()
     is_temp_app = False
     if not app:
         app = QApplication(sys.argv)
         is_temp_app = True
 
-    selector = CoordinateSelector()
-    screen_rect = app.primaryScreen().virtualGeometry()
-    selector.setGeometry(screen_rect)
-    selector.showFullScreen()
-
-    # We remove the blocking loop if we have a callback
     if callback:
-        def on_close():
-            callback(selector.coordinates)
+        # Async mode
+        def on_close(coords):
+            global _active_selector
+            callback(coords)
+            _active_selector = None
             if is_temp_app:
                 app.quit()
-        # Override closeEvent to trigger callback
-        original_closeEvent = selector.closeEvent
-        def new_closeEvent(event):
-            on_close()
-            original_closeEvent(event)
-        selector.closeEvent = new_closeEvent
-        selector.show()
+
+        selector = CoordinateSelector(callback=on_close)
+        _active_selector = selector
+        screen_rect = app.primaryScreen().virtualGeometry()
+        selector.setGeometry(screen_rect)
+        selector.showFullScreen()
     else:
         # Blocking mode for first run
         from PyQt6.QtCore import QEventLoop
         loop = QEventLoop()
-        selector.destroyed.connect(loop.quit)
-        selector.closeEvent = lambda e: loop.quit()
-        selector.show()
+        selector = CoordinateSelector(loop=loop)
+        screen_rect = app.primaryScreen().virtualGeometry()
+        selector.setGeometry(screen_rect)
+        selector.showFullScreen()
         loop.exec()
 
         coords = selector.coordinates
