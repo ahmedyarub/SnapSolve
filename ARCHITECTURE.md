@@ -4,6 +4,78 @@ This project is structured around a flexible, decoupled pipeline that flows from
 
 The primary pipeline follows this sequence: **Source -> Enrich Prompt -> LLM Engine -> Response Sink**.
 
+### High-Level Architecture Flowchart
+
+```mermaid
+flowchart TD
+    User([User Input / Hotkey]) --> Orchestrator[Pipeline Orchestrator]
+
+    subgraph Source Layer
+        Orchestrator --> Screen[Screen Capture]
+        Screen --> OCR{OCR Enabled?}
+        OCR -- Yes --> Extract[Extract Text]
+        OCR -- No --> Raw[Raw Image]
+    end
+
+    subgraph Enrichment Layer
+        Extract --> Enrich[Enrich Prompt]
+        Raw --> Enrich
+        Config[(Config & Prompts)] -.-> Enrich
+        Session[(Chat History)] -.-> Enrich
+    end
+
+    subgraph LLM Layer
+        Enrich --> MainLLM[Main Engine]
+        Enrich --> FallbackLLM[Fallback Engine]
+    end
+
+    subgraph Sink Layer
+        MainLLM --> Sinks[Concurrent Sink Wrapper]
+        FallbackLLM --> Sinks
+        Sinks --> Popup[Tkinter Popup Sink]
+        Sinks --> Audio[TTS Audio Sink]
+    end
+
+    Popup --> Output([User Output])
+    Audio --> Output
+```
+
+### Execution Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Hotkey as Keyboard Listener (Background Thread)
+    participant UI as Tkinter Main UI Thread
+    participant Pipe as Pipeline Orchestrator
+    participant Source as Capture & OCR
+    participant LLM as LLM Engine(s)
+    participant Sink as Sinks (Popup/Audio)
+
+    User->>Hotkey: Presses Capture Shortcut
+    Hotkey->>Pipe: Trigger Capture Event
+    activate Pipe
+    Pipe->>Source: get_image() / get_text()
+    activate Source
+    Source-->>Pipe: Return Data
+    deactivate Source
+
+    Pipe->>LLM: stream_response(data)
+    activate LLM
+
+    loop Every Chunk
+        LLM-->>Sink: process_chunk()
+        Sink->>UI: root.after(render_markdown)
+        UI-->>User: Visual Update
+    end
+
+    LLM-->>Pipe: Streaming Complete
+    deactivate LLM
+    Pipe->>Sink: finalize()
+    Sink->>UI: root.after(finalize_ui)
+    deactivate Pipe
+```
+
 ## 1. Source (`core/sources/`)
 The Source is responsible for capturing the initial raw data.
 *   The primary source is screen capture (`PIL.ImageGrab`).
