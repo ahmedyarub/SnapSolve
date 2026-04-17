@@ -134,18 +134,25 @@ def _get_coordinates_impl(callback=None):
             app.quit()
         return coords
 
-def get_coordinates(callback=None):
-    if callback is None:
-        # Blocking mode fallback for startup if no Qt event loop is running yet
+def get_coordinates():
+    from core.output import selector_signals
+    import queue
+    import threading
+
+    # Check if we are already in the main Qt thread. If so, use blocking loop.
+    app = QApplication.instance()
+    if app and app.thread() == threading.current_thread():
         return _get_coordinates_impl()
 
-    from core.output import selector_signals
-    # Connect the unique callback for this specific request
-    # To prevent multiple connections, we use a single shot connection approach or disconnect after
+    q = queue.Queue()
 
     def on_ready(coords):
-        selector_signals.coords_ready.disconnect(on_ready)
-        callback(coords)
+        q.put(coords)
 
     selector_signals.coords_ready.connect(on_ready)
     selector_signals.request_coords.emit()
+
+    # Wait for the main thread to finish and emit the signal
+    coords = q.get()
+    selector_signals.coords_ready.disconnect(on_ready)
+    return coords
