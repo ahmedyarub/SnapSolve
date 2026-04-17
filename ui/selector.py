@@ -134,25 +134,29 @@ def _get_coordinates_impl(callback=None):
             app.quit()
         return coords
 
-def get_coordinates():
+def get_coordinates(callback=None):
     from core.output import selector_signals
     import queue
     import threading
+    from PyQt6.QtWidgets import QApplication
 
     # Check if we are already in the main Qt thread. If so, use blocking loop.
     app = QApplication.instance()
     if app and app.thread() == threading.current_thread():
-        return _get_coordinates_impl()
+        coords = _get_coordinates_impl()
+        if callback:
+            callback(coords)
+        return coords
 
     q = queue.Queue()
 
-    def on_ready(coords):
-        q.put(coords)
+    # Send the queue itself to the main thread via the signal
+    selector_signals.request_coords.emit(q)
 
-    selector_signals.coords_ready.connect(on_ready)
-    selector_signals.request_coords.emit()
-
-    # Wait for the main thread to finish and emit the signal
+    # Wait for the main thread to put the result in the queue
     coords = q.get()
-    selector_signals.coords_ready.disconnect(on_ready)
+
+    if callback:
+        callback(coords)
+
     return coords

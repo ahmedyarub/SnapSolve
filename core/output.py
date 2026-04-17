@@ -16,7 +16,7 @@ class UISignals(QObject):
     close_popup = pyqtSignal()
 
 class SelectorSignals(QObject):
-    request_coords = pyqtSignal()
+    request_coords = pyqtSignal(object)
     coords_ready = pyqtSignal(object)
 
 ui_signals = UISignals()
@@ -412,7 +412,7 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
     if 'popup' in output_modes:
         show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)
 
-def _handle_request_coords():
+def _handle_request_coords(q):
     from ui.selector import _get_coordinates_impl
-    # Pass emit directly as the callback to the async implementation
-    _get_coordinates_impl(callback=selector_signals.coords_ready.emit)
+    # Pass the queue's put method directly as the callback
+    _get_coordinates_impl(callback=q.put)
