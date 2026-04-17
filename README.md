@@ -160,3 +160,10 @@ python main.py --model gemini-2.5-flash --output-mode both --hotkey-capture "ctr
 ## Background Mode
 
 You can run the application minimized to your system tray by adding the `--background` flag or setting `"background": true` in `config.json`. To exit, right-click the system tray icon and select "Exit".
+
+## Testing
+To run the end-to-end tests locally:
+```bash
+pytest tests/test_e2e.py
+```
+*Note for AI Agents:* Whenever we have a new class of one of the four pipeline components, an additional e2e test should be created.
