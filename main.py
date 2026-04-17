@@ -7,9 +7,12 @@ import keyboard
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, set_active_source_ui, set_app_processing_state
-from core.processor import capture_and_process, PaddleOCREngine, OllamaEngine
+from core.pipeline import process_pipeline
+from core.sinks import PopupSink
+from core.sources.ocr import PaddleOCREngine, NoOCREngine
+from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine
 from core.session_manager import SessionManager
-from core.source import ImageSource, TextSource
+from core.sources import ScreenshotSource, TextSource
 from ui.selector import get_coordinates
 
 try:
@@ -82,9 +85,6 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
     def _process():
         try:
             global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
-            accumulated_result = []
-            accumulated_fallback = []
-
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -92,51 +92,27 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
 
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
-                accumulated_result.append(f"## Main Model ({main_model})\n\n")
-                accumulated_fallback.append(f"## Fallback Model ({fallback_model})\n\n")
 
-            def chunk_callback(chunk_text, is_main=True, replace=False):
-                if 'popup' in config.get('output_mode', ['popup']):
-                    if replace:
-                        accumulated_fallback.clear()
-                        accumulated_result.clear()
-                        if show_headers:
-                            accumulated_result.append(f"## Main Model ({main_model})\n\n")
+            sink = PopupSink(config, show_headers, main_model, fallback_model)
+            from core.sources import TextSource
+            temp_source = TextSource()
 
-                    if is_main:
-                        accumulated_result.append(chunk_text)
-                        current_text = "".join(accumulated_result)
-                    else:
-                        accumulated_fallback.append(chunk_text)
-                        current_text = "".join(accumulated_fallback)
-
-                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True,
-                               fallback_language=config.get('fallback_language', 'python'))
-
-            result = capture_and_process(
-                None, # no coordinates needed
+            result = process_pipeline(
+                source=temp_source,
+                llm=llm_engine_instance,
                 prompt_text=text,
-                model=active_profile.get('model', 'gemini-2.5-flash-lite'),
-                llm_engine=active_profile.get('llm_engine', 'gemini'),
-                ocr_engine=active_profile.get('ocr_engine', 'none'),
-                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
-                google_genai_api_key=config.get('google_genai_api_key', ''),
+                status_callback=status_update,
                 session_manager=session_manager,
                 enable_stitching=active_profile.get('enable_stitching', True),
-                ocr_engine_instance=ocr_engine_instance,
-                llm_engine_instance=llm_engine_instance,
-                status_callback=status_update,
-                chunk_callback=chunk_callback,
-                fallback_model=active_profile.get('fallback_model', 'None'),
-                fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                pre_extracted_text=None,
-                skip_capture=True
+                sink=sink,
+                fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
+                text=text
             )
             print(f"Result: {result}")
 
             final_result = result
             if show_headers:
-                if accumulated_fallback and len(accumulated_result) == 1:
+                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
@@ -171,10 +147,7 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     def _capture():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
-            accumulated_result = []
-            accumulated_fallback = []
-
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, active_source_instance
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -182,59 +155,31 @@ def handle_capture(config, active_profile, active_prompt_text):
 
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
-                accumulated_result.append(f"## Main Model ({main_model})\n\n")
-                accumulated_fallback.append(f"## Fallback Model ({fallback_model})\n\n")
 
-            def chunk_callback(chunk_text, is_main=True, replace=False):
-                if 'popup' in config.get('output_mode', ['popup']):
-                    if replace:
-                        accumulated_fallback.clear()
-                        accumulated_result.clear()
-                        if show_headers:
-                            accumulated_result.append(f"## Main Model ({main_model})\n\n")
+            sink = PopupSink(config, show_headers, main_model, fallback_model)
 
-                    if is_main:
-                        accumulated_result.append(chunk_text)
-                        current_text = "".join(accumulated_result)
-                    else:
-                        accumulated_fallback.append(chunk_text)
-                        current_text = "".join(accumulated_fallback)
-
-                    # Use is_result=True so it expands to a big readable box with scroll,
-                    # and auto_close=None so it doesn't auto-close while streaming.
-                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True,
-                               fallback_language=config.get('fallback_language', 'python'))
-
-            result = capture_and_process(
-                config.get('coordinates'),
+            result = process_pipeline(
+                source=active_source_instance,
+                llm=llm_engine_instance,
                 prompt_text=active_prompt_text,
-                model=active_profile.get('model', 'gemini-2.5-flash-lite'),
-                llm_engine=active_profile.get('llm_engine', 'gemini'),
-                ocr_engine=active_profile.get('ocr_engine', 'none'),
-                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
-                google_genai_api_key=config.get('google_genai_api_key', ''),
+                status_callback=status_update,
                 session_manager=session_manager,
                 enable_stitching=active_profile.get('enable_stitching', True),
-                ocr_engine_instance=ocr_engine_instance,
-                llm_engine_instance=llm_engine_instance,
-                status_callback=status_update,
-                chunk_callback=chunk_callback,
-                fallback_model=active_profile.get('fallback_model', 'None'),
-                fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None
+                sink=sink,
+                fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
+                coords=config.get('coordinates')
             )
+            if hasattr(active_source_instance, 'cleanup_all'):
+                active_source_instance.cleanup_all()
             print(f"Result: {result}")
 
             final_result = result
             if show_headers:
-                # If fallback text was rendered and we didn't clear it (main model failed), it means fallback succeeded.
-                # Since accumulated_result is pre-filled with the header, we check if it has exactly 1 element.
-                if accumulated_fallback and len(accumulated_result) == 1:
+                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            # The final call will trigger output_result to handle auto_close, TTS, etc.
-            # output_result does show_popup again with final text and configured auto-close.
             output_result(final_result, config.get('output_mode'), config.get('voice_id'),
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
@@ -292,36 +237,27 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             import tempfile
             from PIL import ImageGrab
             import os
+            from core.sources import ScreenshotSource
 
             status_update("Capturing screen...")
-            bbox = tuple(coords)
-            img = ImageGrab.grab(bbox=bbox)
-
-            temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            temp_file_path = temp_file.name
-            temp_file.close()
-
-            img.save(temp_file_path)
 
             ocr = ocr_engine_instance
             if not ocr:
-                from core.processor import PaddleOCREngine, NoOCREngine
+                from core.sources.ocr import PaddleOCREngine, NoOCREngine
                 if ocr_type == "paddleocr":
                     ocr = PaddleOCREngine()
                 else:
                     ocr = NoOCREngine()
 
+            temp_source = ScreenshotSource()
+            temp_source.ocr_engine = ocr
             extracted_text = None
             try:
-                extracted_text = ocr.extract_text(temp_file_path, status_update)
+                extracted_text = temp_source.get_text(coords=coords, status_callback=status_update)
             except Exception as e:
                 status_update(f"Error during OCR: {str(e)}")
             finally:
-                if os.path.exists(temp_file_path):
-                    try:
-                        os.remove(temp_file_path)
-                    except OSError:
-                        pass
+                temp_source.cleanup_all()
 
             if extracted_text:
                 multi_capture_texts.append(extracted_text)
@@ -372,9 +308,6 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 if 'popup' in config.get('output_mode', ['popup']):
                     show_popup(msg, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
-            accumulated_result = []
-            accumulated_fallback = []
-
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -382,51 +315,27 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
-                accumulated_result.append(f"## Main Model ({main_model})\n\n")
-                accumulated_fallback.append(f"## Fallback Model ({fallback_model})\n\n")
 
-            def chunk_callback(chunk_text, is_main=True, replace=False):
-                if 'popup' in config.get('output_mode', ['popup']):
-                    if replace:
-                        accumulated_fallback.clear()
-                        accumulated_result.clear()
-                        if show_headers:
-                            accumulated_result.append(f"## Main Model ({main_model})\n\n")
+            sink = PopupSink(config, show_headers, main_model, fallback_model)
+            from core.sources import TextSource
+            temp_source = TextSource()
 
-                    if is_main:
-                        accumulated_result.append(chunk_text)
-                        current_text = "".join(accumulated_result)
-                    else:
-                        accumulated_fallback.append(chunk_text)
-                        current_text = "".join(accumulated_fallback)
-
-                    show_popup(current_text, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=True,
-                               fallback_language=config.get('fallback_language', 'python'))
-
-            # Send the combined text to process
-            result = capture_and_process(
-                None, # No coordinates needed since we have pre_extracted_text
+            result = process_pipeline(
+                source=temp_source,
+                llm=llm_engine_instance,
                 prompt_text=active_prompt_text,
-                model=active_profile.get('model', 'gemini-2.5-flash-lite'),
-                llm_engine=active_profile.get('llm_engine', 'gemini'),
-                ocr_engine=active_profile.get('ocr_engine', 'none'),
-                ollama_url=config.get('ollama_url', 'http://localhost:11434'),
-                google_genai_api_key=config.get('google_genai_api_key', ''),
+                status_callback=status_update,
                 session_manager=session_manager,
                 enable_stitching=active_profile.get('enable_stitching', True),
-                ocr_engine_instance=ocr_engine_instance,
-                llm_engine_instance=llm_engine_instance,
-                status_callback=status_update,
-                chunk_callback=chunk_callback,
-                fallback_model=active_profile.get('fallback_model', 'None'),
-                fallback_llm_engine_instance=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                pre_extracted_text=combined_text
+                sink=sink,
+                fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
+                text=combined_text
             )
             print(f"Result: {result}")
 
             final_result = result
             if show_headers:
-                if accumulated_fallback and len(accumulated_result) == 1:
+                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
@@ -500,11 +409,13 @@ def handle_cancel_multi_capture(config):
 
 
 def handle_cycle_source(config):
-    global active_source_instance
-    if isinstance(active_source_instance, ImageSource):
+    global active_source_instance, ocr_engine_instance
+    from core.sources import ScreenshotSource, TextSource
+    if isinstance(active_source_instance, ScreenshotSource):
         active_source_instance = TextSource()
     else:
-        active_source_instance = ImageSource()
+        active_source_instance = ScreenshotSource()
+        active_source_instance.ocr_engine = ocr_engine_instance
 
     set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
     print(f"Source cycled to: {active_source_instance.name}")
@@ -617,7 +528,7 @@ def main():
     # Determine the initial source
     default_source = config.get('default_source', 'text')
     if default_source == 'image':
-        active_source_instance = ImageSource()
+        active_source_instance = ScreenshotSource()
     else:
         active_source_instance = TextSource()
 
@@ -651,7 +562,7 @@ def main():
             print("No coordinates selected. Exiting.")
             sys.exit(1)
 
-    # Initialize Engines (Only pre-init Ollama and PaddleOCR)
+    # Initialize Engines
     print("Checking engine pre-initialization...")
     global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, session_manager
     session_manager = SessionManager(config)
@@ -659,6 +570,39 @@ def main():
     if ocr_type == "paddleocr":
         print("Starting PaddleOCR (this may take a moment to warmup)...")
         ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+    else:
+        ocr_engine_instance = NoOCREngine()
+
+    if isinstance(active_source_instance, ScreenshotSource):
+        active_source_instance.ocr_engine = ocr_engine_instance
+
+    llm_type = active_profile.get('llm_engine', 'gemini')
+    model = active_profile.get('model', 'gemini-2.5-flash-lite')
+    fallback_model = active_profile.get('fallback_model', 'None')
+
+    if llm_type == "ollama":
+        print("Initializing Ollama Engine...")
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
+        if fallback_model and fallback_model != "None":
+            print("Initializing Fallback Ollama Engine (with warmup)...")
+            fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
+    elif llm_type == "google-genai":
+        llm_engine_instance = GoogleGenAIEngine(model, config.get('google_genai_api_key', ''), session_manager=session_manager)
+        if fallback_model and fallback_model != "None":
+            fallback_llm_engine_instance = GoogleGenAIEngine(fallback_model, config.get('google_genai_api_key', ''), session_manager=session_manager)
+    else:
+        llm_engine_instance = GeminiCLIEngine(model, session_manager=session_manager)
+        if fallback_model and fallback_model != "None":
+            fallback_llm_engine_instance = GeminiCLIEngine(fallback_model, session_manager=session_manager)
+
+    # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
+    warmup_status_cb = lambda msg: print(f"Init status: {msg}")
+    warmup_success = False
+    if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
+        warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
+
+    if not warmup_success and llm_engine_instance:
+        llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
