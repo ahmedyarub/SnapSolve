@@ -1,576 +1,326 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
 import json
 import os
 import sys
-import subprocess
-import darkdetect
-import sv_ttk
-import keyboard
+from PyQt6.QtWidgets import (
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
+    QWidget, QLabel, QLineEdit, QComboBox, QPushButton, QMessageBox,
+    QCheckBox, QGroupBox, QFormLayout, QScrollArea, QDialogButtonBox, QSpinBox
+)
+from PyQt6.QtCore import Qt
 
-# Add parent to path so we can import config.settings
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config.settings import get_config, save_config, load_profiles, save_profiles, load_prompts
+class ConfigUI(QDialog):
+    def __init__(self, config_path, models_path, profiles_path, prompts_path):
+        super().__init__()
+        self.config_path = config_path
+        self.models_path = models_path
+        self.profiles_path = profiles_path
+        self.prompts_path = prompts_path
 
+        self.setWindowTitle("Application Configuration")
+        self.resize(600, 500)
 
-class ConfigUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("ScreenQA Configuration")
-        self.root.geometry("600x700")
+        # Load configurations
+        self.config = self.load_json(self.config_path, {})
+        self.models_data = self.load_json(self.models_path, {})
+        self.profiles = self.load_json(self.profiles_path, [])
+        self.prompts = self.load_json(self.prompts_path, [])
 
-        self.config = get_config()
-        self.models_data = self.load_models()
-        self.profiles = load_profiles()
-        self.prompts = load_prompts()
+        self.init_ui()
 
-        self.active_profile_id = self.config.get('active_profile_id', 'prof1')
-
-        self.create_widgets()
-        self.load_current_settings()
-
-    def load_models(self):
+    def load_json(self, path, default):
         try:
-            models_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config",
-                                       "llm_models.json")
-            with open(models_path, "r") as f:
-                return json.load(f)
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    return json.load(f)
         except Exception as e:
-            messagebox.showwarning("Warning", f"Could not load llm_models.json: {e}")
-            return {
-                "gemini": [{"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "supports_ocr": False}],
-                "ollama": [{"id": "llama3", "name": "Llama 3", "supports_ocr": False}],
-                "google-genai": [{"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_ocr": False}]
-            }
-
-    def create_widgets(self):
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # --- Notebook for Tabs ---
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-
-        app_tab = ttk.Frame(notebook, padding="10")
-        prof_tab = ttk.Frame(notebook, padding="10")
-        hk_tab = ttk.Frame(notebook, padding="10")
-
-        notebook.add(app_tab, text="Application Settings")
-        notebook.add(prof_tab, text="Profile Settings")
-        notebook.add(hk_tab, text="Keyboard Shortcuts")
-
-        # =========================================================
-        # TAB 1: Application Settings
-        # =========================================================
-        app_tab.columnconfigure(1, weight=1)
-        app_row = 0
-
-        # Output Mode
-        ttk.Label(app_tab, text="Output Mode:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.output_var = tk.StringVar()
-        output_combo = ttk.Combobox(app_tab, textvariable=self.output_var, state="readonly")
-        output_combo['values'] = ('popup', 'audio', 'both')
-        output_combo.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Ollama URL
-        ttk.Label(app_tab, text="Ollama URL:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.ollama_url_var = tk.StringVar()
-        ttk.Entry(app_tab, textvariable=self.ollama_url_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Google GenAI API Key
-        ttk.Label(app_tab, text="Google GenAI API Key:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.api_key_var = tk.StringVar()
-        ttk.Entry(app_tab, textvariable=self.api_key_var, show="*").grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Voice ID
-        ttk.Label(app_tab, text="Voice ID (TTS):").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.voice_id_var = tk.StringVar()
-        ttk.Entry(app_tab, textvariable=self.voice_id_var).grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Default Source
-        ttk.Label(app_tab, text="Default Source:").grid(row=app_row, column=0, sticky=tk.W, pady=5)
-        self.default_source_var = tk.StringVar()
-        ds_combo = ttk.Combobox(app_tab, textvariable=self.default_source_var, state="readonly")
-        ds_combo['values'] = ('text', 'image')
-        ds_combo.grid(row=app_row, column=1, sticky=tk.EW, pady=5)
-        app_row += 1
-
-        # Run in background
-        self.bg_var = tk.BooleanVar()
-        ttk.Checkbutton(app_tab, text="Run in background (Tray)", variable=self.bg_var).grid(row=app_row, column=0,
-                                                                                               columnspan=2,
-                                                                                               sticky=tk.W, pady=5)
-        app_row += 1
-
-        # Show Control Panel on Startup
-        self.show_control_panel_var = tk.BooleanVar()
-        ttk.Checkbutton(app_tab, text="Show Control Panel on Startup", variable=self.show_control_panel_var).grid(row=app_row, column=0,
-                                                                                               columnspan=2,
-                                                                                               sticky=tk.W, pady=5)
-        app_row += 1
-
-        # Save Images
-        self.save_images_var = tk.BooleanVar()
-        ttk.Checkbutton(app_tab, text="Save chat images", variable=self.save_images_var).grid(row=app_row, column=0, columnspan=2, sticky=tk.W, pady=5)
-
-        # =========================================================
-        # TAB 2: Profile Settings
-        # =========================================================
-        prof_tab.columnconfigure(0, weight=1)
-        prof_tab_row = 0
-
-        # --- Profile Selection ---
-        profile_sel_frame = ttk.LabelFrame(prof_tab, text="Select Profile", padding="5")
-        profile_sel_frame.grid(row=prof_tab_row, column=0, sticky=tk.EW, pady=(0, 10))
-        profile_sel_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(profile_sel_frame, text="Active Profile:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
-
-        self.profile_var = tk.StringVar()
-        self.profile_combo = ttk.Combobox(profile_sel_frame, textvariable=self.profile_var, state="readonly")
-        self.profile_combo.grid(row=0, column=1, sticky=tk.EW, pady=5)
-        self.profile_combo.bind("<<ComboboxSelected>>", self.on_profile_selected)
-
-        ttk.Button(profile_sel_frame, text="Add", command=self.add_profile, width=5).grid(row=0, column=2, padx=(5, 0))
-        ttk.Button(profile_sel_frame, text="Delete", command=self.delete_profile, width=6).grid(row=0, column=3,
-                                                                                                padx=(5, 5))
-
-        prof_tab_row += 1
-
-        # --- Profile Properties ---
-        prof_cfg_frame = ttk.LabelFrame(prof_tab, text="Profile Properties", padding="5")
-        prof_cfg_frame.grid(row=prof_tab_row, column=0, sticky=tk.EW, pady=(0, 10))
-        prof_cfg_frame.columnconfigure(1, weight=1)
-        prof_row = 0
-
-        # LLM Engine
-        ttk.Label(prof_cfg_frame, text="LLM Engine:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
-        self.llm_var = tk.StringVar()
-        self.llm_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.llm_var, state="readonly")
-        self.llm_combo['values'] = list(self.models_data.keys())
-        self.llm_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
-        self.llm_combo.bind("<<ComboboxSelected>>", self.update_models)
-        prof_row += 1
-
-        # Model
-        ttk.Label(prof_cfg_frame, text="Model:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
-        self.model_var = tk.StringVar()
-        self.model_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.model_var, state="readonly")
-        self.model_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
-        prof_row += 1
-
-        # Fallback Model
-        ttk.Label(prof_cfg_frame, text="Fallback Model:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
-        self.fallback_model_var = tk.StringVar()
-        self.fallback_model_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.fallback_model_var, state="readonly")
-        self.fallback_model_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
-        prof_row += 1
-
-        # OCR Engine
-        ttk.Label(prof_cfg_frame, text="OCR Engine:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
-        self.ocr_var = tk.StringVar()
-        ocr_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.ocr_var, state="readonly")
-        ocr_combo['values'] = ('none', 'paddleocr')
-        ocr_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
-        prof_row += 1
-
-        # Prompt
-        ttk.Label(prof_cfg_frame, text="Prompt:").grid(row=prof_row, column=0, sticky=tk.W, pady=5)
-        self.prompt_var = tk.StringVar()
-        self.prompt_combo = ttk.Combobox(prof_cfg_frame, textvariable=self.prompt_var, state="readonly")
-        self.prompt_combo['values'] = [f"{p['description']} ({p['id']})" for p in self.prompts]
-        self.prompt_combo.grid(row=prof_row, column=1, sticky=tk.EW, pady=5)
-        prof_row += 1
-
-        self.enable_stitching_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(prof_cfg_frame, text="Enable Context Stitching (Chat History)", variable=self.enable_stitching_var).grid(row=prof_row, column=0, columnspan=2, sticky=tk.W, pady=5)
-        prof_row += 1
-
-        # =========================================================
-        # TAB 3: Keyboard Shortcuts
-        # =========================================================
-        hk_tab.columnconfigure(1, weight=1)
-        hk_row = 0
-
-        # Helper for creating hotkey rows
-        def create_hotkey_row(parent, label_text, var, row):
-            ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky=tk.W, pady=5)
-            hk_frame = ttk.Frame(parent)
-            hk_frame.grid(row=row, column=1, sticky=tk.EW, pady=5)
-            hk_frame.columnconfigure(0, weight=1)
-            ttk.Entry(hk_frame, textvariable=var, state="readonly").grid(row=0, column=0, sticky=tk.EW)
-            ttk.Button(hk_frame, text="Record", command=lambda v=var: self.record_hotkey(v)).grid(row=0, column=1, padx=(5, 0))
-
-        self.capture_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "📸 Capture:", self.capture_hk_var, hk_row)
-        hk_row += 1
-
-        self.reselect_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "🎯 Reselect:", self.reselect_hk_var, hk_row)
-        hk_row += 1
-
-        self.multi_capture_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "➕ Multi-select:", self.multi_capture_hk_var, hk_row)
-        hk_row += 1
-
-        self.end_multi_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "✅ End Multi:", self.end_multi_hk_var, hk_row)
-        hk_row += 1
-
-        self.cancel_multi_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "❌ Cancel Multi:", self.cancel_multi_hk_var, hk_row)
-        hk_row += 1
-
-        self.toggle_panel_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "🎛️ Toggle Panel:", self.toggle_panel_hk_var, hk_row)
-        hk_row += 1
-
-        self.new_chat_session_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "🆕 New Session:", self.new_chat_session_hk_var, hk_row)
-        hk_row += 1
-
-        self.toggle_stitching_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "🧵 Toggle Stitching:", self.toggle_stitching_hk_var, hk_row)
-        hk_row += 1
-
-        self.cycle_source_hk_var = tk.StringVar()
-        create_hotkey_row(hk_tab, "🔄 Cycle Source:", self.cycle_source_hk_var, hk_row)
-        hk_row += 1
-
-        # =========================================================
-        # Global Buttons
-        # =========================================================
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Button(btn_frame, text="Save", command=self.save_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Save & Run App", command=self.save_and_run).pack(side=tk.LEFT, padx=5)
-
-
-    def load_current_settings(self):
-        # Update Profiles Combo
-        self.update_profile_combo()
-
-        # Select active profile
-        self.select_profile_by_id(self.active_profile_id)
-
-        om = self.config.get('output_mode', ['popup'])
-        if 'popup' in om and 'audio' in om:
-            self.output_var.set('both')
-        elif 'audio' in om:
-            self.output_var.set('audio')
-        else:
-            self.output_var.set('popup')
-
-        self.ollama_url_var.set(self.config.get('ollama_url', 'http://localhost:11434'))
-        self.api_key_var.set(self.config.get('google_genai_api_key', ''))
-
-        vid = self.config.get('voice_id')
-        self.voice_id_var.set(vid if vid else '')
-
-        self.default_source_var.set(self.config.get('default_source', 'text'))
-
-        hotkeys = self.config.get('hotkeys', [])
-        for hk in hotkeys:
-            if hk.get('action') == 'capture':
-                self.capture_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'reselect':
-                self.reselect_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'multi_capture':
-                self.multi_capture_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'end_multi_capture':
-                self.end_multi_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'cancel_multi_capture':
-                self.cancel_multi_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'toggle_panel':
-                self.toggle_panel_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'new_chat_session':
-                self.new_chat_session_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'toggle_stitching':
-                self.toggle_stitching_hk_var.set(hk.get('key', ''))
-            elif hk.get('action') == 'cycle_source':
-                self.cycle_source_hk_var.set(hk.get('key', ''))
-
-        self.bg_var.set(self.config.get('background', False))
-        self.show_control_panel_var.set(self.config.get('show_control_panel', False))
-        self.save_images_var.set(self.config.get('save_images', False))
-
-    def update_profile_combo(self):
-        profile_names = [f"{p['name']} ({p['id']})" for p in self.profiles]
-        self.profile_combo['values'] = profile_names
-
-    def select_profile_by_id(self, prof_id):
-        idx = next((i for i, p in enumerate(self.profiles) if p['id'] == prof_id), -1)
-        if idx >= 0:
-            self.profile_combo.current(idx)
-            self.load_profile_settings(self.profiles[idx])
-        elif self.profiles:
-            self.profile_combo.current(0)
-            self.active_profile_id = self.profiles[0]['id']
-            self.load_profile_settings(self.profiles[0])
-
-    def load_profile_settings(self, profile):
-        self.llm_var.set(profile.get('llm_engine', 'gemini'))
-        self.update_models()
-
-        current_model = profile.get('model', '')
-        model_ids = [m.get('id') for m in self.models_data.get(self.llm_var.get(), [])]
-        if current_model in model_ids:
-            self.model_combo.current(model_ids.index(current_model))
-        elif model_ids:
-            self.model_combo.current(0)
-
-        current_fallback_model = profile.get('fallback_model', 'None')
-        fallback_model_ids = ['None'] + [m.get('id') for m in self.models_data.get(self.llm_var.get(), [])]
-        if current_fallback_model in fallback_model_ids:
-            self.fallback_model_combo.current(fallback_model_ids.index(current_fallback_model))
-        else:
-            self.fallback_model_combo.current(0)
-
-        self.ocr_var.set(profile.get('ocr_engine', 'none'))
-
-        prompt_id = profile.get('prompt_id', 'default')
-        prompt_idx = next((i for i, p in enumerate(self.prompts) if p['id'] == prompt_id), -1)
-        if prompt_idx >= 0:
-            self.prompt_combo.current(prompt_idx)
-        elif self.prompts:
-            self.prompt_combo.current(0)
-
-    def add_profile(self):
-        # Create a basic new profile
-        new_id = f"prof{len(self.profiles) + 1}"
-        new_prof = {
-            "id": new_id,
-            "name": f"New Profile {len(self.profiles) + 1}",
-            "llm_engine": "gemini",
-            "model": "gemini-2.5-flash-lite",
-            "ocr_engine": "none",
-            "prompt_id": "default"
-        }
-
-        # Save current profile before switching
-        self.save_current_profile_settings()
-
-        self.profiles.append(new_prof)
-        self.active_profile_id = new_id
-
-        self.update_profile_combo()
-        self.select_profile_by_id(new_id)
-
-    def delete_profile(self):
-        if len(self.profiles) <= 1:
-            messagebox.showwarning("Warning", "Cannot delete the last profile.")
-            return
-
-        idx = self.profile_combo.current()
-        if idx >= 0:
-            del self.profiles[idx]
-            self.active_profile_id = self.profiles[0]['id']
-            self.update_profile_combo()
-            self.select_profile_by_id(self.active_profile_id)
-
-    def on_profile_selected(self, event=None):
-        idx = self.profile_combo.current()
-        if idx >= 0:
-            # Before switching, update the OLD active profile with current UI selections
-            self.save_current_profile_settings()
-
-            # Switch to new profile
-            new_profile = self.profiles[idx]
-            self.active_profile_id = new_profile['id']
-            self.load_profile_settings(new_profile)
-
-    def save_current_profile_settings(self):
-        # Update the currently active profile in memory
-        idx = next((i for i, p in enumerate(self.profiles) if p['id'] == self.active_profile_id), -1)
-        if idx >= 0:
-            self.profiles[idx]['llm_engine'] = self.llm_var.get()
-            self.profiles[idx]['model'] = self.get_selected_model_id()
-            self.profiles[idx]['fallback_model'] = self.get_selected_fallback_model_id()
-            self.profiles[idx]['ocr_engine'] = self.ocr_var.get()
-
-            prompt_idx = self.prompt_combo.current()
-            if prompt_idx >= 0:
-                self.profiles[idx]['prompt_id'] = self.prompts[prompt_idx]['id']
-
-    def record_hotkey(self, var):
-        # Create a popup dialog to ask user to press keys
-        record_win = tk.Toplevel(self.root)
-        record_win.title("Record Hotkey")
-        record_win.geometry("300x150")
-        record_win.transient(self.root)
-        record_win.grab_set()
-
-        lbl = ttk.Label(record_win,
-                        text="Press your desired key combination...\n(e.g., Ctrl+Shift+A)\n\nPress Escape to cancel.",
-                        justify="center")
-        lbl.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
-
-        recorded_key = []
-
-        def on_key_event(e):
-            if e.event_type == keyboard.KEY_DOWN:
-                if e.name == "esc":
-                    keyboard.unhook_all()
-                    record_win.destroy()
-                    return
-                # Use keyboard.read_hotkey() logic if needed, but it's simpler to use keyboard.read_hotkey() directly
-                # However, read_hotkey blocks. We'll use a slightly different approach.
-                pass
-
-        def do_record():
-            try:
-                # read_hotkey blocks until a hotkey is pressed and released
-                hotkey = keyboard.read_hotkey(suppress=False)
-                if hotkey and hotkey != "esc":
-                    # Use after() to safely update Tkinter variables from a background thread
-                    self.root.after(0, lambda: var.set(hotkey))
-            except Exception as e:
-                print(f"Error recording hotkey: {e}")
-            finally:
-                # Use after() to safely destroy Tkinter windows from a background thread
-                self.root.after(0, lambda: record_win.destroy() if record_win.winfo_exists() else None)
-
-        # Run recording in a separate thread so the UI doesn't freeze
-        import threading
-        threading.Thread(target=do_record, daemon=True).start()
-
-    def update_models(self, event=None):
-        llm = self.llm_var.get()
-        models = self.models_data.get(llm, [])
-        model_names = [f"{m['name']} ({m['id']})" for m in models]
-        self.model_combo['values'] = model_names
-        if model_names:
-            self.model_combo.current(0)
-
-        fallback_model_names = ["None"] + model_names
-        self.fallback_model_combo['values'] = fallback_model_names
-        if fallback_model_names:
-            self.fallback_model_combo.current(0)
-
-    def get_selected_model_id(self):
-        idx = self.model_combo.current()
-        if idx >= 0:
-            llm = self.llm_var.get()
-            return self.models_data[llm][idx]['id']
-        return ""
-
-    def get_selected_fallback_model_id(self):
-        idx = self.fallback_model_combo.current()
-        if idx > 0:
-            llm = self.llm_var.get()
-            return self.models_data[llm][idx - 1]['id']
-        return "None"
-
-    def validate_settings(self):
-        idx = self.model_combo.current()
-        if idx < 0:
-            messagebox.showerror("Error", "Please select a model.")
-            return False
-
-        llm = self.llm_var.get()
-        model_info = self.models_data[llm][idx]
-
-        if not model_info.get('supports_ocr', False) and self.ocr_var.get() == 'none':
-            messagebox.showerror("Configuration Error",
-                                 f"Model '{model_info['name']}' does not support built-in OCR. "
-                                 "You must select an OCR Engine (e.g., paddleocr) to use this model.")
-            return False
-
-        fallback_idx = self.fallback_model_combo.current()
-        if fallback_idx > 0:
-            fallback_model_info = self.models_data[llm][fallback_idx - 1]
-            if not fallback_model_info.get('supports_ocr', False) and self.ocr_var.get() == 'none':
-                messagebox.showerror("Configuration Error",
-                                     f"Fallback Model '{fallback_model_info['name']}' does not support built-in OCR. "
-                                     "You must select an OCR Engine (e.g., paddleocr) to use this model.")
-                return False
-
-        return True
-
-    def _save(self):
-        if not self.validate_settings():
-            return False
-
-        # Ensure current profile changes are saved to memory before writing
-        self.save_current_profile_settings()
-
-        om = self.output_var.get()
-        if om == 'both':
-            self.config['output_mode'] = ['popup', 'audio']
-        elif om == 'audio':
-            self.config['output_mode'] = ['audio']
-        else:
-            self.config['output_mode'] = ['popup']
-
-        self.config['active_profile_id'] = self.active_profile_id
-        self.config['ollama_url'] = self.ollama_url_var.get()
-        self.config['google_genai_api_key'] = self.api_key_var.get()
-        self.config['default_source'] = self.default_source_var.get()
-
-        vid = self.voice_id_var.get()
-        self.config['voice_id'] = vid if vid else None
-
-        updated_hotkeys = []
-        updated_hotkeys.append({'action': 'capture', 'key': self.capture_hk_var.get()})
-        updated_hotkeys.append({'action': 'reselect', 'key': self.reselect_hk_var.get()})
-        updated_hotkeys.append({'action': 'multi_capture', 'key': self.multi_capture_hk_var.get()})
-        updated_hotkeys.append({'action': 'end_multi_capture', 'key': self.end_multi_hk_var.get()})
-        updated_hotkeys.append({'action': 'cancel_multi_capture', 'key': self.cancel_multi_hk_var.get()})
-        updated_hotkeys.append({'action': 'toggle_panel', 'key': self.toggle_panel_hk_var.get()})
-        updated_hotkeys.append({'action': 'new_chat_session', 'key': self.new_chat_session_hk_var.get()})
-        updated_hotkeys.append({'action': 'toggle_stitching', 'key': self.toggle_stitching_hk_var.get()})
-        updated_hotkeys.append({'action': 'cycle_source', 'key': self.cycle_source_hk_var.get()})
-
-        # Remove empty keys so we don't bind empty strings
-        updated_hotkeys = [hk for hk in updated_hotkeys if hk['key']]
-        self.config['hotkeys'] = updated_hotkeys
-
-        self.config['background'] = self.bg_var.get()
-        self.config['show_control_panel'] = self.show_control_panel_var.get()
-        self.config['save_images'] = self.save_images_var.get()
-
-        # Remove old legacy keys from config if they exist
-        for k in ['llm_engine', 'ocr_engine', 'model']:
-            if k in self.config:
-                del self.config[k]
-
-        save_config(self.config)
-        save_profiles(self.profiles)
-        return True
-
-    def save_config(self):
-        if self._save():
-            messagebox.showinfo("Success", "Configuration saved successfully!")
+            print(f"Error loading {path}: {e}")
+        return default
+
+    def save_json(self, path, data):
+        try:
+            with open(path, 'w') as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save {path}:\n{e}")
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+
+        # Create tabs
+        self.app_tab = QWidget()
+        self.profile_tab = QWidget()
+        self.shortcuts_tab = QWidget()
+
+        self.tabs.addTab(self.app_tab, "Application Settings")
+        self.tabs.addTab(self.profile_tab, "Profile Settings")
+        self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
+
+        self.setup_app_tab()
+        self.setup_profile_tab()
+        self.setup_shortcuts_tab()
+
+        # Buttons
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.btn_save_run = self.button_box.addButton("Save and Run", QDialogButtonBox.ButtonRole.ActionRole)
+        self.button_box.accepted.connect(self.save_all)
+        self.button_box.rejected.connect(self.reject)
+        self.btn_save_run.clicked.connect(self.save_and_run)
+        layout.addWidget(self.button_box)
+
+        self.should_run = False
 
     def save_and_run(self):
-        if self._save():
-            self.root.destroy()
-            main_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py")
+        self.should_run = True
+        self.save_all()
 
-            # Use specific flags on Windows to fully detach the child process so it survives PyCharm's run mode termination
-            if os.name == 'nt':
-                DETACHED_PROCESS = 0x00000008
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                creationflags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-                subprocess.Popen([sys.executable, main_path], creationflags=creationflags)
-            else:
-                # For non-Windows OS
-                subprocess.Popen([sys.executable, main_path], start_new_session=True)
+    def setup_app_tab(self):
+        layout = QFormLayout(self.app_tab)
 
+        # Output Mode
+        self.output_mode_popup = QCheckBox("Popup Notification")
+        self.output_mode_audio = QCheckBox("Text-to-Speech (Audio)")
+
+        current_modes = self.config.get('output_mode', ['popup'])
+        self.output_mode_popup.setChecked('popup' in current_modes)
+        self.output_mode_audio.setChecked('audio' in current_modes)
+
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(self.output_mode_popup)
+        mode_layout.addWidget(self.output_mode_audio)
+        layout.addRow("Output Mode:", mode_layout)
+
+        # Fallback Language
+        self.fallback_language = QLineEdit(self.config.get('fallback_language', 'python'))
+        layout.addRow("Fallback Lexer Language:", self.fallback_language)
+
+        # Voice ID
+        self.voice_id = QLineEdit(self.config.get('voice_id', ''))
+        layout.addRow("Voice ID (Optional):", self.voice_id)
+
+        # Background Mode
+        self.background_mode = QCheckBox("Run in system tray")
+        self.background_mode.setChecked(self.config.get('background', False))
+        layout.addRow("Background Mode:", self.background_mode)
+
+        # Show Control Panel
+        self.show_control_panel = QCheckBox("Show control panel on startup")
+        self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
+        layout.addRow("Control Panel:", self.show_control_panel)
+
+        # API Keys & URLs
+        self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
+        layout.addRow("Ollama URL:", self.ollama_url)
+
+        self.google_genai_api_key = QLineEdit(self.config.get('google_genai_api_key', ''))
+        self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
+
+    def setup_profile_tab(self):
+        layout = QVBoxLayout(self.profile_tab)
+
+        # Profile selection
+        h_layout = QHBoxLayout()
+        h_layout.addWidget(QLabel("Active Profile:"))
+        self.profile_combo = QComboBox()
+        self.populate_profiles()
+        self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
+        h_layout.addWidget(self.profile_combo)
+        layout.addLayout(h_layout)
+
+        # Profile Form
+        self.profile_form = QWidget()
+        form_layout = QFormLayout(self.profile_form)
+
+        self.prof_name = QLineEdit()
+        form_layout.addRow("Profile Name:", self.prof_name)
+
+        self.prof_llm_engine = QComboBox()
+        self.prof_llm_engine.addItems(["gemini", "ollama", "google-genai"])
+        self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
+        form_layout.addRow("LLM Engine:", self.prof_llm_engine)
+
+        self.prof_model = QComboBox()
+        form_layout.addRow("Main Model:", self.prof_model)
+
+        self.prof_fallback_model = QComboBox()
+        form_layout.addRow("Fallback Model:", self.prof_fallback_model)
+
+        self.prof_ocr_engine = QComboBox()
+        self.prof_ocr_engine.addItems(["none", "paddleocr"])
+        form_layout.addRow("OCR Engine:", self.prof_ocr_engine)
+
+        self.prof_prompt = QComboBox()
+        self.populate_prompts()
+        form_layout.addRow("Prompt:", self.prof_prompt)
+
+        layout.addWidget(self.profile_form)
+        layout.addStretch()
+
+        if self.profiles:
+            active_id = self.config.get('active_profile_id', self.profiles[0]['id'])
+            index = next((i for i, p in enumerate(self.profiles) if p['id'] == active_id), 0)
+            self.profile_combo.setCurrentIndex(index)
+            self.on_profile_changed(index)
+
+    def populate_profiles(self):
+        self.profile_combo.clear()
+        for p in self.profiles:
+            self.profile_combo.addItem(p['name'], p['id'])
+
+    def populate_prompts(self):
+        self.prof_prompt.clear()
+        for p in self.prompts:
+            self.prof_prompt.addItem(p.get('description', p.get('id', 'Unknown')), p['id'])
+
+    def update_model_dropdowns(self, engine):
+        self.prof_model.clear()
+        self.prof_fallback_model.clear()
+        self.prof_fallback_model.addItem("None", "None")
+
+        models = self.models_data.get(engine, [])
+        for m in models:
+            self.prof_model.addItem(m['name'], m['id'])
+            self.prof_fallback_model.addItem(m['name'], m['id'])
+
+        # Try to restore previous selection if valid
+        if hasattr(self, '_current_profile_data'):
+            model_id = self._current_profile_data.get('model')
+            fallback_id = self._current_profile_data.get('fallback_model')
+
+            idx = self.prof_model.findData(model_id)
+            if idx >= 0: self.prof_model.setCurrentIndex(idx)
+
+            idx2 = self.prof_fallback_model.findData(fallback_id)
+            if idx2 >= 0: self.prof_fallback_model.setCurrentIndex(idx2)
+
+    def on_profile_changed(self, index):
+        if index < 0 or index >= len(self.profiles): return
+        profile = self.profiles[index]
+        self._current_profile_data = profile
+
+        self.prof_name.setText(profile.get('name', ''))
+
+        engine = profile.get('llm_engine', 'gemini')
+        self.prof_llm_engine.setCurrentText(engine)
+        self.update_model_dropdowns(engine)
+
+        self.prof_ocr_engine.setCurrentText(profile.get('ocr_engine', 'none'))
+
+        prompt_id = profile.get('prompt_id', 'default')
+        idx = self.prof_prompt.findData(prompt_id)
+        if idx >= 0: self.prof_prompt.setCurrentIndex(idx)
+
+    def save_current_profile(self):
+        index = self.profile_combo.currentIndex()
+        if index < 0 or index >= len(self.profiles): return
+
+        profile = self.profiles[index]
+        profile['name'] = self.prof_name.text()
+        profile['llm_engine'] = self.prof_llm_engine.currentText()
+        profile['model'] = self.prof_model.currentData()
+        profile['fallback_model'] = self.prof_fallback_model.currentData()
+        profile['ocr_engine'] = self.prof_ocr_engine.currentText()
+        profile['prompt_id'] = self.prof_prompt.currentData()
+
+        # Update combo box text
+        self.profile_combo.setItemText(index, profile['name'])
+
+    def setup_shortcuts_tab(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        self.shortcuts_layout = QFormLayout(container)
+
+        self.shortcut_inputs = {}
+
+        # Default actions
+        default_actions = [
+            'capture', 'reselect', 'multi_capture', 'end_multi_capture',
+            'cancel_multi_capture', 'toggle_panel', 'new_chat_session',
+            'toggle_stitching', 'cycle_source'
+        ]
+
+        hotkeys_config = self.config.get('hotkeys', [])
+        hotkey_dict = {hk['action']: hk['key'] for hk in hotkeys_config}
+
+        for action in default_actions:
+            inp = QLineEdit(hotkey_dict.get(action, ''))
+            self.shortcuts_layout.addRow(f"{action.replace('_', ' ').title()}:", inp)
+            self.shortcut_inputs[action] = inp
+
+        scroll.setWidget(container)
+
+        layout = QVBoxLayout(self.shortcuts_tab)
+        layout.addWidget(scroll)
+
+    def save_all(self):
+        # Save App Settings
+        modes = []
+        if self.output_mode_popup.isChecked(): modes.append('popup')
+        if self.output_mode_audio.isChecked(): modes.append('audio')
+        self.config['output_mode'] = modes
+
+        self.config['fallback_language'] = self.fallback_language.text()
+        self.config['voice_id'] = self.voice_id.text() or None
+        self.config['background'] = self.background_mode.isChecked()
+        self.config['show_control_panel'] = self.show_control_panel.isChecked()
+        self.config['ollama_url'] = self.ollama_url.text()
+        self.config['google_genai_api_key'] = self.google_genai_api_key.text()
+
+        # Save Profile Settings
+        self.save_current_profile()
+        index = self.profile_combo.currentIndex()
+        if index >= 0:
+            self.config['active_profile_id'] = self.profiles[index]['id']
+
+        # Save Shortcuts
+        hotkeys = []
+        for action, inp in self.shortcut_inputs.items():
+            key = inp.text().strip()
+            if key:
+                hotkeys.append({"action": action, "key": key})
+        self.config['hotkeys'] = hotkeys
+
+        self.save_json(self.config_path, self.config)
+        self.save_json(self.profiles_path, self.profiles)
+
+        QMessageBox.information(self, "Success", "Configuration saved successfully!\nPlease restart the application for some changes to take effect.")
+        self.accept()
+
+def open_config_ui(config_path, models_path, profiles_path, prompts_path):
+    app = QApplication.instance()
+    is_temp_app = False
+    if not app:
+        app = QApplication(sys.argv)
+        is_temp_app = True
+
+    dialog = ConfigUI(config_path, models_path, profiles_path, prompts_path)
+    dialog.exec()
+    should_run = dialog.should_run
+
+    if is_temp_app:
+        app.quit()
+
+    return should_run
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    import sys
+    import os
 
-    # Apply OS theme using sv_ttk
-    if darkdetect.isDark():
-        sv_ttk.set_theme("dark")
-    else:
-        sv_ttk.set_theme("light")
+    # Temporarily create app for the config UI if run directly
+    from PyQt6.QtWidgets import QApplication
+    # Only create if it doesn't exist
+    if not QApplication.instance():
+        app = QApplication(sys.argv)
 
-    app = ConfigUI(root)
-    root.mainloop()
+    should_run = open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json", "config/prompts.json")
+
+    if should_run:
+        print("Launching application...")
+        # Since we are executing as a script, we can run main.py via subprocess or import it.
+        # It's cleaner to exec into main.py
+        import subprocess
+        subprocess.Popen([sys.executable, "main.py"])
+        sys.exit(0)

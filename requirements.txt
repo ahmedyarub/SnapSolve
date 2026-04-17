@@ -3,6 +3,6 @@ pyttsx3
 pillow
 pystray
 google-genai
-darkdetect
-sv_ttk
 pygments
+PyQt6
+PyQt6-WebEngine

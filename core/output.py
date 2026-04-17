@@ -1,665 +1,418 @@
 import pyttsx3
-import tkinter as tk
 import threading
+import json
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QScrollArea
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
+from PyQt6.QtGui import QColor
 
+# --- Signal Broker ---
+class UISignals(QObject):
+    toggle_panel = pyqtSignal(bool)
+    set_multi_state = pyqtSignal(bool)
+    set_source = pyqtSignal(str, float)
+    set_processing_state = pyqtSignal(bool)
+    show_popup = pyqtSignal(dict)
+    close_popup = pyqtSignal()
+
+class SelectorSignals(QObject):
+    request_coords = pyqtSignal(object)
+    coords_ready = pyqtSignal(object)
+
+ui_signals = UISignals()
+selector_signals = SelectorSignals()
+_app_callbacks = {}
+
+
+# --- Audio TTS ---
 def speak(text, voice_id=None):
-    # Run in a separate thread so it doesn't block the UI or main loop
     def _speak():
         try:
             engine = pyttsx3.init()
-            # Maximize speed slightly for faster output
             rate = engine.getProperty('rate')
             engine.setProperty('rate', rate + 25)
-
-            # Set specific playback voice/device configuration if provided
             if voice_id:
                 engine.setProperty('voice', voice_id)
-
             engine.say(text)
             engine.runAndWait()
         except Exception as e:
             print(f"TTS Error: {e}")
-
     threading.Thread(target=_speak, daemon=True).start()
 
-import queue
-import re
-from pygments import lex
-from pygments.lexers import get_lexer_by_name, guess_lexer
-from pygments.styles import get_style_by_name
-from pygments.util import ClassNotFound
+# --- PyQt UI Components ---
 
-_ui_queue = queue.Queue()
-_ui_thread = None
-_app_callbacks = {}
+class PopupWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #555; border-radius: 10px;")
 
-def render_markdown(text_widget, text_content, fallback_language="python"):
-    # Configure tags
-    text_widget.tag_configure("bold", font=("Arial", 14, "bold"))
-    text_widget.tag_configure("italic", font=("Arial", 14, "italic"))
-    text_widget.tag_configure("header1", font=("Arial", 20, "bold"))
-    text_widget.tag_configure("header2", font=("Arial", 18, "bold"))
-    text_widget.tag_configure("header3", font=("Arial", 16, "bold"))
+        self.layout = QVBoxLayout(self)
 
-    # Base Code block styling
-    bg_color = "#282a36" # Dracula background
-    text_widget.tag_configure("code_block_bg", font=("Courier", 12), background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
-    text_widget.tag_configure("inline_code", font=("Courier", 12), background="#1e1e1e", foreground="#d4d4d4")
+        # Top Bar
+        self.top_bar = QHBoxLayout()
+        self.close_btn = QPushButton("✕")
+        self.close_btn.setFixedSize(24, 24)
+        self.close_btn.setStyleSheet("QPushButton { background-color: transparent; color: white; border: none; font-weight: bold; } QPushButton:hover { color: red; }")
+        self.close_btn.clicked.connect(self.hide)
+        self.top_bar.addStretch()
+        self.top_bar.addWidget(self.close_btn)
+        self.layout.addLayout(self.top_bar)
 
-    # Table style tag
-    text_widget.tag_configure("table", font=("Courier", 12))
+                # WebEngine View for Markdown/Math
+        self.web_view = QWebEngineView()
+        self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
+        self.web_view.setStyleSheet("background-color: transparent; border: none;")
+        self.layout.addWidget(self.web_view)
 
-    # Pygments Dracula style tags
-    style = get_style_by_name('dracula')
-    available_tags = set()
-    for token, styledef in style:
-        tag_name = f"pygments_{str(token)}"
-        available_tags.add(tag_name)
-        if styledef['color']:
-            text_widget.tag_configure(tag_name, font=("Courier", 12), foreground=f"#{styledef['color']}", background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
+        self.auto_close_timer = QTimer(self)
+        self.auto_close_timer.timeout.connect(self.hide)
+
+        # Create base HTML template
+        # Note: raw string to avoid invalid escape sequence warning with \s
+        self.base_html = r"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    color: white;
+                    background-color: #1e1e1e;
+                    margin: 0;
+                    padding: 10px;
+                    font-size: 14px;
+                    overflow-x: hidden;
+                }
+                pre { background-color: #282a36; padding: 10px; border-radius: 5px; overflow-x: auto; }
+                code { font-family: Courier, monospace; background-color: #282a36; padding: 2px 4px; border-radius: 3px; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+                th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+                th { background-color: #333; }
+                a { color: #8be9fd; }
+                /* Custom scrollbar for webkit */
+                ::-webkit-scrollbar { width: 8px; height: 8px; }
+                ::-webkit-scrollbar-track { background: #1e1e1e; }
+                ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+                ::-webkit-scrollbar-thumb:hover { background: #777; }
+            </style>
+        </head>
+        <body>
+            <div id="content"></div>
+            <script>
+                mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+                function updateContent(markdownText) {
+                    // Temporarily replace mermaid blocks so marked doesn't touch them
+                    let mermaidBlocks = [];
+                    let tempText = markdownText.replace(/```mermaid([\s\S]*?)```/g, function(match, p1) {
+                        mermaidBlocks.push(p1);
+                        return `___MERMAID_BLOCK_${mermaidBlocks.length - 1}___`;
+                    });
+
+                    // Parse markdown
+                    let html = marked.parse(tempText);
+
+                    // Restore mermaid blocks
+                    mermaidBlocks.forEach((block, index) => {
+                        html = html.replace(`___MERMAID_BLOCK_${index}___`, `<div class="mermaid">${block}</div>`);
+                    });
+
+                    document.getElementById('content').innerHTML = html;
+
+                    // Render Math
+                    renderMathInElement(document.getElementById('content'), {
+                        delimiters: [
+                            {left: "$$", right: "$$", display: true},
+                            {left: "$", right: "$", display: false},
+                            {left: "\\(", right: "\\)", display: false},
+                            {left: "\\[", right: "\\]", display: true}
+                        ]
+                    });
+
+                    // Render Mermaid
+                    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+
+                    // Scroll to bottom smoothly
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }
+            </script>
+        </body>
+        </html>
+        """
+        self.web_view.setHtml(self.base_html)
+
+    def show_content(self, data):
+        text = data.get("text", "")
+        auto_close = data.get("auto_close", 5000)
+        opacity = data.get("opacity", 0.8)
+        is_result = data.get("is_result", False)
+
+        self.setWindowOpacity(opacity)
+
+                # Safely serialize string for JS injection using json.dumps
+        js_text = json.dumps(text)
+
+        # Update via JS evaluation
+        self.web_view.page().runJavaScript(f"updateContent({js_text});")
+
+        # Determine size and position
+        screen = QApplication.primaryScreen().size()
+        max_w, max_h = int(screen.width() * 0.5), int(screen.height() * 0.5)
+
+        word_count = len(text.split())
+        is_long = is_result and word_count > 10
+
+        if is_long:
+            # Estimate sizing, max out at 50%
+            self.resize(max_w, max_h)
         else:
-            # Default text color for Dracula
-            text_widget.tag_configure(tag_name, font=("Courier", 12), foreground="#f8f8f2", background=bg_color, lmargin1=10, lmargin2=10, rmargin=10)
+            # Small popup
+            self.resize(400, 150)
 
-    lines = text_content.splitlines()
-    in_code_block = False
-    current_code = []
-    current_lang = ""
+        # Position bottom right
+        w, h = self.width(), self.height()
+        x = screen.width() - w - 50
+        y = screen.height() - h - 100
+        self.move(x, y)
 
-    in_table = False
-    current_table = []
+        if auto_close:
+            self.close_btn.hide()
+            self.auto_close_timer.start(auto_close)
+        else:
+            self.close_btn.show()
+            self.auto_close_timer.stop()
 
-    def format_line_inline(line):
-        # Basic inline formatting parsing
-        # This uses a regex to split by formatting markers, keeping the markers in the split result
-        parts = re.split(r'(\*\*.*?\*\*|\*(?!\s)[^\*]+(?<!\s)\*|\`.*?\`|\$[^\$]+\$)', line)
-        for part in parts:
-            if part.startswith("**") and part.endswith("**") and len(part) > 4:
-                text_widget.insert(tk.END, part[2:-2], "bold")
-            elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
-                text_widget.insert(tk.END, part[1:-1], "italic")
-            elif part.startswith("`") and part.endswith("`") and len(part) > 2:
-                text_widget.insert(tk.END, part[1:-1], "inline_code")
-            elif part.startswith("$") and part.endswith("$") and len(part) > 2:
-                text_widget.insert(tk.END, part[1:-1], "italic")
-            else:
-                text_widget.insert(tk.END, part)
-        text_widget.insert(tk.END, "\n")
+        self.show()
 
-    def flush_table():
-        if not current_table:
-            return
+class PanelWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background-color: rgba(30, 30, 30, 230); border: 1px solid #444; border-radius: 8px;")
 
-        # Verify it's a real table: does it have a separator row?
-        # A separator row typically consists of pipes and dashes/colons.
-        has_separator = False
-        for row in current_table:
-            # Quick check if it could be a separator
-            stripped = row.strip()
-            if not stripped:
-                continue
-            cols = [col.strip() for col in stripped.strip('|').split('|')]
-            if all(set(col) <= {'-', ':', ' '} and len(col.strip()) > 0 for col in cols if col.strip()):
-                has_separator = True
-                break
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10)
 
-        if not has_separator:
-            # Not a real table, render lines normally
-            for row in current_table:
-                # Handle horizontal rules
-                if row.strip() == "---":
-                    text_widget.insert(tk.END, "───────────────\n")
-                    continue
-                # Handle bullets
-                if re.match(r'^\s*\*\s+', row):
-                    row = row.replace("*", "•", 1)
+        # Close Btn
+        top_layout = QHBoxLayout()
+        top_layout.addStretch()
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(20, 20)
+        close_btn.setStyleSheet("QPushButton { background-color: transparent; color: gray; border: none; } QPushButton:hover { color: white; }")
+        close_btn.clicked.connect(self.hide)
+        top_layout.addWidget(close_btn)
+        self.layout.addLayout(top_layout)
 
-                if row.startswith("# "):
-                    text_widget.insert(tk.END, row[2:] + "\n", "header1")
-                elif row.startswith("## "):
-                    text_widget.insert(tk.END, row[3:] + "\n", "header2")
-                elif row.startswith("### "):
-                    text_widget.insert(tk.END, row[4:] + "\n", "header3")
-                else:
-                    format_line_inline(row)
-            current_table.clear()
-            return
+        # Buttons
+        self.buttons = {}
+        btn_style = "QPushButton { background-color: rgba(45, 45, 45, 180); color: white; border: none; padding: 8px; border-radius: 4px; font-size: 14px;} QPushButton:hover { background-color: rgba(62, 62, 62, 220); } QPushButton:disabled { color: #777; }"
 
-        # Split rows into columns
-        parsed_rows = []
-        for row in current_table:
-            # Simple markdown table parsing: split by | and strip whitespace
-            cols = [col.strip() for col in row.strip().strip('|').split('|')]
-            parsed_rows.append(cols)
+        def create_btn(name, text, action):
+            btn = QPushButton(text)
+            btn.setStyleSheet(btn_style)
+            btn.clicked.connect(lambda: self.call_action(action))
+            self.layout.addWidget(btn)
+            self.buttons[name] = btn
+            return btn
 
-        # Determine max width for each column
-        col_widths = []
-        for row in parsed_rows:
-            for i, col in enumerate(row):
-                if i >= len(col_widths):
-                    col_widths.append(len(col))
-                else:
-                    col_widths[i] = max(col_widths[i], len(col))
+        self.btn_capture = create_btn('capture', "📸 Capture", 'capture')
+        self.btn_reselect = create_btn('reselect', "🎯 Reselect", 'reselect')
+        self.btn_multi = create_btn('multi', "➕ Multi-select", 'multi_capture')
+        self.btn_end_multi = create_btn('end_multi', "✅ End Multi", 'end_multi_capture')
+        self.btn_cancel_multi = create_btn('cancel_multi', "❌ Cancel Multi", 'cancel_multi_capture')
+        self.btn_stitching = create_btn('stitching', "🧵 Toggle Stitching", 'toggle_stitching')
+        self.btn_cycle = create_btn('cycle', "🔄 Cycle Source", 'cycle_source')
 
-        # Format rows with padding
-        for row in parsed_rows:
-            # Check if this is a separator row (e.g., |---|---|)
-            is_separator = all(set(col.strip()) <= {'-', ':'} and len(col.strip()) > 0 for col in row if col.strip())
+        self.btn_end_multi.hide()
+        self.btn_cancel_multi.hide()
 
-            formatted_cols = []
-            for i, col in enumerate(row):
-                width = col_widths[i] if i < len(col_widths) else len(col)
-                if is_separator:
-                    formatted_cols.append("-" * width)
-                else:
-                    formatted_cols.append(col.ljust(width))
+        self.resize(200, 300)
 
-            formatted_row = " | ".join(formatted_cols)
-            text_widget.insert(tk.END, f"| {formatted_row} |\n", "table")
-
-        current_table.clear()
-
-    def flush_code_block():
-        code_text = "\n".join(current_code)
-        try:
-            lexer = get_lexer_by_name(current_lang)
-        except ClassNotFound:
+    def call_action(self, action):
+        if action in _app_callbacks:
             try:
-                lexer = get_lexer_by_name(fallback_language)
-            except ClassNotFound:
-                try:
-                    lexer = guess_lexer(code_text)
-                except ClassNotFound:
-                    from pygments.lexers.special import TextLexer
-                    lexer = TextLexer()
+                # Run callback in background thread so it doesn't block UI
+                threading.Thread(target=_app_callbacks[action], daemon=True).start()
+            except Exception as e:
+                print(f"Error calling {action}: {e}")
 
-        for ttype, value in lex(code_text + "\n", lexer):
-            tag_name = f"pygments_{str(ttype)}"
-            # Fallback to parent token types if specific style is missing
-            while tag_name not in available_tags and "." in tag_name:
-                tag_name = tag_name.rsplit(".", 1)[0]
-            if tag_name not in available_tags:
-                tag_name = "code_block_bg" # Fallback base style
-            text_widget.insert(tk.END, value, tag_name)
+    def update_position(self):
+        screen = QApplication.primaryScreen().size()
+        x = 20
+        y = screen.height() - self.height() - 50
+        self.move(x, y)
 
-    for line in lines:
-        if line.strip().startswith("```"):
-            if in_table:
-                in_table = False
-                flush_table()
-            if not in_code_block:
-                in_code_block = True
-                current_code = []
-                current_lang = line.strip()[3:].strip()
-                if not current_lang:
-                    current_lang = fallback_language
-            else:
-                in_code_block = False
-                flush_code_block()
-            continue
+    def set_multi_state(self, in_progress):
+        self.btn_end_multi.setVisible(in_progress)
+        self.btn_cancel_multi.setVisible(in_progress)
+        self.adjustSize()
+        self.update_position()
 
-        if in_code_block:
-            current_code.append(line)
+    def set_source(self, source_name):
+        is_image = source_name != "text"
+        self.btn_capture.setVisible(is_image)
+        self.btn_reselect.setVisible(is_image)
+        self.btn_multi.setVisible(is_image)
+        self.adjustSize()
+        self.update_position()
+
+    def set_processing_state(self, is_processing):
+        for btn in self.buttons.values():
+            btn.setEnabled(not is_processing)
+
+class TextInputWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background-color: rgba(30, 30, 30, 204); border: 2px solid #555; border-radius: 8px;")
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+
+        self.text_edit = QTextEdit()
+        self.text_edit.setStyleSheet("background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;")
+        # Handle Enter key to submit, Shift+Enter for new line
+        self.text_edit.installEventFilter(self)
+        self.layout.addWidget(self.text_edit)
+
+        self.is_processing = False
+
+    def eventFilter(self, obj, event):
+        if obj is self.text_edit and event.type() == event.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    return False # Allow new line
+                else:
+                    if not self.is_processing:
+                        text = self.text_edit.toPlainText().strip()
+                        if text:
+                            self.text_edit.clear()
+                            if 'text_submit' in _app_callbacks:
+                                threading.Thread(target=_app_callbacks['text_submit'], args=(text,), daemon=True).start()
+                    return True # Consume event
+        return super().eventFilter(obj, event)
+
+    def update_position(self):
+        screen = QApplication.primaryScreen().size()
+        w = int(screen.width() * 0.6)
+        h = 100 # Fixed initial height
+        x = (screen.width() - w) // 2
+        y = screen.height() - h - 50
+        self.setGeometry(x, y, w, h)
+
+    def set_processing_state(self, is_processing):
+        self.is_processing = is_processing
+        self.text_edit.setEnabled(not is_processing)
+        if not is_processing:
+            self.text_edit.setFocus()
+
+
+# --- UI Manager ---
+class UIManager(QObject):
+    def __init__(self):
+        super().__init__()
+        self.popup = None
+        self.panel = None
+        self.text_input = None
+        self._init_ui()
+        selector_signals.request_coords.connect(_handle_request_coords)
+
+
+    def _init_ui(self):
+        if not QApplication.instance():
+            return # Should not happen, main.py creates it
+        self.popup = PopupWidget()
+        self.panel = PanelWidget()
+        self.text_input = TextInputWidget()
+
+        # Connect signals
+        ui_signals.toggle_panel.connect(self._on_toggle_panel)
+        ui_signals.set_multi_state.connect(self.panel.set_multi_state)
+        ui_signals.set_source.connect(self._on_set_source)
+        ui_signals.set_processing_state.connect(self._on_set_processing_state)
+        ui_signals.show_popup.connect(self.popup.show_content)
+        ui_signals.close_popup.connect(self.popup.hide)
+
+    def _on_toggle_panel(self, show):
+        if show:
+            self.panel.show()
+            self.panel.update_position()
         else:
-            # Check for table rows (lines containing | with optional whitespace)
-            # Standard markdown tables typically start with | or have | somewhere in the line to separate columns.
-            # We'll trigger on any line that contains '|' and isn't just empty space, since it could be a row.
-            if "|" in line and line.strip() != "":
-                if not in_table:
-                    in_table = True
-                current_table.append(line)
-                continue
-            elif in_table:
-                in_table = False
-                flush_table()
+            self.panel.hide()
 
-            if line.startswith("# "):
-                text_widget.insert(tk.END, line[2:] + "\n", "header1")
-            elif line.startswith("## "):
-                text_widget.insert(tk.END, line[3:] + "\n", "header2")
-            elif line.startswith("### "):
-                text_widget.insert(tk.END, line[4:] + "\n", "header3")
-            else:
-                # Handle horizontal rules
-                if line.strip() == "---":
-                    text_widget.insert(tk.END, "───────────────\n")
-                    continue
+    def _on_set_source(self, source_name, opacity):
+        self.panel.set_source(source_name)
+        if source_name == "text":
+            self.text_input.setWindowOpacity(opacity)
+            self.text_input.show()
+            self.text_input.update_position()
+            self.text_input.text_edit.setFocus()
+        else:
+            self.text_input.hide()
 
-                # Handle bullets (lines starting with optional whitespace and a *)
-                if re.match(r'^\s*\*\s+', line):
-                    line = line.replace("*", "•", 1)
+    def _on_set_processing_state(self, is_processing):
+        self.panel.set_processing_state(is_processing)
+        self.text_input.set_processing_state(is_processing)
 
-                format_line_inline(line)
 
-    if in_code_block:
-        flush_code_block()
+# Global instance for UI Manager. Will be initialized in main.py after QApplication.
+ui_manager = None
 
-    if in_table:
-        flush_table()
+def init_ui_manager():
+    global ui_manager
+    if ui_manager is None:
+        ui_manager = UIManager()
 
 def set_app_callbacks(callbacks):
     global _app_callbacks
     _app_callbacks = callbacks
 
-def _ui_loop():
-    root = tk.Tk()
-    root.attributes("-topmost", True)
-    root.overrideredirect(True)
-    root.withdraw() # Hide initially
-
-    frame = tk.Frame(root, bg="black", bd=2, relief=tk.RAISED)
-    frame.pack(fill=tk.BOTH, expand=True)
-
-    # Top frame for optional close button
-    top_frame = tk.Frame(frame, bg="black")
-    top_frame.pack(fill=tk.X, side=tk.TOP)
-
-    close_btn = tk.Button(top_frame, text="X", bg="black", fg="white", bd=0, font=("Arial", 10, "bold"), command=lambda: close_window())
-    # Will be packed only when needed
-
-    # Container for content
-    content_frame = tk.Frame(frame, bg="black")
-    content_frame.pack(fill=tk.BOTH, expand=True)
-
-    # Short text label
-    label = tk.Label(
-        content_frame,
-        text="",
-        bg="black",
-        fg="white",
-        font=("Arial", 14),
-        padx=20,
-        pady=10,
-        wraplength=400
-    )
-
-    # Long text widget
-    text_widget = tk.Text(
-        content_frame,
-        bg="black",
-        fg="white",
-        font=("Arial", 14),
-        padx=20,
-        pady=10,
-        wrap=tk.WORD,
-        bd=0,
-        highlightthickness=0
-    )
-    scrollbar = tk.Scrollbar(content_frame, command=text_widget.yview)
-    text_widget.config(yscrollcommand=scrollbar.set)
-
-    def position_window():
-        root.update_idletasks()
-        w = root.winfo_reqwidth()
-        h = root.winfo_reqheight()
-        ws = root.winfo_screenwidth()
-        hs = root.winfo_screenheight()
-
-        # Max out at 50% of screen width/height
-        max_w = int(ws * 0.5)
-        max_h = int(hs * 0.5)
-
-        # Adjust dimensions if it's too big, but also we should allow the window to grow and shrink properly
-        if w > max_w:
-            w = max_w
-        if h > max_h:
-            h = max_h
-
-        x = ws - w - 50
-        y = hs - h - 100
-        root.geometry(f"{w}x{h}+{x}+{y}")
-
-    def close_window(event=None):
-        root.withdraw()
-
-    close_timer = [None]
-
-    # Control Panel Window
-    panel_window = tk.Toplevel(root)
-    panel_window.attributes("-topmost", True)
-    panel_window.overrideredirect(True)
-    panel_window.attributes("-alpha", 0.9)
-    panel_window.withdraw() # Hidden initially
-    panel_window.config(bg="#1e1e1e")
-
-    panel_frame = tk.Frame(panel_window, bg="#1e1e1e", bd=2, relief=tk.RAISED)
-    panel_frame.pack(fill=tk.BOTH, expand=True)
-
-    # Position panel in bottom left
-    def position_panel():
-        panel_window.update_idletasks()
-        w = panel_window.winfo_reqwidth()
-        h = panel_window.winfo_reqheight()
-        ws = panel_window.winfo_screenwidth()
-        hs = panel_window.winfo_screenheight()
-        # Bottom left corner with a small margin
-        x = 20
-        y = hs - h - 50
-        panel_window.geometry(f"{w}x{h}+{x}+{y}")
-
-    def call_main_action(action):
-        if action in _app_callbacks:
-            # We must use threading or safely dispatch it to main since we don't want to block UI thread
-            # Actually, the callbacks in main.py use their own threads, so it's safe to just call them
-            try:
-                _app_callbacks[action]()
-            except Exception as e:
-                print(f"Error calling {action}: {e}")
-
-    # Top bar for close button
-    panel_top_frame = tk.Frame(panel_frame, bg="#1e1e1e")
-    panel_top_frame.pack(fill=tk.X, side=tk.TOP)
-    panel_close_btn = tk.Button(panel_top_frame, text="✕", bg="#1e1e1e", fg="gray", bd=0, font=("Arial", 10), command=lambda: toggle_panel(False))
-    panel_close_btn.pack(side=tk.RIGHT, padx=5, pady=2)
-    panel_close_btn.bind("<Enter>", lambda e: panel_close_btn.config(fg="white"))
-    panel_close_btn.bind("<Leave>", lambda e: panel_close_btn.config(fg="gray"))
-
-    # Buttons for the panel
-    btn_config = {'bg': '#2d2d2d', 'fg': 'white', 'font': ('Segoe UI Emoji', 14), 'bd': 0, 'padx': 10, 'pady': 5}
-
-    # We will use this frame specifically for image source buttons so we can pack/unpack them easily
-    image_buttons_frame = tk.Frame(panel_frame, bg="#1e1e1e")
-    image_buttons_frame.pack(side=tk.TOP, fill=tk.X)
-
-    btn_capture = tk.Button(image_buttons_frame, text="📸 Capture", command=lambda: call_main_action('capture'), **btn_config)
-    btn_capture.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-    btn_reselect = tk.Button(image_buttons_frame, text="🎯 Reselect", command=lambda: call_main_action('reselect'), **btn_config)
-    btn_reselect.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-    btn_multi = tk.Button(image_buttons_frame, text="➕ Multi-select", command=lambda: call_main_action('multi_capture'), **btn_config)
-    btn_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-    btn_end_multi = tk.Button(image_buttons_frame, text="✅ End Multi", command=lambda: call_main_action('end_multi_capture'), **btn_config)
-    # Pack these later based on state
-
-    btn_cancel_multi = tk.Button(image_buttons_frame, text="❌ Cancel Multi", command=lambda: call_main_action('cancel_multi_capture'), **btn_config)
-    # Pack these later based on state
-
-    btn_stitching = tk.Button(panel_frame, text="🧵 Toggle Stitching", command=lambda: call_main_action('toggle_stitching'), **btn_config)
-    btn_stitching.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-    btn_cycle_source = tk.Button(panel_frame, text="🔄 Cycle Source", command=lambda: call_main_action('cycle_source'), **btn_config)
-    btn_cycle_source.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-    # Hover effects
-    for btn in [btn_capture, btn_reselect, btn_multi, btn_end_multi, btn_cancel_multi, btn_stitching, btn_cycle_source]:
-        btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#3e3e3e"))
-        btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#2d2d2d"))
-
-    is_panel_visible = [False]
-    active_source = ["image"] # image or text
-    is_processing_state = [False]
-
-    def update_panel_buttons():
-        # Update visibility based on source
-        if active_source[0] == "text":
-            image_buttons_frame.pack_forget()
-        else:
-            image_buttons_frame.pack(side=tk.TOP, fill=tk.X, before=btn_stitching)
-
-        # Update enabled state based on processing
-        state = tk.DISABLED if is_processing_state[0] else tk.NORMAL
-        btn_capture.config(state=state)
-        btn_reselect.config(state=state)
-        btn_multi.config(state=state)
-        btn_end_multi.config(state=state)
-        btn_cancel_multi.config(state=state)
-        btn_stitching.config(state=state)
-        btn_cycle_source.config(state=state)
-
-    def toggle_panel(show=None):
-        if show is None:
-            show = not is_panel_visible[0]
-
-        is_panel_visible[0] = show
-        if show:
-            panel_window.deiconify()
-            position_panel()
-        else:
-            panel_window.withdraw()
-
-    def set_multi_state(in_progress):
-        if in_progress:
-            btn_end_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
-            btn_cancel_multi.pack(side=tk.TOP, fill=tk.X, pady=2)
-        else:
-            btn_end_multi.pack_forget()
-            btn_cancel_multi.pack_forget()
-        if is_panel_visible[0]:
-            position_panel()
-
-    # Text Input Window
-    text_input_window = tk.Toplevel(root)
-    text_input_window.attributes("-topmost", True)
-    text_input_window.overrideredirect(True)
-    # We will dynamically set the alpha later, default to 0.8
-    text_input_window.attributes("-alpha", 0.8)
-    text_input_window.withdraw() # Hidden initially
-    text_input_window.config(bg="#1e1e1e")
-
-    text_input_frame = tk.Frame(text_input_window, bg="#1e1e1e", bd=2, relief=tk.RAISED)
-    text_input_frame.pack(fill=tk.BOTH, expand=True)
-
-    text_entry = tk.Text(text_input_frame, bg="#2d2d2d", fg="white", font=("Arial", 16), insertbackground="white", relief=tk.FLAT, wrap=tk.WORD, height=1)
-    text_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-    import tkinter.font as tkfont
-    # Get the dynamic pixel height of one line from the font, respecting DPI scaling
-    entry_font = tkfont.Font(font=text_entry['font'])
-    line_space = entry_font.metrics("linespace")
-
-    def position_text_input():
-        text_input_window.update_idletasks()
-        ws = text_input_window.winfo_screenwidth()
-        hs = text_input_window.winfo_screenheight()
-        w = int(ws * 0.6) # 60% of screen width
-
-        # To get the exact pixel height respecting DPI and wrapping, we use the bounding box
-        # of the last character. bbox returns (x, y, width, height) relative to the widget.
-        # So y + height gives us the total text height in pixels.
-        text_entry.update_idletasks() # Ensure geometry is calculated
-
-        try:
-            # Check "end-1c" first
-            bbox = text_entry.bbox("end-1c")
-            # If text box is completely empty, it might fail to get "end-1c", try "1.0"
-            if not bbox:
-                bbox = text_entry.bbox("1.0")
-
-            if bbox:
-                text_height = bbox[1] + bbox[3]
-            else:
-                # Fallback if empty or not fully mapped, use dynamic line_space instead of hardcoded 24
-                display_lines_tuple = text_entry.count("1.0", "end", "displaylines")
-                lines = display_lines_tuple[0] if display_lines_tuple else 1
-                text_height = lines * line_space
-        except Exception:
-            text_height = line_space
-
-        # Add padding (e.g. 20 for internal text padding, plus external frame paddings)
-        h = max(line_space + 30, text_height + 30)
-
-        # Limit max height to 40% of screen
-        if h > int(hs * 0.4):
-            h = int(hs * 0.4)
-
-        x = (ws - w) // 2
-        y = hs - h - 50
-        text_input_window.geometry(f"{w}x{h}+{x}+{y}")
-
-    def on_text_change(event):
-        position_text_input()
-
-    text_entry.bind("<KeyRelease>", on_text_change)
-
-    def on_text_enter(event):
-        # Allow Shift+Enter for new line
-        if event.state & 0x0001:
-            return None # Process default behavior (insert newline)
-
-        if is_processing_state[0]:
-            return "break"
-
-        text = text_entry.get("1.0", tk.END).strip()
-        if text:
-            # Clear text
-            text_entry.delete("1.0", tk.END)
-            position_text_input()
-            # Call main action manually and pass the text
-            if 'text_submit' in _app_callbacks:
-                threading.Thread(target=_app_callbacks['text_submit'], args=(text,), daemon=True).start()
-
-        return "break" # Prevent default newline insertion
-
-    text_entry.bind("<Return>", on_text_enter)
-
-    def toggle_text_input(show=None, opacity=0.8):
-        if show is None:
-            show = (active_source[0] == "text")
-
-        if show and active_source[0] == "text":
-            text_input_window.attributes("-alpha", opacity)
-            text_input_window.deiconify()
-            # Force mapping before calculating bbox
-            text_input_window.update()
-            position_text_input()
-            text_entry.focus_set()
-        else:
-            text_input_window.withdraw()
-
-    def set_source(source_name, opacity=0.8):
-        active_source[0] = source_name
-        update_panel_buttons()
-        toggle_text_input(source_name == "text", opacity=opacity)
-        if is_panel_visible[0]:
-            position_panel()
-
-    def update_processing_state(is_processing):
-        is_processing_state[0] = is_processing
-        update_panel_buttons()
-        if is_processing:
-            text_entry.config(state=tk.DISABLED)
-        else:
-            text_entry.config(state=tk.NORMAL)
-            if active_source[0] == "text":
-                text_entry.focus_set()
-
-    def process_queue():
-        try:
-            while True:
-                msg = _ui_queue.get_nowait()
-
-                # Check for control panel messages
-                if msg.get("type") == "toggle_panel":
-                    toggle_panel(msg.get("show"))
-                    continue
-                elif msg.get("type") == "set_multi_state":
-                    set_multi_state(msg.get("in_progress"))
-                    continue
-                elif msg.get("type") == "set_source":
-                    set_source(msg.get("source_name"), msg.get("opacity", 0.8))
-                    continue
-                elif msg.get("type") == "set_processing_state":
-                    update_processing_state(msg.get("is_processing"))
-                    continue
-
-                text_content = msg.get("text", "")
-                auto_close = msg.get("auto_close", 5000)
-                opacity = msg.get("opacity", 0.8)
-                is_result = msg.get("is_result", False)
-                fallback_lang = msg.get("fallback_language", "python")
-
-                root.attributes("-alpha", opacity)
-
-                # Reset UI state
-                label.pack_forget()
-                text_widget.pack_forget()
-                scrollbar.pack_forget()
-                close_btn.pack_forget()
-
-                if not auto_close:
-                    close_btn.pack(side=tk.RIGHT, padx=5, pady=2)
-
-                word_count = len(text_content.split())
-                is_long = is_result and word_count > 10
-
-                if is_long:
-                    # Enable, insert, then disable to make read-only
-                    text_widget.config(state=tk.NORMAL)
-                    text_widget.delete(1.0, tk.END)
-                    render_markdown(text_widget, text_content, fallback_lang)
-                    text_widget.config(state=tk.DISABLED)
-
-                    # Dynamically calculate width and height based on content
-                    lines = text_content.splitlines()
-                    # Calculate max line length to approximate width (capped later)
-                    max_line_len = max([len(line) for line in lines] + [10])
-                    # Approx characters per line
-                    req_width_chars = min(max_line_len, 80)
-
-                    # Calculate total lines accounting for word wrap wrapping
-                    total_lines = 0
-                    for line in lines:
-                         total_lines += max(1, len(line) // req_width_chars)
-
-                    text_widget.config(width=req_width_chars, height=total_lines)
-
-                    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-                    text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-                else:
-                    label.config(text=text_content)
-                    label.pack(fill=tk.BOTH, expand=True)
-
-                root.deiconify() # Show window
-                position_window()
-
-                if close_timer[0]:
-                    root.after_cancel(close_timer[0])
-                    close_timer[0] = None
-
-                if auto_close:
-                    close_timer[0] = root.after(auto_close, close_window)
-        except queue.Empty:
-            pass
-
-        root.after(100, process_queue)
-
-    root.after(100, process_queue)
-    root.mainloop()
-
-def init_ui():
-    global _ui_thread
-    if _ui_thread is None:
-        _ui_thread = threading.Thread(target=_ui_loop, daemon=True)
-        _ui_thread.start()
-
+# --- Public API called from background threads ---
 def toggle_control_panel(show=None):
-    init_ui()
-    _ui_queue.put({"type": "toggle_panel", "show": show})
+    # show is optional, but logic for toggle isn't fully robust here without checking state.
+    # For now, we assume if show is not provided, it forces show=True or we leave it.
+    # The original implementation toggled if show was None.
+    # We will simplify by requiring a bool or true.
+    ui_signals.toggle_panel.emit(show if show is not None else True)
 
 def update_multi_state(in_progress):
-    init_ui()
-    _ui_queue.put({"type": "set_multi_state", "in_progress": in_progress})
+    ui_signals.set_multi_state.emit(in_progress)
 
 def set_active_source_ui(source_name, opacity=0.8):
-    init_ui()
-    _ui_queue.put({"type": "set_source", "source_name": source_name, "opacity": opacity})
+    ui_signals.set_source.emit(source_name, opacity)
 
 def set_app_processing_state(is_processing):
-    init_ui()
-    _ui_queue.put({"type": "set_processing_state", "is_processing": is_processing})
+    ui_signals.set_processing_state.emit(is_processing)
 
 def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
-    init_ui()
-    _ui_queue.put({"text": text, "auto_close": auto_close, "opacity": opacity, "is_result": is_result, "fallback_language": fallback_language})
+    ui_signals.show_popup.emit({
+        "text": text,
+        "auto_close": auto_close,
+        "opacity": opacity,
+        "is_result": is_result
+    })
 
 def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
     if not output_modes:
-        output_modes = ['popup'] # Default
+        output_modes = ['popup']
 
     if 'audio' in output_modes:
         speak(text, voice_id)
 
     if 'popup' in output_modes:
         show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)
+
+def _handle_request_coords(q):
+    from ui.selector import _get_coordinates_impl
+    # Pass the queue's put method directly as the callback
+    _get_coordinates_impl(callback=q.put)
