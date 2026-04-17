@@ -4,8 +4,8 @@ from .base import LLMEngine
 from core.sinks.base import Sink
 
 class GoogleGenAIEngine(LLMEngine):
-    def __init__(self, model: str, api_key: str):
-        super().__init__(model)
+    def __init__(self, model: str, api_key: str, session_manager=None):
+        super().__init__(model, session_manager=session_manager)
         self.api_key = api_key
         print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
 
@@ -35,11 +35,11 @@ class GoogleGenAIEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True
 
-    def _prepare_contents(self, prompt: str, session_manager, enable_stitching: bool, types):
+    def _prepare_contents(self, prompt: str, enable_stitching: bool, types):
         contents = []
 
-        if session_manager and enable_stitching:
-            history = session_manager.get_history()
+        if self.session_manager and enable_stitching:
+            history = self.session_manager.get_history()
             for h in history:
                 contents.append(types.Content(
                     role="user",
@@ -52,7 +52,7 @@ class GoogleGenAIEngine(LLMEngine):
 
         return contents
 
-    def _execute_stream(self, client, contents, sink: Sink, is_main: bool, start_time: float) -> str:
+    def _execute_stream(self, client, contents, sink: Sink, is_main: bool) -> str:
         print("[GoogleGenAIEngine] Calling generate_content_stream...")
         response_stream = client.models.generate_content_stream(
             model=self.model,
@@ -77,12 +77,10 @@ class GoogleGenAIEngine(LLMEngine):
             sink.process_chunk(buffer, is_main=is_main)
 
         ans = "".join(ans_chunks)
-
-        elapsed_ms = (time.time() - start_time) * 1000
-        print(f"[GoogleGenAIEngine] Request finished successfully in {elapsed_ms:.2f} ms")
+        print(f"Request finished successfully")
         return ans
 
-    def process_text(self, prompt: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
                      sink: Sink = None, is_main: bool = True) -> str:
         if status_callback:
             status_callback("Processing with Google GenAI...")
@@ -98,21 +96,20 @@ class GoogleGenAIEngine(LLMEngine):
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
 
-        start_time = time.time()
 
         try:
             client = genai.Client(api_key=self.api_key)
-            contents = self._prepare_contents(prompt, session_manager, enable_stitching, types)
+            contents = self._prepare_contents(prompt, enable_stitching, types)
 
             current_parts = [types.Part.from_text(text=prompt)]
             contents.append(types.Content(role="user", parts=current_parts))
 
-            return self._execute_stream(client, contents, sink, is_main, start_time)
+            return self._execute_stream(client, contents, sink, is_main)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"
 
-    def process_image(self, prompt: str, image_path: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
                       sink: Sink = None, is_main: bool = True) -> str:
         if status_callback:
             status_callback("Processing with Google GenAI...")
@@ -128,11 +125,10 @@ class GoogleGenAIEngine(LLMEngine):
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
 
-        start_time = time.time()
 
         try:
             client = genai.Client(api_key=self.api_key)
-            contents = self._prepare_contents(prompt, session_manager, enable_stitching, types)
+            contents = self._prepare_contents(prompt, enable_stitching, types)
 
             current_parts = [types.Part.from_text(text=prompt)]
 
@@ -153,7 +149,7 @@ class GoogleGenAIEngine(LLMEngine):
 
             contents.append(types.Content(role="user", parts=current_parts))
 
-            return self._execute_stream(client, contents, sink, is_main, start_time)
+            return self._execute_stream(client, contents, sink, is_main)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"

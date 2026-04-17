@@ -1,17 +1,13 @@
 import os
 import tempfile
 from PIL import ImageGrab
-from .base import Source
+from .base import ImageSource
 from .ocr.base import OCREngine
 
-class ScreenshotSource(Source):
+class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
         self.ocr_engine = ocr_engine
         self._temp_files = []
-
-    @property
-    def name(self):
-        return "image"
 
     def _capture(self, coords) -> str:
         if not coords or len(coords) != 4:

@@ -7,6 +7,9 @@ from .base import LLMEngine
 from core.sinks.base import Sink
 
 class GeminiCLIEngine(LLMEngine):
+    def __init__(self, model: str, session_manager=None):
+        super().__init__(model, session_manager=session_manager)
+
     def warmup(self, status_callback=None) -> bool:
         if status_callback:
             status_callback("Warming up Gemini CLI...")
@@ -29,29 +32,16 @@ class GeminiCLIEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True
 
-    def _prepare_prompt(self, prompt: str, session_manager, enable_stitching: bool) -> str:
-        full_prompt = prompt
-        if session_manager and enable_stitching:
-            history = session_manager.get_history()
-            if history:
-                history_text = "Previous conversation:\n"
-                for h in history:
-                    history_text += f"User: {h.get('prompt', '')}\n"
-                    history_text += f"Assistant: {h.get('response', '')}\n\n"
-                history_text += "Current request:\n"
-                full_prompt = history_text + prompt
-        return full_prompt
 
-    def process_text(self, prompt: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
                      sink: Sink = None, is_main: bool = True) -> str:
         print(f"[GeminiCLIEngine] Text Request started for model: {self.model}")
-        start_time = time.time()
 
         gemini_cmd = shutil.which("gemini")
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
-        full_prompt = self._prepare_prompt(prompt, session_manager, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_stitching)
         combined_prompt = f'"{full_prompt}"'
 
         cmd_args = [
@@ -61,18 +51,17 @@ class GeminiCLIEngine(LLMEngine):
             "-m", self.model
         ]
 
-        return self._execute_request(cmd_args, status_callback, sink, is_main, start_time)
+        return self._execute_request(cmd_args, status_callback, sink, is_main)
 
-    def process_image(self, prompt: str, image_path: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
                       sink: Sink = None, is_main: bool = True) -> str:
         print(f"[GeminiCLIEngine] Image Request started for model: {self.model}")
-        start_time = time.time()
 
         gemini_cmd = shutil.which("gemini")
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
-        full_prompt = self._prepare_prompt(prompt, session_manager, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_stitching)
         combined_prompt = f'"{full_prompt} @{image_path}"'
 
         temp_dir = os.path.dirname(image_path)
@@ -88,9 +77,9 @@ class GeminiCLIEngine(LLMEngine):
             "-m", self.model
         ]
 
-        return self._execute_request(cmd_args, status_callback, sink, is_main, start_time)
+        return self._execute_request(cmd_args, status_callback, sink, is_main)
 
-    def _execute_request(self, cmd_args: list, status_callback, sink: Sink, is_main: bool, start_time: float) -> str:
+    def _execute_request(self, cmd_args: list, status_callback, sink: Sink, is_main: bool) -> str:
         print(f"Executing command: {' '.join(cmd_args)}")
 
         if status_callback:
@@ -103,8 +92,7 @@ class GeminiCLIEngine(LLMEngine):
                 text=True,
                 check=True
             )
-            elapsed_ms = (time.time() - start_time) * 1000
-            print(f"Processing took {elapsed_ms:.2f} ms")
+            print("Processing command complete.")
 
             data = json.loads(result.stdout)
             ans = data.get("response", "").strip()

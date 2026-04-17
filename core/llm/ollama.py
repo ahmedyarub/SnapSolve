@@ -7,8 +7,8 @@ from .base import LLMEngine
 from core.sinks.base import Sink
 
 class OllamaEngine(LLMEngine):
-    def __init__(self, model: str, ollama_url: str, status_callback=None):
-        super().__init__(model)
+    def __init__(self, model: str, ollama_url: str, session_manager=None, status_callback=None):
+        super().__init__(model, session_manager=session_manager)
         self.ollama_url = ollama_url
 
 
@@ -44,20 +44,8 @@ class OllamaEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True # Ollama generally supports images if the model does, we let it try.
 
-    def _prepare_prompt(self, prompt: str, session_manager, enable_stitching: bool) -> str:
-        full_prompt = prompt
-        if session_manager and enable_stitching:
-            history = session_manager.get_history()
-            if history:
-                history_text = "Previous conversation:\n"
-                for h in history:
-                    history_text += f"User: {h.get('prompt', '')}\n"
-                    history_text += f"Assistant: {h.get('response', '')}\n\n"
-                history_text += "Current request:\n"
-                full_prompt = history_text + prompt
-        return full_prompt
 
-    def _execute_request(self, payload: dict, sink: Sink, is_main: bool, start_time: float) -> str:
+    def _execute_request(self, payload: dict, sink: Sink, is_main: bool) -> str:
         try:
             print(f"[OllamaEngine] Sending request...")
             req = urllib.request.Request(
@@ -72,22 +60,19 @@ class OllamaEngine(LLMEngine):
 
             if sink:
                 sink.process_chunk(ans, is_main=is_main)
-
-            elapsed_ms = (time.time() - start_time) * 1000
-            print(f"[OllamaEngine] Request finished successfully in {elapsed_ms:.2f} ms")
+            print(f"Request finished successfully")
             return ans
         except Exception as e:
             print(f"[OllamaEngine] Error calling Ollama API: {str(e)}")
             return f"Error calling Ollama API: {str(e)}"
 
-    def process_text(self, prompt: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
                      sink: Sink = None, is_main: bool = True) -> str:
         print(f"[OllamaEngine] Text Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing text with Ollama...")
 
-        start_time = time.time()
-        full_prompt = self._prepare_prompt(prompt, session_manager, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_stitching)
 
         payload = {
             "model": self.model,
@@ -95,16 +80,15 @@ class OllamaEngine(LLMEngine):
             "stream": False
         }
 
-        return self._execute_request(payload, sink, is_main, start_time)
+        return self._execute_request(payload, sink, is_main)
 
-    def process_image(self, prompt: str, image_path: str, status_callback=None, session_manager=None, enable_stitching=True,
+    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
                       sink: Sink = None, is_main: bool = True) -> str:
         print(f"[OllamaEngine] Image Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing image with Ollama...")
 
-        start_time = time.time()
-        full_prompt = self._prepare_prompt(prompt, session_manager, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_stitching)
 
         payload = {
             "model": self.model,
@@ -119,4 +103,4 @@ class OllamaEngine(LLMEngine):
         except Exception as e:
             return f"Error reading image: {str(e)}"
 
-        return self._execute_request(payload, sink, is_main, start_time)
+        return self._execute_request(payload, sink, is_main)

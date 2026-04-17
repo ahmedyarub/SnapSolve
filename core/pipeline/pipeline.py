@@ -1,4 +1,5 @@
 import threading
+import time
 from core.sources.base import Source
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
@@ -42,6 +43,7 @@ def process_pipeline(
     coords=None,
     text=None
 ) -> str:
+    pipeline_start_time = time.time()
     extracted_text = None
     image_path = None
     is_image = False
@@ -60,16 +62,17 @@ def process_pipeline(
         return f"Error retrieving data from source: {str(e)}"
 
     # 2. Prompt Augmentation
-    prompt = prompt_text
-    if extracted_text:
-        prompt = f"{prompt_text}: {extracted_text}"
+    if not prompt_text:
+        prompt = extracted_text
+    else:
+        prompt = f"{prompt_text}: {extracted_text}" if extracted_text else prompt_text
 
     # 3. LLM Execution (with Fallback Concurrency)
     if not fallback_llm:
         if is_image:
-            return llm.process_image(prompt, image_path, status_callback, session_manager, enable_stitching, sink, is_main=True)
+            return llm.process_image(prompt, image_path, status_callback, enable_stitching, sink, is_main=True)
         else:
-            return llm.process_text(prompt, status_callback, session_manager, enable_stitching, sink, is_main=True)
+            return llm.process_text(prompt, status_callback, enable_stitching, sink, is_main=True)
 
     results = {}
     threads = []
@@ -85,9 +88,9 @@ def process_pipeline(
     def run_main():
         try:
             if is_image:
-                ans = llm.process_image(prompt, image_path, status_callback, session_manager, enable_stitching, concurrent_sink, is_main=True)
+                ans = llm.process_image(prompt, image_path, status_callback, enable_stitching, concurrent_sink, is_main=True)
             else:
-                ans = llm.process_text(prompt, status_callback, session_manager, enable_stitching, concurrent_sink, is_main=True)
+                ans = llm.process_text(prompt, status_callback, enable_stitching, concurrent_sink, is_main=True)
 
             with lock:
                 if isinstance(ans, str) and ans.startswith("Error"):
@@ -109,9 +112,9 @@ def process_pipeline(
     def run_fallback():
         try:
             if is_image:
-                ans = fallback_llm.process_image(prompt, image_path, None, session_manager, enable_stitching, concurrent_sink, is_main=False)
+                ans = fallback_llm.process_image(prompt, image_path, None, enable_stitching, concurrent_sink, is_main=False)
             else:
-                ans = fallback_llm.process_text(prompt, None, session_manager, enable_stitching, concurrent_sink, is_main=False)
+                ans = fallback_llm.process_text(prompt, None, enable_stitching, concurrent_sink, is_main=False)
             with lock:
                 results['fallback'] = ans
         except Exception as e:
@@ -125,6 +128,8 @@ def process_pipeline(
     fallback_thread.start()
 
     main_thread.join()
+    elapsed_ms = (time.time() - pipeline_start_time) * 1000
+    print(f"[Pipeline] Main thread finished processing in {elapsed_ms:.2f} ms")
 
     final_result = None
 

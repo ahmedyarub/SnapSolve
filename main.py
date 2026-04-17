@@ -84,8 +84,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
 
     def _process():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, active_source_instance
-
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -95,14 +94,13 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 show_headers = True
 
             sink = PopupSink(config, show_headers, main_model, fallback_model)
-
             from core.sources import TextSource
             temp_source = TextSource()
 
             result = process_pipeline(
                 source=temp_source,
                 llm=llm_engine_instance,
-                prompt_text=active_prompt_text,
+                prompt_text=text,
                 status_callback=status_update,
                 session_manager=session_manager,
                 enable_stitching=active_profile.get('enable_stitching', True),
@@ -150,7 +148,6 @@ def handle_capture(config, active_profile, active_prompt_text):
     def _capture():
         try:
             global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, active_source_instance
-
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -172,6 +169,8 @@ def handle_capture(config, active_profile, active_prompt_text):
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
                 coords=config.get('coordinates')
             )
+            if hasattr(active_source_instance, 'cleanup_all'):
+                active_source_instance.cleanup_all()
             print(f"Result: {result}")
 
             final_result = result
@@ -250,7 +249,8 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
                 else:
                     ocr = NoOCREngine()
 
-            temp_source = ScreenshotSource(ocr)
+            temp_source = ScreenshotSource()
+            temp_source.ocr_engine = ocr
             extracted_text = None
             try:
                 extracted_text = temp_source.get_text(coords=coords, status_callback=status_update)
@@ -317,7 +317,6 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 show_headers = True
 
             sink = PopupSink(config, show_headers, main_model, fallback_model)
-
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -415,7 +414,8 @@ def handle_cycle_source(config):
     if isinstance(active_source_instance, ScreenshotSource):
         active_source_instance = TextSource()
     else:
-        active_source_instance = ScreenshotSource(ocr_engine_instance)
+        active_source_instance = ScreenshotSource()
+        active_source_instance.ocr_engine = ocr_engine_instance
 
     set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
     print(f"Source cycled to: {active_source_instance.name}")
@@ -476,24 +476,124 @@ def load_models_data():
 
 def validate_config(active_profile):
     llm_type = active_profile.get('llm_engine', 'gemini')
+    model_id = active_profile.get('model', 'gemini-2.5-flash-lite')
+    fallback_model_id = active_profile.get('fallback_model', 'None')
+    ocr_type = active_profile.get('ocr_engine', 'none')
+
+    models_data = load_models_data()
+    models = models_data.get(llm_type, [])
+
+    supports_ocr = False
+    for m in models:
+        if m.get('id') == model_id:
+            supports_ocr = m.get('supports_ocr', False)
+            break
+
+    if not supports_ocr and ocr_type == 'none':
+        print(f"Error: Selected model '{model_id}' does not support built-in OCR and no OCR engine is configured.")
+        print("Please configure an OCR engine or select a model that supports OCR.")
+        sys.exit(1)
+
+    if fallback_model_id and fallback_model_id != "None":
+        fallback_supports_ocr = False
+        for m in models:
+            if m.get('id') == fallback_model_id:
+                fallback_supports_ocr = m.get('supports_ocr', False)
+                break
+
+        if not fallback_supports_ocr and ocr_type == 'none':
+            print(
+                f"Error: Selected fallback model '{fallback_model_id}' does not support built-in OCR and no OCR engine is configured.")
+            print("Please configure an OCR engine or select a fallback model that supports OCR.")
+            sys.exit(1)
+
+
+def main():
+    global is_running, active_source_instance
+
+    print("Initializing Screen Capture & Gemini QA App...")
+    config = get_config()
+    profiles = load_profiles()
+    prompts = load_prompts()
+
+    active_profile_id = config.get('active_profile_id', 'prof1')
+    active_profile = next((p for p in profiles if p.get('id') == active_profile_id), profiles[0] if profiles else {})
+
+    prompt_id = active_profile.get('prompt_id', 'default')
+    active_prompt = next((p for p in prompts if p.get('id') == prompt_id), prompts[0] if prompts else {})
+    active_prompt_text = active_prompt.get('text', 'answer the following question quickly and briefly')
+
+    validate_config(active_profile)
+
+    # Determine the initial source
+    default_source = config.get('default_source', 'text')
+    if default_source == 'image':
+        active_source_instance = ScreenshotSource()
+    else:
+        active_source_instance = TextSource()
+
+    # Set up UI callbacks before starting the main loop
+    callbacks = {
+        'capture': lambda: handle_capture(config, active_profile, active_prompt_text),
+        'reselect': lambda: handle_reselect(config),
+        'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
+        'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
+        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
+        'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
+        'cycle_source': lambda: handle_cycle_source(config),
+        'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
+    }
+    set_app_callbacks(callbacks)
+
+    # Initialize the UI with the active source before showing the panel
+    set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
+
+    if config.get('show_control_panel', False):
+        toggle_control_panel(True)
+
+    if active_source_instance.name == "image" and not config.get('coordinates'):
+        print("Coordinates not found in config. Launching coordinate selector...")
+        coords = get_coordinates()
+        if coords:
+            config['coordinates'] = coords
+            save_config(config)
+            print(f"Coordinates saved: {coords}")
+        else:
+            print("No coordinates selected. Exiting.")
+            sys.exit(1)
+
+    # Initialize Engines
+    print("Checking engine pre-initialization...")
+    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, session_manager
+    session_manager = SessionManager(config)
+    ocr_type = active_profile.get('ocr_engine', 'none')
+    if ocr_type == "paddleocr":
+        print("Starting PaddleOCR (this may take a moment to warmup)...")
+        ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+    else:
+        ocr_engine_instance = NoOCREngine()
+
+    if isinstance(active_source_instance, ScreenshotSource):
+        active_source_instance.ocr_engine = ocr_engine_instance
+
+    llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
     fallback_model = active_profile.get('fallback_model', 'None')
 
-    # Initialize Engines
     if llm_type == "ollama":
         print("Initializing Ollama Engine...")
-        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'))
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
         if fallback_model and fallback_model != "None":
             print("Initializing Fallback Ollama Engine (with warmup)...")
-            fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'))
+            fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
     elif llm_type == "google-genai":
-        llm_engine_instance = GoogleGenAIEngine(model, config.get('google_genai_api_key', ''))
+        llm_engine_instance = GoogleGenAIEngine(model, config.get('google_genai_api_key', ''), session_manager=session_manager)
         if fallback_model and fallback_model != "None":
-            fallback_llm_engine_instance = GoogleGenAIEngine(fallback_model, config.get('google_genai_api_key', ''))
+            fallback_llm_engine_instance = GoogleGenAIEngine(fallback_model, config.get('google_genai_api_key', ''), session_manager=session_manager)
     else:
-        llm_engine_instance = GeminiCLIEngine(model)
+        llm_engine_instance = GeminiCLIEngine(model, session_manager=session_manager)
         if fallback_model and fallback_model != "None":
-            fallback_llm_engine_instance = GeminiCLIEngine(fallback_model)
+            fallback_llm_engine_instance = GeminiCLIEngine(fallback_model, session_manager=session_manager)
 
     # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
     warmup_status_cb = lambda msg: print(f"Init status: {msg}")
@@ -503,6 +603,14 @@ def validate_config(active_profile):
 
     if not warmup_success and llm_engine_instance:
         llm_engine_instance.warmup(status_callback=warmup_status_cb)
+
+    llm_type = active_profile.get('llm_engine', 'gemini')
+    model = active_profile.get('model', 'gemini-2.5-flash-lite')
+    fallback_model = active_profile.get('fallback_model', 'None')
+    if llm_type == "ollama":
+        print("Initializing Ollama Engine...")
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
+                                           status_callback=lambda msg: print(f"Init status: {msg}"))
         if fallback_model and fallback_model != "None":
             print("Initializing Fallback Ollama Engine...")
             fallback_llm_engine_instance = OllamaEngine(fallback_model,
