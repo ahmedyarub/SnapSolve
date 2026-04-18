@@ -162,8 +162,8 @@ python main.py --model gemini-2.5-flash --output-mode both --hotkey-capture "ctr
 You can run the application minimized to your system tray by adding the `--background` flag or setting `"background": true` in `config.json`. To exit, right-click the system tray icon and select "Exit".
 
 ## Testing
-To run the end-to-end tests locally:
+To run the end-to-end GUI tests locally:
 ```bash
-pytest tests/test_e2e.py
+pytest tests/test_e2e_gui.py
 ```
-*Note for AI Agents:* Whenever we have a new class of one of the four pipeline components, an additional e2e test should be created.
+*Note for AI Agents:* Whenever we have a new class of one of the four pipeline components, an additional e2e test should be created. Since the application relies on Qt overlays and visual capture, use `pytest-qt` and realistic event simulation where possible.

@@ -42,4 +42,4 @@ This application relies on a strictly decoupled architecture:
 *   **Speed is critical:** Prioritize optimizations that reduce time-to-first-token.
 *   **Logging:** Use the existing logging structures. When popping up notifications, distinguish between "log" messages (auto-closing) and "result" messages (staying open).
 ## Testing
-* Whenever we have a new class of one of the four pipeline components (Source, LLM Engine, Sink, OCR Engine), an additional e2e test should be created in `tests/test_e2e.py`.
+* Whenever we have a new class of one of the four pipeline components (Source, LLM Engine, Sink, OCR Engine), an additional e2e test should be created in `tests/test_e2e_gui.py`. We use `pytest-qt` to enforce realistic interactions via the GUI to ensure true end-to-end integration mapping over Qt contexts.
