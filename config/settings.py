@@ -14,13 +14,14 @@ def load_profiles():
         except json.JSONDecodeError:
             print(f"Warning: {PROFILES_FILE} is not a valid JSON. Using default profile.")
     return [{
-        "id": "prof1",
-        "name": "Default Profile",
-        "llm_engine": "gemini",
-        "model": "gemini-2.5-flash-lite",
-        "ocr_engine": "none",
-        "prompt_id": "default",
-        "enable_stitching": True
+        "id": "quick",
+        "name": "Quick and short answers",
+        "llm_engine": "google-genai",
+        "model": "gemini-3-flash-preview",
+        "fallback_model": "gemini-2.5-flash-lite",
+        "ocr_engine": "paddleocr",
+        "prompt_id": "quick",
+        "enable_stitching": False
     }]
 
 def save_profiles(profiles):
@@ -59,7 +60,7 @@ def load_config():
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
         'voice_id': None, # The TTS voice/playback device ID
-        'active_profile_id': 'prof1',
+        'active_profile_id': 'quick',
         'ollama_url': 'http://localhost:11434',
         'google_genai_api_key': '',
         'auto_close_results': False,

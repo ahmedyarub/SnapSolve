@@ -1,10 +1,11 @@
-import pyttsx3
-import threading
 import json
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QScrollArea
-from PyQt6.QtWebEngineWidgets import QWebEngineView
+import threading
+
+import pyttsx3
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit
+
 
 # --- Signal Broker ---
 class UISignals(QObject):
@@ -15,9 +16,11 @@ class UISignals(QObject):
     show_popup = pyqtSignal(dict)
     close_popup = pyqtSignal()
 
+
 class SelectorSignals(QObject):
     request_coords = pyqtSignal(object)
     coords_ready = pyqtSignal(object)
+
 
 ui_signals = UISignals()
 selector_signals = SelectorSignals()
@@ -37,7 +40,9 @@ def speak(text, voice_id=None):
             engine.runAndWait()
         except Exception as e:
             print(f"TTS Error: {e}")
+
     threading.Thread(target=_speak, daemon=True).start()
+
 
 # --- PyQt UI Components ---
 
@@ -54,13 +59,14 @@ class PopupWidget(QWidget):
         self.top_bar = QHBoxLayout()
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(24, 24)
-        self.close_btn.setStyleSheet("QPushButton { background-color: transparent; color: white; border: none; font-weight: bold; } QPushButton:hover { color: red; }")
+        self.close_btn.setStyleSheet(
+            "QPushButton { background-color: transparent; color: white; border: none; font-weight: bold; } QPushButton:hover { color: red; }")
         self.close_btn.clicked.connect(self.hide)
         self.top_bar.addStretch()
         self.top_bar.addWidget(self.close_btn)
         self.layout.addLayout(self.top_bar)
 
-                # WebEngine View for Markdown/Math
+        # WebEngine View for Markdown/Math
         self.web_view = QWebEngineView()
         self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.setStyleSheet("background-color: transparent; border: none;")
@@ -157,7 +163,7 @@ class PopupWidget(QWidget):
 
         self.setWindowOpacity(opacity)
 
-                # Safely serialize string for JS injection using json.dumps
+        # Safely serialize string for JS injection using json.dumps
         js_text = json.dumps(text)
 
         # Update via JS evaluation
@@ -192,6 +198,7 @@ class PopupWidget(QWidget):
 
         self.show()
 
+
 class PanelWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -207,7 +214,8 @@ class PanelWidget(QWidget):
         top_layout.addStretch()
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(20, 20)
-        close_btn.setStyleSheet("QPushButton { background-color: transparent; color: gray; border: none; } QPushButton:hover { color: white; }")
+        close_btn.setStyleSheet(
+            "QPushButton { background-color: transparent; color: gray; border: none; } QPushButton:hover { color: white; }")
         close_btn.clicked.connect(self.hide)
         top_layout.addWidget(close_btn)
         self.layout.addLayout(top_layout)
@@ -269,6 +277,7 @@ class PanelWidget(QWidget):
         for btn in self.buttons.values():
             btn.setEnabled(not is_processing)
 
+
 class TextInputWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -280,7 +289,8 @@ class TextInputWidget(QWidget):
         self.layout.setContentsMargins(10, 10, 10, 10)
 
         self.text_edit = QTextEdit()
-        self.text_edit.setStyleSheet("background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;")
+        self.text_edit.setStyleSheet(
+            "background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;")
         # Handle Enter key to submit, Shift+Enter for new line
         self.text_edit.installEventFilter(self)
         self.layout.addWidget(self.text_edit)
@@ -290,22 +300,23 @@ class TextInputWidget(QWidget):
     def eventFilter(self, obj, event):
         if obj is self.text_edit and event.type() == event.Type.KeyPress:
             if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    return False # Allow new line
+                if Qt.KeyboardModifier.ShiftModifier in event.modifiers():
+                    return False  # Allow new line
                 else:
                     if not self.is_processing:
                         text = self.text_edit.toPlainText().strip()
                         if text:
                             self.text_edit.clear()
                             if 'text_submit' in _app_callbacks:
-                                threading.Thread(target=_app_callbacks['text_submit'], args=(text,), daemon=True).start()
-                    return True # Consume event
+                                threading.Thread(target=_app_callbacks['text_submit'], args=(text,),
+                                                 daemon=True).start()
+                    return True  # Consume event
         return super().eventFilter(obj, event)
 
     def update_position(self):
         screen = QApplication.primaryScreen().size()
         w = int(screen.width() * 0.6)
-        h = 100 # Fixed initial height
+        h = 100  # Fixed initial height
         x = (screen.width() - w) // 2
         y = screen.height() - h - 50
         self.setGeometry(x, y, w, h)
@@ -327,10 +338,9 @@ class UIManager(QObject):
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
-
     def _init_ui(self):
         if not QApplication.instance():
-            return # Should not happen, main.py creates it
+            return  # Should not happen, main.py creates it
         self.popup = PopupWidget()
         self.panel = PanelWidget()
         self.text_input = TextInputWidget()
@@ -366,16 +376,19 @@ class UIManager(QObject):
 
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
-ui_manager = None
+ui_manager: UIManager | None = None
+
 
 def init_ui_manager():
     global ui_manager
     if ui_manager is None:
         ui_manager = UIManager()
 
+
 def set_app_callbacks(callbacks):
     global _app_callbacks
     _app_callbacks = callbacks
+
 
 # --- Public API called from background threads ---
 def toggle_control_panel(show=None):
@@ -385,22 +398,27 @@ def toggle_control_panel(show=None):
     # We will simplify by requiring a bool or true.
     ui_signals.toggle_panel.emit(show if show is not None else True)
 
+
 def update_multi_state(in_progress):
     ui_signals.set_multi_state.emit(in_progress)
+
 
 def set_active_source_ui(source_name, opacity=0.8):
     ui_signals.set_source.emit(source_name, opacity)
 
+
 def set_app_processing_state(is_processing):
     ui_signals.set_processing_state.emit(is_processing)
 
-def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
+
+def show_popup(text, auto_close: int | None = 5000, opacity=0.8, is_result=False):
     ui_signals.show_popup.emit({
         "text": text,
         "auto_close": auto_close,
         "opacity": opacity,
         "is_result": is_result
     })
+
 
 def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
     if not output_modes:
@@ -410,7 +428,8 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
         speak(text, voice_id)
 
     if 'popup' in output_modes:
-        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)
+        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True)
+
 
 def _handle_request_coords(q):
     from ui.selector import _get_coordinates_impl

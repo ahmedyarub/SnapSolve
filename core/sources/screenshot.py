@@ -4,6 +4,7 @@ from PIL import ImageGrab
 from .base import ImageSource
 from .ocr.base import OCREngine
 
+
 class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
         self.ocr_engine = ocr_engine
@@ -13,7 +14,7 @@ class ScreenshotSource(ImageSource):
         if not coords or len(coords) != 4:
             raise ValueError("Invalid coordinates. Please run coordinate selection again.")
 
-        bbox = tuple(coords)
+        bbox: tuple[int, int, int, int] = tuple(coords)
         try:
             img = ImageGrab.grab(bbox=bbox)
         except Exception as e:

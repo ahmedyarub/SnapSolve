@@ -73,7 +73,7 @@ def set_processing(state):
     is_processing = state
     set_app_processing_state(state)
 
-def handle_text_submit(config, active_profile, active_prompt_text, text):
+def handle_text_submit(config, active_profile, text):
     global is_processing
     if is_processing:
         return
@@ -532,7 +532,7 @@ def main():
     profiles = load_profiles()
     prompts = load_prompts()
 
-    active_profile_id = config.get('active_profile_id', 'prof1')
+    active_profile_id = config.get('active_profile_id', 'quick')
     active_profile = next((p for p in profiles if p.get('id') == active_profile_id), profiles[0] if profiles else {})
 
     prompt_id = active_profile.get('prompt_id', 'default')
@@ -557,7 +557,7 @@ def main():
         'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
         'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
         'cycle_source': lambda: handle_cycle_source(config),
-        'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
+        'text_submit': lambda text: handle_text_submit(config, active_profile, text)
     }
         # Initialize the UI Manager and set callbacks
     from core.output import init_ui_manager

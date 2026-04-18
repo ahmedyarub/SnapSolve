@@ -35,6 +35,5 @@ class PopupSink(Sink):
             current_text,
             auto_close=None,
             opacity=self.config.get('popup_opacity', 0.8),
-            is_result=True,
-            fallback_language=self.config.get('fallback_language', 'python')
+            is_result=True
         )
