@@ -414,5 +414,7 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 
 def _handle_request_coords(q):
     from ui.selector import _get_coordinates_impl
-    # Pass the queue's put method directly as the callback
-    _get_coordinates_impl(callback=q.put)
+    # Run _get_coordinates_impl directly to avoid blocking the test loop unnecessarily
+    coords = _get_coordinates_impl()
+    if coords is not None:
+        q.put(coords)

@@ -162,8 +162,16 @@ python main.py --model gemini-2.5-flash --output-mode both --hotkey-capture "ctr
 You can run the application minimized to your system tray by adding the `--background` flag or setting `"background": true` in `config.json`. To exit, right-click the system tray icon and select "Exit".
 
 ## Testing
-To run the end-to-end GUI tests locally:
+To run the end-to-end GUI tests locally, you need the test dependencies and a Google GenAI API key. Note that because `pytest-qt` is required to interact with the UI components, it must be installed.
+
 ```bash
+# 1. Install test requirements
+pip install -r requirements-test.txt
+
+# 2. Set your Google GenAI API key for the LLM requests
+export GOOGLE_GENAI_API_KEY="your-api-key"
+
+# 3. Run the GUI E2E tests
 pytest tests/test_e2e_gui.py
 ```
 *Note for AI Agents:* Whenever we have a new class of one of the four pipeline components, an additional e2e test should be created. Since the application relies on Qt overlays and visual capture, use `pytest-qt` and realistic event simulation where possible.

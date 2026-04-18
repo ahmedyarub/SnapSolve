@@ -3,10 +3,12 @@ import mimetypes
 from .base import LLMEngine
 from core.sinks.base import Sink
 
+import os
+
 class GoogleGenAIEngine(LLMEngine):
     def __init__(self, model: str, api_key: str, session_manager=None):
         super().__init__(model, session_manager=session_manager)
-        self.api_key = api_key
+        self.api_key = api_key or os.environ.get("GOOGLE_GENAI_API_KEY", "")
         print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
 
     def warmup(self, status_callback=None) -> bool:
