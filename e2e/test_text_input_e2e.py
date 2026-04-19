@@ -10,11 +10,12 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
 
         import main
         from core.sources import TextSource
-        from core.output import set_active_source_ui, ui_manager
+        from core.output import set_active_source_ui, ui_manager, get_active_source
 
         # Switch source to text to ensure the text panel is visible
         # We need to cycle source if we are NOT using TextSource currently.
-        if 'cycle_source' in app_callbacks and main.active_source_instance and main.active_source_instance.name != "text":
+        active_src = get_active_source()
+        if 'cycle_source' in app_callbacks and active_src and active_src.name != "text":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
 

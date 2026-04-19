@@ -5,16 +5,23 @@ def run_test_capture(app_callbacks, status_update_callback=None):
     import main
     from core.sources import ScreenshotSource
     def _run():
-        original_get_text = main.active_source_instance.get_text
+        from core.output import get_active_source
+        active_src = get_active_source()
+
+        # Switch to image source if needed
+        if 'cycle_source' in app_callbacks and active_src and active_src.name != "image":
+            app_callbacks['cycle_source']()
+            time.sleep(0.5)
+            active_src = get_active_source()
+
+        if not active_src:
+            return
+
+        original_get_text = active_src.get_text
         def mocked_get_text(*args, **kwargs):
             return "What is the fifth largest country in the world?"
 
-        # Switch to image source if needed
-        if 'cycle_source' in app_callbacks and main.active_source_instance and main.active_source_instance.name != "image":
-            app_callbacks['cycle_source']()
-            time.sleep(0.5)
-
-        main.active_source_instance.get_text = mocked_get_text
+        active_src.get_text = mocked_get_text
 
         if 'capture' in app_callbacks:
             if status_update_callback:
@@ -22,6 +29,6 @@ def run_test_capture(app_callbacks, status_update_callback=None):
             app_callbacks['capture']()
 
         time.sleep(3)
-        main.active_source_instance.get_text = original_get_text
+        active_src.get_text = original_get_text
 
     threading.Thread(target=_run, daemon=True).start()
