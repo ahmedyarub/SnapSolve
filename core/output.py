@@ -346,11 +346,12 @@ class UIManager(QObject):
         ui_signals.request_active_source.connect(self._on_request_active_source)
 
     def _on_request_active_source(self, q):
-        import main
-        # Sometimes when importing or accessing across modules in PyQt the global var isn't correctly resolved,
-        # so let's import it directly instead of through the module object if needed. But accessing main.active_source_instance should work
-        # unless it hasn't been set yet. Let's make sure it's valid.
-        q.put(getattr(main, 'active_source_instance', None))
+        import sys
+        main_module = sys.modules.get('main')
+        if main_module and hasattr(main_module, 'active_source_instance'):
+            q.put(main_module.active_source_instance)
+        else:
+            q.put(None)
 
     def _on_toggle_panel(self, show):
         if show:
@@ -424,11 +425,14 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 def get_active_source():
     import queue
     import threading
-    import main
+    import sys
 
     app = QApplication.instance()
     if app and app.thread() == threading.current_thread():
-        return getattr(main, 'active_source_instance', None)
+        main_module = sys.modules.get('main')
+        if main_module and hasattr(main_module, 'active_source_instance'):
+            return main_module.active_source_instance
+        return None
 
     q = queue.Queue()
     ui_signals.request_active_source.emit(q)

@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from typing import Dict, List, Any
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
     QWidget, QLabel, QLineEdit, QComboBox, QPushButton, QMessageBox,
@@ -108,6 +109,22 @@ class ConfigUI(QDialog):
         self.show_control_panel = QCheckBox("Show control panel on startup")
         self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
         layout.addRow("Control Panel:", self.show_control_panel)
+
+        # QA Testing Panel
+        self.qa_testing = QCheckBox("Show QA Testing Panel")
+        self.qa_testing.setChecked(self.config.get('qa_testing', False))
+        layout.addRow("QA Testing:", self.qa_testing)
+
+        # Warmups
+        self.warmup_ocr = QCheckBox("Warmup OCR Engine")
+        self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
+        self.warmup_llm = QCheckBox("Warmup LLM Engine")
+        self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
+
+        warmup_layout = QHBoxLayout()
+        warmup_layout.addWidget(self.warmup_ocr)
+        warmup_layout.addWidget(self.warmup_llm)
+        layout.addRow("Warmup Settings:", warmup_layout)
 
         # API Keys & URLs
         self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
@@ -266,6 +283,9 @@ class ConfigUI(QDialog):
         self.config['voice_id'] = self.voice_id.text() or None
         self.config['background'] = self.background_mode.isChecked()
         self.config['show_control_panel'] = self.show_control_panel.isChecked()
+        self.config['qa_testing'] = self.qa_testing.isChecked()
+        self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
+        self.config['warmup_llm'] = self.warmup_llm.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
 

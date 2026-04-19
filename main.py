@@ -18,6 +18,7 @@ from core.sources.ocr import PaddleOCREngine, NoOCREngine
 from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine
 from core.session_manager import SessionManager
 from core.sources import ScreenshotSource, TextSource
+from core.sources.base import Source
 from ui.selector import get_coordinates
 
 try:
@@ -32,7 +33,6 @@ except ImportError:
 is_running = True
 is_processing = False
 ocr_engine_instance = None
-from core.sources.base import Source
 
 llm_engine_instance = None
 session_manager = None
@@ -595,8 +595,12 @@ def main():
     session_manager = SessionManager(config)
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
-        print("Starting PaddleOCR (this may take a moment to warmup)...")
-        ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+        if config.get('warmup_ocr', True):
+            print("Starting PaddleOCR (this may take a moment to warmup)...")
+            ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+        else:
+            print("Starting PaddleOCR without proactive warmup...")
+            ocr_engine_instance = PaddleOCREngine()
     else:
         ocr_engine_instance = NoOCREngine()
 
@@ -625,11 +629,12 @@ def main():
     # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
     warmup_status_cb = lambda msg: print(f"Init status: {msg}")
     warmup_success = False
-    if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
-        warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
+    if config.get('warmup_llm', True):
+        if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
+            warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
-    if not warmup_success and llm_engine_instance:
-        llm_engine_instance.warmup(status_callback=warmup_status_cb)
+        if not warmup_success and llm_engine_instance:
+            llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
