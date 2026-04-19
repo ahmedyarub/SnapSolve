@@ -14,7 +14,7 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
 
         # Switch source to text to ensure the text panel is visible
         # We need to cycle source if we are NOT using TextSource currently.
-        if 'cycle_source' in app_callbacks and main.active_source_instance.name != "text":
+        if 'cycle_source' in app_callbacks and main.active_source_instance and main.active_source_instance.name != "text":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
 

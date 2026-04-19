@@ -10,7 +10,7 @@ def run_test_capture(app_callbacks, status_update_callback=None):
             return "What is the fifth largest country in the world?"
 
         # Switch to image source if needed
-        if 'cycle_source' in app_callbacks and main.active_source_instance.name != "image":
+        if 'cycle_source' in app_callbacks and main.active_source_instance and main.active_source_instance.name != "image":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
 
