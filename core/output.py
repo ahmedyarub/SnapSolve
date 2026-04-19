@@ -346,13 +346,8 @@ class UIManager(QObject):
         ui_signals.request_active_source.connect(self._on_request_active_source)
 
     def _on_request_active_source(self, q):
-        import sys
-        import __main__
-        main_module = sys.modules.get('main') or __main__
-        if main_module and hasattr(main_module, 'active_source_instance'):
-            q.put(main_module.active_source_instance)
-        else:
-            q.put(None)
+        from core.sources import get_active_source_instance
+        q.put(get_active_source_instance())
 
     def _on_toggle_panel(self, show):
         if show:
@@ -426,15 +421,11 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 def get_active_source():
     import queue
     import threading
-    import sys
-    import __main__
+    from core.sources import get_active_source_instance
 
     app = QApplication.instance()
     if app and app.thread() == threading.current_thread():
-        main_module = sys.modules.get('main') or __main__
-        if main_module and hasattr(main_module, 'active_source_instance'):
-            return main_module.active_source_instance
-        return None
+        return get_active_source_instance()
 
     q = queue.Queue()
     ui_signals.request_active_source.emit(q)

@@ -34,9 +34,10 @@ is_running = True
 is_processing = False
 ocr_engine_instance = None
 
+from core.sources import get_active_source_instance, set_active_source_instance
+
 llm_engine_instance = None
 session_manager = None
-active_source_instance: Source | None = None
 
 # Multi-capture state
 is_multi_capturing = False
@@ -137,12 +138,13 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
     threading.Thread(target=_process, daemon=True).start()
 
 def handle_capture(config, active_profile, active_prompt_text):
-    global is_processing, active_source_instance
+    global is_processing
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Capture is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Capture is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -154,7 +156,8 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     def _capture():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, active_source_instance
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+            active_src = get_active_source_instance()
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -166,7 +169,7 @@ def handle_capture(config, active_profile, active_prompt_text):
             sink = PopupSink(config, show_headers, main_model, fallback_model)
 
             result = process_pipeline(
-                source=active_source_instance,
+                source=active_src,
                 llm=llm_engine_instance,
                 prompt_text=active_prompt_text,
                 status_callback=status_update,
@@ -176,8 +179,8 @@ def handle_capture(config, active_profile, active_prompt_text):
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
                 coords=config.get('coordinates')
             )
-            if hasattr(active_source_instance, 'cleanup_all'):
-                active_source_instance.cleanup_all()
+            if hasattr(active_src, 'cleanup_all'):
+                active_src.cleanup_all()
             print(f"Result: {result}")
 
             final_result = result
@@ -202,12 +205,13 @@ def handle_capture(config, active_profile, active_prompt_text):
 
 
 def handle_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts, active_source_instance
+    global is_processing, is_multi_capturing, multi_capture_texts
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Multi-capture is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Multi-capture is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -283,14 +287,15 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
 
 
 def handle_end_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts, active_source_instance
+    global is_processing, is_multi_capturing, multi_capture_texts
     if is_processing:
         return
 
     if not is_multi_capturing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
         return
 
     set_processing(True)
@@ -416,26 +421,29 @@ def handle_cancel_multi_capture(config):
 
 
 def handle_cycle_source(config):
-    global active_source_instance, ocr_engine_instance
+    global ocr_engine_instance
     from core.sources import ScreenshotSource, TextSource
-    if isinstance(active_source_instance, ScreenshotSource):
-        active_source_instance = TextSource()
+    active_source = get_active_source_instance()
+    if isinstance(active_source, ScreenshotSource):
+        new_source = TextSource()
     else:
-        active_source_instance = ScreenshotSource()
-        active_source_instance.ocr_engine = ocr_engine_instance
+        new_source = ScreenshotSource()
+        new_source.ocr_engine = ocr_engine_instance
 
-    set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
-    print(f"Source cycled to: {active_source_instance.name}")
+    set_active_source_instance(new_source)
+    set_active_source_ui(new_source.name, opacity=config.get('popup_opacity', 0.8))
+    print(f"Source cycled to: {new_source.name}")
     if 'popup' in config.get('output_mode', ['popup']):
-        show_popup(f"Source changed to: {active_source_instance.name.capitalize()}", auto_close=2000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+        show_popup(f"Source changed to: {new_source.name.capitalize()}", auto_close=2000, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
 def handle_reselect(config):
-    global is_processing, active_source_instance
+    global is_processing
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Reselect is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Reselect is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -517,7 +525,7 @@ def validate_config(active_profile):
 
 
 def main():
-    global is_running, active_source_instance
+    global is_running
 
     # Initialize PyQt application in the main thread
     app = QApplication.instance()
@@ -545,9 +553,11 @@ def main():
     # Determine the initial source
     default_source = config.get('default_source', 'text')
     if default_source == 'image':
-        active_source_instance = ScreenshotSource()
+        set_active_source_instance(ScreenshotSource())
     else:
-        active_source_instance = TextSource()
+        set_active_source_instance(TextSource())
+
+    active_source = get_active_source_instance()
 
     # Set up UI callbacks before starting the main loop
     callbacks = {
@@ -566,7 +576,7 @@ def main():
     set_app_callbacks(callbacks)
 
     # Initialize the UI with the active source before showing the panel
-    set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
+    set_active_source_ui(active_source.name if active_source else "text", opacity=config.get('popup_opacity', 0.8))
 
     if config.get('show_control_panel', False):
         toggle_control_panel(True)
@@ -578,7 +588,7 @@ def main():
         qa_panel_instance = QAPanelWidget(callbacks)
         qa_panel_instance.show()
 
-    if active_source_instance.name == "image" and not config.get('coordinates'):
+    if active_source and active_source.name == "image" and not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
         coords = get_coordinates()
         if coords:
@@ -604,8 +614,9 @@ def main():
     else:
         ocr_engine_instance = NoOCREngine()
 
-    if isinstance(active_source_instance, ScreenshotSource):
-        active_source_instance.ocr_engine = ocr_engine_instance
+    if isinstance(active_source, ScreenshotSource):
+        active_source.ocr_engine = ocr_engine_instance
+        set_active_source_instance(active_source)
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
