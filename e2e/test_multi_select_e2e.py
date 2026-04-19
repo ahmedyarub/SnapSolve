@@ -6,7 +6,7 @@ def run_test_multi_select(app_callbacks, status_update_callback=None):
     from core.sources import ScreenshotSource
     def _run():
         # Switch to image source if needed
-        if 'cycle_source' in app_callbacks and not isinstance(main.active_source_instance, ScreenshotSource):
+        if 'cycle_source' in app_callbacks and main.active_source_instance.name != "image":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
 
