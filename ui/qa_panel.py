@@ -87,7 +87,13 @@ class QAPanelWidget(QWidget):
         # Update UI: active button to "Cancel", others disabled
         for btn_name, btn in self.buttons.items():
             if btn_name == name:
-                btn.setText(f"Cancel {self.original_button_texts[btn_name]}")
+                # Replace the original icon (which we assume is the first space-separated word, e.g. "🎯")
+                # with a red X (❌). We'll assume everything after the first space is the test name.
+                orig_text = self.original_button_texts[btn_name]
+                parts = orig_text.split(" ", 1)
+                test_name = parts[1] if len(parts) > 1 else orig_text
+                btn.setText(f"❌ Cancel {test_name}")
+                btn.setStyleSheet(btn.styleSheet() + " color: #ff6b6b;")
             else:
                 btn.setEnabled(False)
 
@@ -101,6 +107,13 @@ class QAPanelWidget(QWidget):
                 self.cancel_event = None
                 for btn_name, btn in self.buttons.items():
                     btn.setText(self.original_button_texts[btn_name])
+
+                    # Reset stylesheet
+                    if btn_name == name:
+                        # Remove the appended color from the stylesheet we set in handle_button_click
+                        current_style = btn.styleSheet()
+                        btn.setStyleSheet(current_style.replace(" color: #ff6b6b;", ""))
+
                     btn.setEnabled(True)
                 show_popup(f"Test '{name}' finished:\n{msg}", auto_close=4000)
 

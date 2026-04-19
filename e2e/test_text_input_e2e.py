@@ -19,6 +19,11 @@ def run_test_text_input(app_callbacks, status_update_callback=None, cancel_event
             app_callbacks['cycle_source']()
             time.sleep(1)
 
+        if cancel_event and cancel_event.is_set():
+            if completion_callback:
+                completion_callback(False, "Cancelled")
+            return
+
         # Ensure UI Manager text_input is visible
         assert ui_manager is not None, "UI Manager must be initialized before running e2e tests"
         if ui_manager.text_input:
@@ -28,15 +33,22 @@ def run_test_text_input(app_callbacks, status_update_callback=None, cancel_event
             from PyQt6.QtWidgets import QApplication
 
             def interact_with_ui():
+                if cancel_event and cancel_event.is_set():
+                    return
                 text_edit = text_input_widget.text_edit
                 text_edit.setFocus()
 
                 from PyQt6.QtTest import QTest
-                QTest.keyClicks(text_edit.viewport(), "What is the fifth largest country in the world?")
+                # In QTest.keyClicks the delay is in ms between clicks
+                QTest.keyClicks(text_edit.viewport(), "What is the fifth largest country in the world?", delay=10)
 
                 # Wait 1 second before submitting
                 # We can't use time.sleep in the UI thread, so we schedule the submit
                 def _submit():
+                    if cancel_event and cancel_event.is_set():
+                        if completion_callback:
+                            completion_callback(False, "Cancelled")
+                        return
                     enter_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
                     text_input_widget.eventFilter(text_edit, enter_event)
 
@@ -44,6 +56,11 @@ def run_test_text_input(app_callbacks, status_update_callback=None, cancel_event
 
             # We need to wait a second before typing as requested
             time.sleep(1)
+
+            if cancel_event and cancel_event.is_set():
+                if completion_callback:
+                    completion_callback(False, "Cancelled")
+                return
 
             # The QTimer.singleShot doesn't work well without a running event loop in testing environments
             # Or if called directly from a background thread.
