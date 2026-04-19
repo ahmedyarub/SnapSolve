@@ -44,6 +44,13 @@ def run_test_text_input(app_callbacks, status_update_callback=None, cancel_event
 
             # We need to wait a second before typing as requested
             time.sleep(1)
+
+            # The QTimer.singleShot doesn't work well without a running event loop in testing environments
+            # Or if called directly from a background thread.
+            # We use invokeMethod to guarantee it executes in the main thread correctly.
+            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(text_input_widget, "setFocus", Qt.ConnectionType.QueuedConnection)
+            # It's better to encapsulate this all into a safe GUI call
             QTimer.singleShot(0, interact_with_ui)
 
             def wait_for_response():

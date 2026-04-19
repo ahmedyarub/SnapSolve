@@ -18,8 +18,14 @@ class QAPanelWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
 
-        # Close Btn
+        # Top Bar with Title and Close Btn
         top_layout = QHBoxLayout()
+
+        from PyQt6.QtWidgets import QLabel
+        title_label = QLabel("QA Testing")
+        title_label.setStyleSheet("color: white; font-weight: bold; font-size: 16px;")
+        top_layout.addWidget(title_label)
+
         top_layout.addStretch()
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(20, 20)
@@ -46,11 +52,11 @@ class QAPanelWidget(QWidget):
         from e2e.test_multi_select_e2e import run_test_multi_select
         from e2e.test_text_input_e2e import run_test_text_input
 
-        self.btn_reselect = create_btn('reselect', "Test: Reselect", run_test_reselect)
-        self.btn_capture = create_btn('capture', "Test: Capture", run_test_capture)
-        self.btn_multi = create_btn('multi', "Test: Multi-select", run_test_multi_select)
-        self.btn_text = create_btn('text', "Test: Text Input", run_test_text_input)
-        self.btn_all = create_btn('all', "Test: Run All", self.run_test_all)
+        self.btn_reselect = create_btn('reselect', "🎯 Reselect", run_test_reselect)
+        self.btn_capture = create_btn('capture', "📸 Capture", run_test_capture)
+        self.btn_multi = create_btn('multi', "➕ Multi-select", run_test_multi_select)
+        self.btn_text = create_btn('text', "⌨️ Text Input", run_test_text_input)
+        self.btn_all = create_btn('all', "▶️ Run All", self.run_test_all)
 
         self.resize(200, 300)
         self.update_position()
@@ -81,7 +87,7 @@ class QAPanelWidget(QWidget):
         # Update UI: active button to "Cancel", others disabled
         for btn_name, btn in self.buttons.items():
             if btn_name == name:
-                btn.setText("Cancel Test")
+                btn.setText(f"Cancel {self.original_button_texts[btn_name]}")
             else:
                 btn.setEnabled(False)
 
@@ -103,7 +109,7 @@ class QAPanelWidget(QWidget):
         # Call the test function
         action_func(
             self.app_callbacks,
-            lambda msg: self.set_test_btn_text(name, f"Cancel ({msg})"),
+            lambda msg: None, # Don't update the button text with the status anymore
             self.cancel_event,
             completion_callback
         )
