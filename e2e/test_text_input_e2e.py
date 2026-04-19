@@ -13,6 +13,7 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
         from core.output import set_active_source_ui, ui_manager
 
         # Switch source to text to ensure the text panel is visible
+        # We need to cycle source if we are NOT using TextSource currently.
         if 'cycle_source' in app_callbacks and not isinstance(main.active_source_instance, TextSource):
             app_callbacks['cycle_source']()
             time.sleep(0.5)
@@ -21,23 +22,34 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
         if ui_manager and ui_manager.text_input:
             text_input_widget = ui_manager.text_input
 
-            # Type text
-            text_edit = text_input_widget.text_edit
-            # Send text to QTextEdit via PyQt methods in the main thread (thread-safe way or signal)
-            # Since we're in a thread we'll use QMetaObject.invokeMethod, but direct setText is simpler
-            # However, for pure e2e, we should simulate key events, but Qt allows thread-safe string appending
-            # Wait, Qt widgets must be modified from main thread. We use app.postEvent or simple signal.
-
-            # We can use QTimer to trigger it safely on the main thread
             from PyQt6.QtCore import QTimer
             def interact_with_ui():
+                text_edit = text_input_widget.text_edit
                 text_edit.setPlainText("What is the fifth largest country in the world?")
                 text_edit.setFocus()
 
-                # Simulate pressing Enter
-                enter_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
-                text_input_widget.eventFilter(text_edit, enter_event)
+                # We can post an event or call the callback directly
+                # However, eventFilter checks event type so let's properly post an event or invoke the callback
+                if 'text_submit' in app_callbacks:
+                    app_callbacks['text_submit'](text_edit.toPlainText().strip())
+                    text_edit.clear()
 
             QTimer.singleShot(0, interact_with_ui)
+
+            def wait_for_response():
+                timeout = 10
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    if ui_manager.popup and not ui_manager.popup.isHidden():
+                        # We wait for processing to finish, processing is handled by set_processing state
+                        if not main.is_processing:
+                            ui_manager.popup.hide()
+                            return
+                    time.sleep(0.5)
+                # If we get here, it timed out
+                from core.output import show_popup
+                show_popup("Error: Text input test timed out waiting for response.", auto_close=3000)
+
+            threading.Thread(target=wait_for_response, daemon=True).start()
 
     threading.Thread(target=_run, daemon=True).start()
