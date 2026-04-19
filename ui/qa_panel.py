@@ -41,8 +41,9 @@ class QAPanelWidget(QWidget):
         self.btn_capture = create_btn('capture', "Test: Capture", self.run_test_capture)
         self.btn_multi = create_btn('multi', "Test: Multi-select", self.run_test_multi_select)
         self.btn_text = create_btn('text', "Test: Text Input", self.run_test_text_input)
+        self.btn_all = create_btn('all', "Test: Run All", self.run_test_all)
 
-        self.resize(200, 250)
+        self.resize(200, 300)
         self.update_position()
 
     def update_position(self):
@@ -64,3 +65,14 @@ class QAPanelWidget(QWidget):
     def run_test_text_input(self):
         from e2e.test_text_input_e2e import run_test_text_input
         run_test_text_input(self.app_callbacks)
+
+    def run_test_all(self):
+        def _run_all():
+            self.run_test_text_input()
+            time.sleep(10)
+            self.run_test_capture()
+            time.sleep(10)
+            self.run_test_reselect()
+            time.sleep(5)
+            self.run_test_multi_select()
+        threading.Thread(target=_run_all, daemon=True).start()
