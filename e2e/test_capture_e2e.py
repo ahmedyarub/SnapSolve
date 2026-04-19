@@ -9,12 +9,12 @@ def run_test_capture(app_callbacks, status_update_callback=None):
         active_src = get_active_source()
 
         # Switch to image source if needed
-        if 'cycle_source' in app_callbacks and active_src and active_src.name != "image":
+        if 'cycle_source' in app_callbacks and active_src is not None and active_src.name != "image":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
             active_src = get_active_source()
 
-        if not active_src:
+        if active_src is None:
             return
 
         original_get_text = active_src.get_text

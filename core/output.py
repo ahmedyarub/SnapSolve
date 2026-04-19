@@ -322,9 +322,9 @@ class TextInputWidget(QWidget):
 class UIManager(QObject):
     def __init__(self):
         super().__init__()
-        self.popup = None
-        self.panel = None
-        self.text_input = None
+        self.popup: PopupWidget | None = None
+        self.panel: PanelWidget | None = None
+        self.text_input: TextInputWidget | None = None
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
@@ -347,7 +347,10 @@ class UIManager(QObject):
 
     def _on_request_active_source(self, q):
         import main
-        q.put(main.active_source_instance)
+        # Sometimes when importing or accessing across modules in PyQt the global var isn't correctly resolved,
+        # so let's import it directly instead of through the module object if needed. But accessing main.active_source_instance should work
+        # unless it hasn't been set yet. Let's make sure it's valid.
+        q.put(getattr(main, 'active_source_instance', None))
 
     def _on_toggle_panel(self, show):
         if show:
@@ -372,7 +375,7 @@ class UIManager(QObject):
 
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
-ui_manager = None
+ui_manager: UIManager | None = None
 
 def init_ui_manager():
     global ui_manager
@@ -421,10 +424,11 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 def get_active_source():
     import queue
     import threading
+    import main
+
     app = QApplication.instance()
     if app and app.thread() == threading.current_thread():
-        import main
-        return main.active_source_instance
+        return getattr(main, 'active_source_instance', None)
 
     q = queue.Queue()
     ui_signals.request_active_source.emit(q)

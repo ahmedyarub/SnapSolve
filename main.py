@@ -1,10 +1,12 @@
+import json
+import os
 import platform
+import signal
 import sys
 import threading
 import time
 
 import keyboard
-import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
@@ -30,9 +32,11 @@ except ImportError:
 is_running = True
 is_processing = False
 ocr_engine_instance = None
+from core.sources.base import Source
+
 llm_engine_instance = None
 session_manager = None
-active_source_instance = None
+active_source_instance: Source | None = None
 
 # Multi-capture state
 is_multi_capturing = False
@@ -466,9 +470,6 @@ def exit_app():
         app.quit()
     keyboard.unhook_all()
     sys.exit(0)
-
-import json
-import os
 
 
 def load_models_data():

@@ -50,28 +50,32 @@ class QAPanelWidget(QWidget):
         # Position at top left
         self.move(20, 20)
 
+    def set_test_btn_text(self, name, text):
+        if name in self.buttons:
+            self.buttons[name].setText(text)
+
     def run_test_reselect(self):
         from e2e.test_reselect_e2e import run_test_reselect
-        run_test_reselect(self.app_callbacks)
+        run_test_reselect(self.app_callbacks, lambda msg: self.set_test_btn_text('reselect', msg))
 
     def run_test_capture(self):
         from e2e.test_capture_e2e import run_test_capture
-        run_test_capture(self.app_callbacks)
+        run_test_capture(self.app_callbacks, lambda msg: self.set_test_btn_text('capture', msg))
 
     def run_test_multi_select(self):
         from e2e.test_multi_select_e2e import run_test_multi_select
-        run_test_multi_select(self.app_callbacks)
+        run_test_multi_select(self.app_callbacks, lambda msg: self.set_test_btn_text('multi', msg))
 
     def run_test_text_input(self):
         from e2e.test_text_input_e2e import run_test_text_input
-        run_test_text_input(self.app_callbacks)
+        run_test_text_input(self.app_callbacks, lambda msg: self.set_test_btn_text('text', msg))
 
     def run_test_all(self):
         def _run_all():
             self.run_test_text_input()
-            time.sleep(10)
+            time.sleep(15)
             self.run_test_capture()
-            time.sleep(10)
+            time.sleep(15)
             self.run_test_reselect()
             time.sleep(5)
             self.run_test_multi_select()

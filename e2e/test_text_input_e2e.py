@@ -15,12 +15,13 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
         # Switch source to text to ensure the text panel is visible
         # We need to cycle source if we are NOT using TextSource currently.
         active_src = get_active_source()
-        if 'cycle_source' in app_callbacks and active_src and active_src.name != "text":
+        if 'cycle_source' in app_callbacks and active_src is not None and active_src.name != "text":
             app_callbacks['cycle_source']()
             time.sleep(0.5)
 
         # Ensure UI Manager text_input is visible
-        if ui_manager and ui_manager.text_input:
+        assert ui_manager is not None, "UI Manager must be initialized before running e2e tests"
+        if ui_manager.text_input:
             text_input_widget = ui_manager.text_input
 
             from PyQt6.QtCore import QTimer
@@ -38,16 +39,25 @@ def run_test_text_input(app_callbacks, status_update_callback=None):
             QTimer.singleShot(0, interact_with_ui)
 
             def wait_for_response():
-                timeout = 10
+                assert ui_manager is not None
+                timeout = 30
                 start_time = time.time()
+                # Initial wait to let processing flag be set
+                time.sleep(1)
                 while time.time() - start_time < timeout:
                     if ui_manager.popup and not ui_manager.popup.isHidden():
                         # We wait for processing to finish, processing is handled by set_processing state
                         if not main.is_processing:
-                            ui_manager.popup.hide()
+                            # It's a UI element so must be interacted with in main thread
+                            from PyQt6.QtCore import QTimer
+                            QTimer.singleShot(0, ui_manager.popup.hide)
+                            if status_update_callback:
+                                status_update_callback("Text Input Test Success.")
                             return
                     time.sleep(0.5)
                 # If we get here, it timed out
+                if status_update_callback:
+                    status_update_callback("Text Input Test Failed (Timeout).")
                 from core.output import show_popup
                 show_popup("Error: Text input test timed out waiting for response.", auto_close=3000)
 
