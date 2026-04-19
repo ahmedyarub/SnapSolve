@@ -347,7 +347,8 @@ class UIManager(QObject):
 
     def _on_request_active_source(self, q):
         import sys
-        main_module = sys.modules.get('main')
+        import __main__
+        main_module = sys.modules.get('main') or __main__
         if main_module and hasattr(main_module, 'active_source_instance'):
             q.put(main_module.active_source_instance)
         else:
@@ -426,10 +427,11 @@ def get_active_source():
     import queue
     import threading
     import sys
+    import __main__
 
     app = QApplication.instance()
     if app and app.thread() == threading.current_thread():
-        main_module = sys.modules.get('main')
+        main_module = sys.modules.get('main') or __main__
         if main_module and hasattr(main_module, 'active_source_instance'):
             return main_module.active_source_instance
         return None

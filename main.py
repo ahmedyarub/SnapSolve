@@ -599,8 +599,8 @@ def main():
             print("Starting PaddleOCR (this may take a moment to warmup)...")
             ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
         else:
-            print("Starting PaddleOCR without proactive warmup...")
-            ocr_engine_instance = PaddleOCREngine()
+            print("Skipping proactive PaddleOCR warmup...")
+            ocr_engine_instance = None
     else:
         ocr_engine_instance = NoOCREngine()
 
