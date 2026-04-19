@@ -10,6 +10,7 @@ This application relies on a strictly decoupled architecture:
     *   `llm/`: LLM Engines (`GoogleGenAIEngine`, `OllamaEngine`, etc.).
     *   `sinks/`: Where data is sent (`PopupSink`, `AudioSink`).
     *   `pipeline/`: Orchestrates the flow from Source -> LLM -> Sink.
+    *   **Rule:** Whenever we have a new class of one of the four pipeline components (Source, LLM Engine, Sink, or OCR Engine), an additional e2e test should be created.
 2.  **`ui/`**: All Tkinter-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
 3.  **`config/`**: Configuration parsing and profile management.
 4.  **`sessions/`**: Local storage for chat session history.

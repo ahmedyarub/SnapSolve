@@ -570,6 +570,13 @@ def main():
     if config.get('show_control_panel', False):
         toggle_control_panel(True)
 
+    if config.get('qa_testing', False):
+        from ui.qa_panel import QAPanelWidget
+        # We need to keep a reference to it so it doesn't get garbage collected
+        global qa_panel_instance
+        qa_panel_instance = QAPanelWidget(callbacks)
+        qa_panel_instance.show()
+
     if active_source_instance.name == "image" and not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
         coords = get_coordinates()
