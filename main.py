@@ -158,6 +158,14 @@ def handle_capture(config, active_profile, active_prompt_text):
         try:
             global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
             active_src = get_active_source_instance()
+
+            if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
+                print("Loading PaddleOCR engine on demand...")
+                from core.sources.ocr import PaddleOCREngine
+                ocr_engine_instance = PaddleOCREngine(warmup=False)
+                if hasattr(active_src, 'ocr_engine'):
+                    active_src.ocr_engine = ocr_engine_instance
+
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -253,6 +261,11 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             from core.sources import ScreenshotSource
 
             status_update("Capturing screen...")
+
+            if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
+                status_update("Loading PaddleOCR engine...")
+                from core.sources.ocr import PaddleOCREngine
+                ocr_engine_instance = PaddleOCREngine(warmup=False)
 
             temp_source = ScreenshotSource()
             temp_source.ocr_engine = ocr_engine_instance
@@ -420,7 +433,7 @@ def handle_cancel_multi_capture(config):
                        is_result=False)
 
 
-def handle_cycle_source(config):
+def handle_cycle_source(config, active_profile):
     global ocr_engine_instance
     from core.sources import ScreenshotSource, TextSource
     active_source = get_active_source_instance()
@@ -428,6 +441,10 @@ def handle_cycle_source(config):
         new_source = TextSource()
     else:
         new_source = ScreenshotSource()
+        if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
+            print("Loading PaddleOCR engine on demand for cycle source...")
+            from core.sources.ocr import PaddleOCREngine
+            ocr_engine_instance = PaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
 
     set_active_source_instance(new_source)
@@ -569,7 +586,7 @@ def main():
         'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
         'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
         'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
-        'cycle_source': lambda: handle_cycle_source(config),
+        'cycle_source': lambda: handle_cycle_source(config, active_profile),
         'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
     }
     # Initialize the UI Manager and set callbacks
@@ -687,7 +704,7 @@ def main():
         elif action == 'toggle_stitching':
             keyboard.add_hotkey(key, handle_toggle_stitching, args=[config, active_profile])
         elif action == 'cycle_source':
-            keyboard.add_hotkey(key, handle_cycle_source, args=[config])
+            keyboard.add_hotkey(key, handle_cycle_source, args=[config, active_profile])
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode with pystray...")

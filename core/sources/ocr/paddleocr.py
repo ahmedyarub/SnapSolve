@@ -4,7 +4,7 @@ import time
 from .base import OCREngine
 
 class PaddleOCREngine(OCREngine):
-    def __init__(self, status_callback=None):
+    def __init__(self, status_callback=None, warmup=True):
         if status_callback:
             status_callback("Initializing PaddleOCR...")
         try:
@@ -21,17 +21,18 @@ class PaddleOCREngine(OCREngine):
             )
 
             # Warmup
-            if os.path.exists("test_image.png"):
-                if status_callback:
-                    status_callback("Warming up PaddleOCR...")
-                self.ocr.ocr("test_image.png")
-            else:
-                from PIL import Image
-                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                img = Image.new('RGB', (100, 100), color='white')
-                img.save(temp_file.name)
-                self.ocr.ocr(temp_file.name)
-                os.remove(temp_file.name)
+            if warmup:
+                if os.path.exists("test_image.png"):
+                    if status_callback:
+                        status_callback("Warming up PaddleOCR...")
+                    self.ocr.ocr("test_image.png")
+                else:
+                    from PIL import Image
+                    temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                    img = Image.new('RGB', (100, 100), color='white')
+                    img.save(temp_file.name)
+                    self.ocr.ocr(temp_file.name)
+                    os.remove(temp_file.name)
 
         except ImportError:
             raise Exception("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")
