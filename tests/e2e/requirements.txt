@@ -1,0 +1,6 @@
+pyautogu
+opencv-python
+pyperclip
+pillow
+pytest
+PyQt6

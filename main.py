@@ -254,16 +254,8 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
 
             status_update("Capturing screen...")
 
-            ocr = ocr_engine_instance
-            if not ocr:
-                from core.sources.ocr import PaddleOCREngine, NoOCREngine
-                if ocr_type == "paddleocr":
-                    ocr = PaddleOCREngine()
-                else:
-                    ocr = NoOCREngine()
-
             temp_source = ScreenshotSource()
-            temp_source.ocr_engine = ocr
+            temp_source.ocr_engine = ocr_engine_instance
             extracted_text = None
             try:
                 extracted_text = temp_source.get_text(coords=coords, status_callback=status_update)
