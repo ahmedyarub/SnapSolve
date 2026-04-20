@@ -22,7 +22,6 @@
     "popup_opacity": 0.9,
     "fallback_language": "python",
     "toggle_panel": true,
-    "qa_testing": false,
     "warmup_ocr": true,
     "warmup_llm": true
 }

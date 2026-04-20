@@ -144,7 +144,6 @@ def parse_args():
     parser.add_argument('--continue-last', action='store_true', help='Continue the last chat session')
     parser.add_argument('--continue-session', type=str, help='Continue a specific chat session by ID')
     parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
-    parser.add_argument('--qa-testing', action='store_true', help='Show the QA testing panel')
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
 
@@ -212,9 +211,6 @@ def get_config():
 
     if args.default_source:
         config['default_source'] = args.default_source
-
-    if args.qa_testing:
-        config['qa_testing'] = True
 
     if args.disable_warmup_ocr:
         config['warmup_ocr'] = False

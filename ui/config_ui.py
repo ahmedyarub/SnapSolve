@@ -1,17 +1,23 @@
 import json
-import os
-import sys
-from typing import Dict, List, Any
+
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
-    QWidget, QLabel, QLineEdit, QComboBox, QPushButton, QMessageBox,
-    QCheckBox, QGroupBox, QFormLayout, QScrollArea, QDialogButtonBox, QSpinBox
+    QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
+    QWidget, QLabel, QLineEdit, QComboBox, QMessageBox,
+    QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox
 )
-from PyQt6.QtCore import Qt
+
 
 class ConfigUI(QDialog):
     def __init__(self, config_path, models_path, profiles_path, prompts_path):
         super().__init__()
+        self.output_mode_audio = None
+        self.output_mode_popup = None
+        self.should_run = None
+        self.btn_save_run = None
+        self.button_box = None
+        self.shortcuts_tab = None
+        self.profile_tab = None
+        self.app_tab = None
         self.config_path = config_path
         self.models_path = models_path
         self.profiles_path = profiles_path
@@ -63,7 +69,8 @@ class ConfigUI(QDialog):
         self.setup_shortcuts_tab()
 
         # Buttons
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         self.btn_save_run = self.button_box.addButton("Save and Run", QDialogButtonBox.ButtonRole.ActionRole)
         self.button_box.accepted.connect(self.save_all)
         self.button_box.rejected.connect(self.reject)
@@ -109,11 +116,6 @@ class ConfigUI(QDialog):
         self.show_control_panel = QCheckBox("Show control panel on startup")
         self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
         layout.addRow("Control Panel:", self.show_control_panel)
-
-        # QA Testing Panel
-        self.qa_testing = QCheckBox("Show QA Testing Panel")
-        self.qa_testing.setChecked(self.config.get('qa_testing', False))
-        layout.addRow("QA Testing:", self.qa_testing)
 
         # Warmups
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
@@ -283,7 +285,6 @@ class ConfigUI(QDialog):
         self.config['voice_id'] = self.voice_id.text() or None
         self.config['background'] = self.background_mode.isChecked()
         self.config['show_control_panel'] = self.show_control_panel.isChecked()
-        self.config['qa_testing'] = self.qa_testing.isChecked()
         self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
         self.config['warmup_llm'] = self.warmup_llm.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
@@ -306,8 +307,10 @@ class ConfigUI(QDialog):
         self.save_json(self.config_path, self.config)
         self.save_json(self.profiles_path, self.profiles)
 
-        QMessageBox.information(self, "Success", "Configuration saved successfully!\nPlease restart the application for some changes to take effect.")
+        QMessageBox.information(self, "Success",
+                                "Configuration saved successfully!\nPlease restart the application for some changes to take effect.")
         self.accept()
+
 
 def open_config_ui(config_path, models_path, profiles_path, prompts_path):
     app = QApplication.instance()
@@ -325,22 +328,26 @@ def open_config_ui(config_path, models_path, profiles_path, prompts_path):
 
     return should_run
 
+
 if __name__ == "__main__":
     import sys
     import os
 
     # Temporarily create app for the config UI if run directly
     from PyQt6.QtWidgets import QApplication
+
     # Only create if it doesn't exist
     if not QApplication.instance():
         app = QApplication(sys.argv)
 
-    should_run = open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json", "config/prompts.json")
+    should_run = open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json",
+                                "config/prompts.json")
 
     if should_run:
         print("Launching application...")
         # Since we are executing as a script, we can run main.py via subprocess or import it.
         # It's cleaner to exec into main.py
         import subprocess
+
         subprocess.Popen([sys.executable, "main.py"])
         sys.exit(0)
