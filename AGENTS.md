@@ -41,3 +41,6 @@ This application relies on a strictly decoupled architecture:
 ## General Practices
 *   **Speed is critical:** Prioritize optimizations that reduce time-to-first-token.
 *   **Logging:** Use the existing logging structures. When popping up notifications, distinguish between "log" messages (auto-closing) and "result" messages (staying open).
+*   **Clean Code:** Always remove unused imports, variables, and function arguments. Optimize imports.
+*   **Types:** Always add type hints and annotations when practical. If using a `class | None` pattern, always assert that it is not `None` before use.
+*   **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever you introduce new settings.

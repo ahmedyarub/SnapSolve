@@ -1,21 +1,22 @@
+import json
+import os
 import platform
 import sys
 import threading
-import time
 
 import keyboard
-import sys
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
-from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, set_active_source_ui, set_app_processing_state
-from core.pipeline import process_pipeline
-from core.sinks import PopupSink
-from core.sources.ocr import PaddleOCREngine, NoOCREngine
 from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine
+from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, \
+    set_active_source_ui, set_app_processing_state
+from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
+from core.sinks import PopupSink
 from core.sources import ScreenshotSource, TextSource
+from core.sources.ocr import PaddleOCREngine, NoOCREngine
 from ui.selector import get_coordinates
 
 try:
@@ -30,9 +31,11 @@ except ImportError:
 is_running = True
 is_processing = False
 ocr_engine_instance = None
+
+from core.sources import get_active_source_instance, set_active_source_instance
+
 llm_engine_instance = None
 session_manager = None
-active_source_instance = None
 
 # Multi-capture state
 is_multi_capturing = False
@@ -72,6 +75,7 @@ def set_processing(state):
     global is_processing
     is_processing = state
     set_app_processing_state(state)
+
 
 def handle_text_submit(config, active_profile, active_prompt_text, text):
     global is_processing
@@ -132,13 +136,15 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
 
     threading.Thread(target=_process, daemon=True).start()
 
+
 def handle_capture(config, active_profile, active_prompt_text):
-    global is_processing, active_source_instance
+    global is_processing
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Capture is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Capture is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -150,7 +156,8 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     def _capture():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, active_source_instance
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+            active_src = get_active_source_instance()
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -162,7 +169,7 @@ def handle_capture(config, active_profile, active_prompt_text):
             sink = PopupSink(config, show_headers, main_model, fallback_model)
 
             result = process_pipeline(
-                source=active_source_instance,
+                source=active_src,
                 llm=llm_engine_instance,
                 prompt_text=active_prompt_text,
                 status_callback=status_update,
@@ -172,8 +179,8 @@ def handle_capture(config, active_profile, active_prompt_text):
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
                 coords=config.get('coordinates')
             )
-            if hasattr(active_source_instance, 'cleanup_all'):
-                active_source_instance.cleanup_all()
+            if hasattr(active_src, 'cleanup_all'):
+                active_src.cleanup_all()
             print(f"Result: {result}")
 
             final_result = result
@@ -198,12 +205,13 @@ def handle_capture(config, active_profile, active_prompt_text):
 
 
 def handle_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts, active_source_instance
+    global is_processing, is_multi_capturing, multi_capture_texts
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Multi-capture is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Multi-capture is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -214,7 +222,8 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             ocr_type = active_profile.get('ocr_engine', 'none')
             if ocr_type == 'none':
                 if 'popup' in config.get('output_mode', ['popup']):
-                    show_popup("Error: Multi-capture requires an OCR engine to be defined in the active profile.", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                    show_popup("Error: Multi-capture requires an OCR engine to be defined in the active profile.",
+                               auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
                 return
 
             if not is_multi_capturing:
@@ -223,7 +232,8 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
                 update_multi_state(True)
 
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup("Multiple capture mode", auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup("Multiple capture mode", auto_close=None, opacity=config.get('popup_opacity', 0.8),
+                           is_result=False)
 
             # Get coordinates specifically for this capture (don't update config)
             coords = get_coordinates()
@@ -279,14 +289,15 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
 
 
 def handle_end_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts, active_source_instance
+    global is_processing, is_multi_capturing, multi_capture_texts
     if is_processing:
         return
 
     if not is_multi_capturing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
         return
 
     set_processing(True)
@@ -299,7 +310,8 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
         try:
             if not multi_capture_texts:
                 if 'popup' in config.get('output_mode', ['popup']):
-                    show_popup("No text captured in multi-capture mode.", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                    show_popup("No text captured in multi-capture mode.", auto_close=3000,
+                               opacity=config.get('popup_opacity', 0.8), is_result=False)
                 is_multi_capturing = False
                 update_multi_state(False)
                 return
@@ -375,7 +387,9 @@ def handle_new_chat_session(config):
                     pass
 
             # Then show the new status popup
-            show_popup(f"New Chat Session Started\nID: {session_id}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+            show_popup(f"New Chat Session Started\nID: {session_id}", auto_close=3000,
+                       opacity=config.get('popup_opacity', 0.8), is_result=False)
+
 
 def handle_toggle_stitching(config, active_profile):
     current = active_profile.get('enable_stitching', True)
@@ -393,7 +407,9 @@ def handle_toggle_stitching(config, active_profile):
 
     state_str = "Enabled" if not current else "Disabled"
     if 'popup' in config.get('output_mode', ['popup']):
-        show_popup(f"Chat Stitching {state_str}", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+        show_popup(f"Chat Stitching {state_str}", auto_close=3000, opacity=config.get('popup_opacity', 0.8),
+                   is_result=False)
+
 
 def handle_toggle_panel(config):
     # Toggle control panel state internally
@@ -408,30 +424,36 @@ def handle_cancel_multi_capture(config):
         update_multi_state(False)
         print("Multi-capture canceled.")
         if 'popup' in config.get('output_mode', ['popup']):
-            show_popup("Multi-capture canceled", auto_close=3000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+            show_popup("Multi-capture canceled", auto_close=3000, opacity=config.get('popup_opacity', 0.8),
+                       is_result=False)
 
 
 def handle_cycle_source(config):
-    global active_source_instance, ocr_engine_instance
+    global ocr_engine_instance
     from core.sources import ScreenshotSource, TextSource
-    if isinstance(active_source_instance, ScreenshotSource):
-        active_source_instance = TextSource()
+    active_source = get_active_source_instance()
+    if isinstance(active_source, ScreenshotSource):
+        new_source = TextSource()
     else:
-        active_source_instance = ScreenshotSource()
-        active_source_instance.ocr_engine = ocr_engine_instance
+        new_source = ScreenshotSource()
+        new_source.ocr_engine = ocr_engine_instance
 
-    set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
-    print(f"Source cycled to: {active_source_instance.name}")
+    set_active_source_instance(new_source)
+    set_active_source_ui(new_source.name, opacity=config.get('popup_opacity', 0.8))
+    print(f"Source cycled to: {new_source.name}")
     if 'popup' in config.get('output_mode', ['popup']):
-        show_popup(f"Source changed to: {active_source_instance.name.capitalize()}", auto_close=2000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+        show_popup(f"Source changed to: {new_source.name.capitalize()}", auto_close=2000,
+                   opacity=config.get('popup_opacity', 0.8), is_result=False)
+
 
 def handle_reselect(config):
-    global is_processing, active_source_instance
+    global is_processing
     if is_processing:
         return
 
-    if active_source_instance and active_source_instance.name != "image":
-        print(f"Reselect is disabled for {active_source_instance.name} source.")
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        print(f"Reselect is disabled for {active_source.name} source.")
         return
 
     set_processing(True)
@@ -466,9 +488,6 @@ def exit_app():
         app.quit()
     keyboard.unhook_all()
     sys.exit(0)
-
-import json
-import os
 
 
 def load_models_data():
@@ -516,7 +535,7 @@ def validate_config(active_profile):
 
 
 def main():
-    global is_running, active_source_instance
+    global is_running
 
     # Initialize PyQt application in the main thread
     app = QApplication.instance()
@@ -544,9 +563,11 @@ def main():
     # Determine the initial source
     default_source = config.get('default_source', 'text')
     if default_source == 'image':
-        active_source_instance = ScreenshotSource()
+        set_active_source_instance(ScreenshotSource())
     else:
-        active_source_instance = TextSource()
+        set_active_source_instance(TextSource())
+
+    active_source = get_active_source_instance()
 
     # Set up UI callbacks before starting the main loop
     callbacks = {
@@ -559,18 +580,18 @@ def main():
         'cycle_source': lambda: handle_cycle_source(config),
         'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
     }
-        # Initialize the UI Manager and set callbacks
+    # Initialize the UI Manager and set callbacks
     from core.output import init_ui_manager
     init_ui_manager()
     set_app_callbacks(callbacks)
 
     # Initialize the UI with the active source before showing the panel
-    set_active_source_ui(active_source_instance.name, opacity=config.get('popup_opacity', 0.8))
+    set_active_source_ui(active_source.name if active_source else "text", opacity=config.get('popup_opacity', 0.8))
 
     if config.get('show_control_panel', False):
         toggle_control_panel(True)
 
-    if active_source_instance.name == "image" and not config.get('coordinates'):
+    if active_source and active_source.name == "image" and not config.get('coordinates'):
         print("Coordinates not found in config. Launching coordinate selector...")
         coords = get_coordinates()
         if coords:
@@ -587,13 +608,18 @@ def main():
     session_manager = SessionManager(config)
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
-        print("Starting PaddleOCR (this may take a moment to warmup)...")
-        ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+        if config.get('warmup_ocr', True):
+            print("Starting PaddleOCR (this may take a moment to warmup)...")
+            ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+        else:
+            print("Skipping proactive PaddleOCR warmup...")
+            ocr_engine_instance = None
     else:
         ocr_engine_instance = NoOCREngine()
 
-    if isinstance(active_source_instance, ScreenshotSource):
-        active_source_instance.ocr_engine = ocr_engine_instance
+    if isinstance(active_source, ScreenshotSource):
+        active_source.ocr_engine = ocr_engine_instance
+        set_active_source_instance(active_source)
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -601,14 +627,19 @@ def main():
 
     if llm_type == "ollama":
         print("Initializing Ollama Engine...")
-        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
+        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
+                                           session_manager=session_manager)
         if fallback_model and fallback_model != "None":
             print("Initializing Fallback Ollama Engine (with warmup)...")
-            fallback_llm_engine_instance = OllamaEngine(fallback_model, config.get('ollama_url', 'http://localhost:11434'), session_manager=session_manager)
+            fallback_llm_engine_instance = OllamaEngine(fallback_model,
+                                                        config.get('ollama_url', 'http://localhost:11434'),
+                                                        session_manager=session_manager)
     elif llm_type == "google-genai":
-        llm_engine_instance = GoogleGenAIEngine(model, config.get('google_genai_api_key', ''), session_manager=session_manager)
+        llm_engine_instance = GoogleGenAIEngine(model, config.get('google_genai_api_key', ''),
+                                                session_manager=session_manager)
         if fallback_model and fallback_model != "None":
-            fallback_llm_engine_instance = GoogleGenAIEngine(fallback_model, config.get('google_genai_api_key', ''), session_manager=session_manager)
+            fallback_llm_engine_instance = GoogleGenAIEngine(fallback_model, config.get('google_genai_api_key', ''),
+                                                             session_manager=session_manager)
     else:
         llm_engine_instance = GeminiCLIEngine(model, session_manager=session_manager)
         if fallback_model and fallback_model != "None":
@@ -617,11 +648,12 @@ def main():
     # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
     warmup_status_cb = lambda msg: print(f"Init status: {msg}")
     warmup_success = False
-    if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
-        warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
+    if config.get('warmup_llm', True):
+        if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
+            warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
-    if not warmup_success and llm_engine_instance:
-        llm_engine_instance.warmup(status_callback=warmup_status_cb)
+        if not warmup_success and llm_engine_instance:
+            llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
     llm_type = active_profile.get('llm_engine', 'gemini')
     model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -671,6 +703,7 @@ def main():
         def run_tray():
             icon = create_tray_icon(exit_app, config)
             icon.run()
+
         threading.Thread(target=run_tray, daemon=True).start()
     else:
         print("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")

@@ -66,7 +66,9 @@ def load_config():
         'popup_opacity': 0.8,
         'fallback_language': 'python',
         'show_control_panel': False,
-        'default_source': 'text'
+        'default_source': 'text',
+        'warmup_ocr': True,
+        'warmup_llm': True
     }
 
     # Ensure config directory exists
@@ -142,6 +144,8 @@ def parse_args():
     parser.add_argument('--continue-last', action='store_true', help='Continue the last chat session')
     parser.add_argument('--continue-session', type=str, help='Continue a specific chat session by ID')
     parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
+    parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
+    parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
 
     return parser.parse_args()
 
@@ -207,5 +211,11 @@ def get_config():
 
     if args.default_source:
         config['default_source'] = args.default_source
+
+    if args.disable_warmup_ocr:
+        config['warmup_ocr'] = False
+
+    if args.disable_warmup_llm:
+        config['warmup_llm'] = False
 
     return config

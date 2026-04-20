@@ -14,6 +14,7 @@ class UISignals(QObject):
     set_processing_state = pyqtSignal(bool)
     show_popup = pyqtSignal(dict)
     close_popup = pyqtSignal()
+    request_active_source = pyqtSignal(object)
 
 class SelectorSignals(QObject):
     request_coords = pyqtSignal(object)
@@ -321,9 +322,9 @@ class TextInputWidget(QWidget):
 class UIManager(QObject):
     def __init__(self):
         super().__init__()
-        self.popup = None
-        self.panel = None
-        self.text_input = None
+        self.popup: PopupWidget | None = None
+        self.panel: PanelWidget | None = None
+        self.text_input: TextInputWidget | None = None
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
@@ -342,6 +343,11 @@ class UIManager(QObject):
         ui_signals.set_processing_state.connect(self._on_set_processing_state)
         ui_signals.show_popup.connect(self.popup.show_content)
         ui_signals.close_popup.connect(self.popup.hide)
+        ui_signals.request_active_source.connect(self._on_request_active_source)
+
+    def _on_request_active_source(self, q):
+        from core.sources import get_active_source_instance
+        q.put(get_active_source_instance())
 
     def _on_toggle_panel(self, show):
         if show:
@@ -366,7 +372,7 @@ class UIManager(QObject):
 
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
-ui_manager = None
+ui_manager: UIManager | None = None
 
 def init_ui_manager():
     global ui_manager
@@ -411,6 +417,19 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
 
     if 'popup' in output_modes:
         show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)
+
+def get_active_source():
+    import queue
+    import threading
+    from core.sources import get_active_source_instance
+
+    app = QApplication.instance()
+    if app and app.thread() == threading.current_thread():
+        return get_active_source_instance()
+
+    q = queue.Queue()
+    ui_signals.request_active_source.emit(q)
+    return q.get()
 
 def _handle_request_coords(q):
     from ui.selector import _get_coordinates_impl
