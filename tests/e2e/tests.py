@@ -26,9 +26,7 @@ PROGRAMMING_QUESTION2 = "Use classes"
 SECOND_SCRIPT_PATH = 'main.py'
 SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
-    '--popup-opacity=1.0',
-    '--disable-warmup-ocr',
-    '--disable-warmup-llm'
+    '--popup-opacity=1.0'
 ]
 
 
@@ -117,7 +115,7 @@ def test_capture():
 
     time.sleep(1)
 
-    ui_process.terminate()
+    ui_process.kill()
     ui_process.wait()  # Ensure it has
 
     if find_text(TARGET_WORD_BASIC):
@@ -142,13 +140,16 @@ def test_multi_capture():
     pyautogui.moveTo(x=1000, y=200)
 
     time.sleep(1)
-    pyautogui.dragTo(x=2400, y=400, duration=2)
+    pyautogui.dragTo(x=2600, y=400, duration=1)
+
+    if not click_button(START_MULTISELECT_SOURCE):
+        return
 
     time.sleep(1)
     pyautogui.moveTo(x=1000, y=900)
 
     time.sleep(1)
-    pyautogui.dragTo(x=2400, y=1100, duration=2)
+    pyautogui.dragTo(x=2500, y=1200, duration=1)
 
     time.sleep(1)
     if not click_button(END_MULTISELECT_SOURCE):
@@ -156,7 +157,7 @@ def test_multi_capture():
 
     time.sleep(1)
 
-    ui_process.terminate()
+    ui_process.kill()
     ui_process.wait()  # Ensure it has
 
     if find_text(TARGET_WORD_PROGRAMMING):
@@ -232,6 +233,9 @@ def launch_app():
         # The 'cwd' parameter sets the working directory for the new process
         launched_process = subprocess.Popen(command_list, cwd=WORKING_DIR)
         print("Second script launched successfully.")
+
+        # FIXME Try to get a liveness signal from the app instead of waiting for a fixed time
+        time.sleep(10)
 
         return launched_process
     except Exception as e:
