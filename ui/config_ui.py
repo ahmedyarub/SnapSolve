@@ -167,7 +167,7 @@ class ConfigUI(QDialog):
         form_layout.addRow("Fallback Model:", self.prof_fallback_model)
 
         self.prof_ocr_engine = QComboBox()
-        self.prof_ocr_engine.addItems(["none", "paddleocr"])
+        self.prof_ocr_engine.addItems(["none", "paddleocr", "remote_paddle"])
         form_layout.addRow("OCR Engine:", self.prof_ocr_engine)
 
         self.prof_prompt = QComboBox()

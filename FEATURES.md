@@ -30,6 +30,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   `ollama`: Integrates with a local Ollama server, avoiding external network requests.
 *   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
+*   **Remote OCR:** Offload OCR processing to a remote PaddleOCR service.
 *   **Concurrent Execution & Warmup:** Models are pre-loaded (warmed up) during application startup.
 
 ## Sink (Output Generation)

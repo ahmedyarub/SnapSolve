@@ -79,7 +79,7 @@ sequenceDiagram
 ## 1. Source (`core/sources/`)
 The Source is responsible for capturing the initial raw data.
 *   The primary source is screen capture (`PIL.ImageGrab`).
-*   **OCR Integration (`core/sources/ocr/`):** If a local OCR engine (like PaddleOCR) is configured, the pipeline attempts to extract text via the source's `get_text()` method.
+*   **OCR Integration (`core/sources/ocr/`):** If a local OCR engine (like PaddleOCR) or remote OCR service is configured, the pipeline attempts to extract text via the source's `get_text()` method.
 *   If OCR is disabled or fails, the pipeline falls back to capturing the raw image (`get_image()`), provided the downstream LLM engine supports multimodal inputs.
 *   Image OCR extraction is optimized to run only once, regardless of how many LLM models are running concurrently.
 

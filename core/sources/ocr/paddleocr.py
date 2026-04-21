@@ -3,7 +3,7 @@ import tempfile
 import time
 from .base import OCREngine
 
-class PaddleOCREngine(OCREngine):
+class LocalPaddleOCREngine(OCREngine):
     def __init__(self, status_callback=None, warmup=True):
         if status_callback:
             status_callback("Initializing PaddleOCR...")
@@ -42,6 +42,7 @@ class PaddleOCREngine(OCREngine):
             raise Exception(f"Error during OCR initialization: {str(e)}")
 
     def extract_text(self, image_path: str, status_callback=None) -> str:
+        print("Using local PaddleOCR engine.")
         if status_callback:
             status_callback("Running PaddleOCR...")
 

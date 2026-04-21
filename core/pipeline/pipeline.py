@@ -47,15 +47,19 @@ def process_pipeline(
     extracted_text = None
     image_path = None
     is_image = False
+    
+    print(f"Using source: {source.__class__.__name__}")
 
     # 1. Text/Image Retrieval
     try:
         try:
             extracted_text = source.get_text(coords=coords, text=text, status_callback=status_callback)
+            print(f"Retrieved text from source: {extracted_text}")
         except ValueError as e:
             if llm.supports_images:
                 is_image = True
                 image_path = source.get_image(coords=coords, text=text)
+                print(f"Retrieved image from source: {image_path}")
             else:
                 raise ValueError(f"Pipeline failed: Source could not provide text ({str(e)}), and LLM does not support images.")
     except Exception as e:
@@ -66,6 +70,8 @@ def process_pipeline(
         prompt = extracted_text
     else:
         prompt = f"{prompt_text}: {extracted_text}" if extracted_text else prompt_text
+    
+    print(f"Submitted prompt: {prompt}")
 
     # 3. LLM Execution (with Fallback Concurrency)
     if not fallback_llm:

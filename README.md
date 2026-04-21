@@ -73,6 +73,17 @@ pip install torch
 pip install paddleocr
 ```
 
+### Option 5: Remote OCR Service
+You can offload the OCR processing to a remote server running the PaddleOCR service.
+This is useful if you want to run the main application on a low-end device while leveraging a more powerful machine for text extraction.
+
+1. Ensure the remote machine has the necessary dependencies installed (similar to Option 4).
+2. Start the FastAPI service on the remote machine:
+   ```bash
+   uvicorn services.ocr_service:app --host 0.0.0.0 --port 8000
+   ```
+3. Update your `config.json` to point to the remote service using the `ocr_config` property.
+
 ## Supported Engines
 
 **LLM Engines (`llm_engine`):**
@@ -83,6 +94,7 @@ pip install paddleocr
 **OCR Engines (`ocr_engine`):**
 *   `none` - Does not perform local OCR. The full image is sent directly to the LLM.
 *   `paddleocr` - Uses local PaddleOCR to extract text from the image, sending only the extracted text to the LLM.
+*   `remote_paddle` - Offloads OCR to a remote PaddleOCR service.
 
 ## Configuration
 
@@ -117,7 +129,7 @@ Create a file named `config.json` in the same directory as the script. Example:
 
 *   `voice_id`: Allows you to pick a specific TTS voice or OS playback device configuration installed on your system. You can pass the ID here, or omit it to use the system default.
 *   `llm_engine`: Can be `"gemini"`, `"ollama"`, or `"google-genai"`.
-*   `ocr_engine`: Can be `"none"` (to send image directly to the LLM) or `"paddleocr"` (to extract text locally before sending to the LLM).
+*   `ocr_engine`: Can be `"none"`, `"paddleocr"`, or `"remote_paddle"`.
 *   `ollama_url`: The URL to your Ollama API.
 *   `google_genai_api_key`: Your API key for the Google GenAI SDK (only needed if `llm_engine` is `"google-genai"`).
 

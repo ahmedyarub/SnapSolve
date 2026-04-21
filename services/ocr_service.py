@@ -1,0 +1,96 @@
+import os
+import warnings
+
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw
+from fastapi import FastAPI, HTTPException
+from paddleocr import PaddleOCR
+from pydantic import BaseModel
+
+# Helper function to parse OCR results consistently, based on local_paddleocr_engine.py
+def parse_ocr_results(results):
+    text_lines = []
+    if results:
+        for res in results:
+            if not res:
+                continue
+            # This handles a specific output format that might be used by some PaddleOCR versions
+            if hasattr(res, 'json'):
+                data = res.json
+                if 'res' in data and 'rec_texts' in data['res']:
+                    texts = data['res']['rec_texts']
+                    scores = data['res']['rec_scores']
+                    for text, score in zip(texts, scores):
+                        if score >= 0.5:
+                            text_lines.append(text)
+            # This is the more common list-based format
+            elif isinstance(res, list):
+                for line in res:
+                    text = line[1][0]
+                    confidence = line[1][1]
+                    if confidence >= 0.5:
+                        text_lines.append(text)
+    
+    return " ".join(text_lines)
+
+# Initialize ONCE on boot
+print("Loading OCR weights...")
+os.environ['GLOG_minloglevel'] = '2'
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+ocr = PaddleOCR(
+    lang='en',
+    use_textline_orientation=False,
+    use_doc_unwarping=False,
+)
+print("OCR Engine Ready.")
+
+# Create a dummy image with text for warmup
+img = Image.new('RGB', (200, 50), color=(255, 255, 255))
+d = ImageDraw.Draw(img)
+warmup_text_input = "Warmup Text"
+d.text((10, 10), warmup_text_input, fill=(0, 0, 0))
+open_cv_image = np.array(img)
+open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB to BGR
+warmup_result = ocr.ocr(open_cv_image)
+
+warmup_extracted_text = parse_ocr_results(warmup_result)
+    
+if warmup_text_input in warmup_extracted_text:
+    print(f"OCR Engine Warmed Up. Recognized text: '{warmup_extracted_text}'")
+else:
+    print(f"OCR Engine Warmed Up. Warning: Recognized text '{warmup_extracted_text}' did not match expected '{warmup_text_input}'")
+
+
+class ImageRequest(BaseModel):
+    file_path: str
+
+
+app = FastAPI()
+
+
+@app.post("/ocr")
+async def extract_text(request: ImageRequest):
+    print(f"Received OCR request: {request.json()}")
+    # 1. Validate the file exists
+    if not os.path.exists(request.file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk.")
+
+    print(f"Received image for OCR: {request.file_path}")
+
+    # 2. Read directly from disk into a numpy array via OpenCV
+    img = cv2.imread(request.file_path)
+
+    if img is None:
+        raise HTTPException(status_code=400, detail="Could not read the image file.")
+
+    # 3. Instant execution
+    result = ocr.ocr(img)
+
+    # 4. Extract just the text
+    extracted_text = parse_ocr_results(result)
+    
+    print(f"Recognized text: {extracted_text}")
+
+    return {"text": extracted_text}

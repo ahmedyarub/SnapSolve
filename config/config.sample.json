@@ -23,5 +23,9 @@
     "fallback_language": "python",
     "toggle_panel": true,
     "warmup_ocr": true,
-    "warmup_llm": true
+    "warmup_llm": false,
+    "ocr_config": {
+        "remote_ocr_host": "127.0.0.1",
+        "port": 8000
+    }
 }

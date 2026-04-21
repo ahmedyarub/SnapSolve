@@ -1,5 +1,6 @@
 from .base import OCREngine
 from .none import NoOCREngine
-from .paddleocr import PaddleOCREngine
+from .paddleocr import LocalPaddleOCREngine
+from .remote_paddle import RemotePaddleOCREngine
 
-__all__ = ["OCREngine", "NoOCREngine", "PaddleOCREngine"]
+__all__ = ["OCREngine", "NoOCREngine", "LocalPaddleOCREngine", "RemotePaddleOCREngine"]

@@ -16,7 +16,7 @@ from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
 from core.sinks import PopupSink
 from core.sources import ScreenshotSource, TextSource
-from core.sources.ocr import PaddleOCREngine, NoOCREngine
+from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
 from ui.selector import get_coordinates
 
 try:
@@ -161,8 +161,8 @@ def handle_capture(config, active_profile, active_prompt_text):
 
             if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
                 print("Loading PaddleOCR engine on demand...")
-                from core.sources.ocr import PaddleOCREngine
-                ocr_engine_instance = PaddleOCREngine(warmup=False)
+                from core.sources.ocr import LocalPaddleOCREngine
+                ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
                 if hasattr(active_src, 'ocr_engine'):
                     active_src.ocr_engine = ocr_engine_instance
 
@@ -253,19 +253,12 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
                 if 'popup' in config.get('output_mode', ['popup']):
                     show_popup(msg, auto_close=None, opacity=config.get('popup_opacity', 0.8), is_result=False)
 
-            # Extract text via capture_and_process but tell it to just extract and stop, or do it manually here.
-            # Let's do it manually since we just need OCR.
-            import tempfile
-            from PIL import ImageGrab
-            import os
-            from core.sources import ScreenshotSource
-
             status_update("Capturing screen...")
 
             if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
                 status_update("Loading PaddleOCR engine...")
-                from core.sources.ocr import PaddleOCREngine
-                ocr_engine_instance = PaddleOCREngine(warmup=False)
+                from core.sources.ocr import LocalPaddleOCREngine
+                ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
 
             temp_source = ScreenshotSource()
             temp_source.ocr_engine = ocr_engine_instance
@@ -443,8 +436,8 @@ def handle_cycle_source(config, active_profile):
         new_source = ScreenshotSource()
         if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
             print("Loading PaddleOCR engine on demand for cycle source...")
-            from core.sources.ocr import PaddleOCREngine
-            ocr_engine_instance = PaddleOCREngine(warmup=False)
+            from core.sources.ocr import LocalPaddleOCREngine
+            ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
 
     set_active_source_instance(new_source)
@@ -617,14 +610,16 @@ def main():
     session_manager = SessionManager(config)
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
-        if config.get('warmup_ocr', True):
-            print("Starting PaddleOCR (this may take a moment to warmup)...")
-            ocr_engine_instance = PaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
-        else:
-            print("Skipping proactive PaddleOCR warmup...")
-            ocr_engine_instance = None
+        ocr_engine_instance = LocalPaddleOCREngine(status_callback=lambda msg: print(f"Init status: {msg}"))
+    elif ocr_type == "remote_paddle":
+        ocr_config = config.get('ocr_config', {})
+        ocr_engine_instance = RemotePaddleOCREngine(config=ocr_config,
+                                                    status_callback=lambda msg: print(f"Init status: {msg}"))
     else:
         ocr_engine_instance = NoOCREngine()
+
+    if config.get('warmup_ocr', True) and hasattr(ocr_engine_instance, 'warmup'):
+        ocr_engine_instance.warmup()
 
     if isinstance(active_source, ScreenshotSource):
         active_source.ocr_engine = ocr_engine_instance
