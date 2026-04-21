@@ -718,6 +718,7 @@ def main():
         timer.start(500)
         timer.timeout.connect(lambda: None)
 
+    print("Initialization done.")
     sys.exit(app.exec())
 
     # Cleanup

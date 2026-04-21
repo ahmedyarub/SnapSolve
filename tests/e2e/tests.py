@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 import pyautogui
@@ -223,24 +224,43 @@ def cleanup(main_app):
 def launch_app():
     print(f"Launching '{SECOND_SCRIPT_PATH}' in the background...")
     try:
-        # Check if the directory exists to prevent confusing errors
         if not os.path.exists(WORKING_DIR):
             print(f"Error: The directory '{WORKING_DIR}' does not exist.")
             return None
 
         command_list = [sys.executable, SECOND_SCRIPT_PATH] + SECOND_SCRIPT_ARGS
 
-        # The 'cwd' parameter sets the working directory for the new process
-        launched_process = subprocess.Popen(command_list, cwd=WORKING_DIR)
-        print("Second script launched successfully.")
+        launched_process = subprocess.Popen(
+            command_list,
+            cwd=WORKING_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        print("Second script launched. Waiting for initialization...")
 
-        # FIXME Try to get a liveness signal from the app instead of waiting for a fixed time
-        time.sleep(10)
+        is_initialized = threading.Event()
 
-        return launched_process
+        def read_output():
+            for line in iter(launched_process.stdout.readline, ''):
+                print(line, end='')  # Print the output in real-time
+                if "Initialization done." in line:
+                    is_initialized.set()
+
+        threading.Thread(target=read_output, daemon=True).start()
+
+        # Wait for the initialization message with a timeout
+        if is_initialized.wait(timeout=30):
+            print("App is fully loaded.")
+            return launched_process
+        else:
+            print("Error: App initialization timed out.")
+            launched_process.terminate()
+            return None
+
     except Exception as e:
         print(f"Failed to launch the second script: {e}")
-
         return None
 
 
