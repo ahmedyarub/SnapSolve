@@ -39,7 +39,7 @@ class ScreenshotSource(ImageSource):
                 raise ValueError("OCR engine found no text.")
             return text
         finally:
-            self.cleanup_file(image_path)
+            pass
 
     def get_image(self, coords=None, *args, **kwargs) -> str:
         return self._capture(coords)
@@ -47,11 +47,7 @@ class ScreenshotSource(ImageSource):
     def cleanup_file(self, filepath):
         if filepath in self._temp_files:
             self._temp_files.remove(filepath)
-        if filepath and os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except OSError:
-                pass
+        # Intentionally not deleting the file as requested
 
     def cleanup_all(self):
         for f in list(self._temp_files):

@@ -1,5 +1,6 @@
 import os
 import warnings
+import logging
 
 import cv2
 import numpy as np
@@ -7,6 +8,9 @@ from PIL import Image, ImageDraw
 from fastapi import FastAPI, HTTPException
 from paddleocr import PaddleOCR
 from pydantic import BaseModel
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Helper function to parse OCR results consistently, based on local_paddleocr_engine.py
 def parse_ocr_results(results):
@@ -35,7 +39,7 @@ def parse_ocr_results(results):
     return " ".join(text_lines)
 
 # Initialize ONCE on boot
-print("Loading OCR weights...")
+logging.info("Loading OCR weights...")
 os.environ['GLOG_minloglevel'] = '2'
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -44,7 +48,7 @@ ocr = PaddleOCR(
     use_textline_orientation=False,
     use_doc_unwarping=False,
 )
-print("OCR Engine Ready.")
+logging.info("OCR Engine Ready.")
 
 # Create a dummy image with text for warmup
 img = Image.new('RGB', (200, 50), color=(255, 255, 255))
@@ -58,9 +62,9 @@ warmup_result = ocr.ocr(open_cv_image)
 warmup_extracted_text = parse_ocr_results(warmup_result)
     
 if warmup_text_input in warmup_extracted_text:
-    print(f"OCR Engine Warmed Up. Recognized text: '{warmup_extracted_text}'")
+    logging.info(f"OCR Engine Warmed Up. Recognized text: '{warmup_extracted_text}'")
 else:
-    print(f"OCR Engine Warmed Up. Warning: Recognized text '{warmup_extracted_text}' did not match expected '{warmup_text_input}'")
+    logging.info(f"OCR Engine Warmed Up. Warning: Recognized text '{warmup_extracted_text}' did not match expected '{warmup_text_input}'")
 
 
 class ImageRequest(BaseModel):
@@ -72,12 +76,12 @@ app = FastAPI()
 
 @app.post("/ocr")
 async def extract_text(request: ImageRequest):
-    print(f"Received OCR request: {request.json()}")
+    logging.info(f"Received OCR request: {request.json()}")
     # 1. Validate the file exists
     if not os.path.exists(request.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk.")
 
-    print(f"Received image for OCR: {request.file_path}")
+    logging.info(f"Received image for OCR: {request.file_path}")
 
     # 2. Read directly from disk into a numpy array via OpenCV
     img = cv2.imread(request.file_path)
@@ -91,6 +95,10 @@ async def extract_text(request: ImageRequest):
     # 4. Extract just the text
     extracted_text = parse_ocr_results(result)
     
-    print(f"Recognized text: {extracted_text}")
+    logging.info(f"Recognized text: {extracted_text}")
 
     return {"text": extracted_text}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import time
+import socket
 
 import pyautogui
 import pyperclip
@@ -29,24 +30,27 @@ SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
     '--popup-opacity=1.0'
 ]
+SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
 
 def run_tests():
-    app = init_tests()
+    app_process, service_process = init_tests()
 
-    if not app:
+    if not app_process:
+        cleanup(app_process, service_process)
         return
 
-    time.sleep(3)
+    try:
+        time.sleep(3)
 
-    test_text_source()
+        test_text_source()
 
-    # FIXME we don't need to wait that long. The buttons are disabled so we should cancel the current operation to re-enable them
-    time.sleep(10)
+        # FIXME we don't need to wait that long. The buttons are disabled so we should cancel the current operation to re-enable them
+        time.sleep(10)
 
-    test_image_source()
-
-    cleanup(app)
+        test_image_source()
+    finally:
+        cleanup(app_process, service_process)
 
 
 def test_text_source():
@@ -78,7 +82,25 @@ def test_text_source():
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
 
 
+def poll_port(host, port, timeout=30):
+    print(f"Polling for service on {host}:{port}...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                print(f"Service on {host}:{port} is ready.")
+                return True
+        except (socket.timeout, ConnectionRefusedError, ConnectionResetError):
+            time.sleep(1)
+    print(f"Service on {host}:{port} did not become ready within {timeout} seconds.")
+    return False
+
+
 def test_image_source():
+    if not poll_port("127.0.0.1", 8000):
+        print("OCR service not available. Aborting image tests.")
+        return
+
     # 1. Switch to image source
     if not click_button(CYCLE_SOURCE):
         return
@@ -209,16 +231,62 @@ def init_tests():
     # 1. Minimize all windows
     minimize_all_windows()
 
-    # 2. Start the other script in a separate process
-    return launch_app()
+    # 2. Start the service
+    service_process = launch_service()
+
+    # 3. Start the other script in a separate process
+    app_process = launch_app()
+
+    return app_process, service_process
 
 
-def cleanup(main_app):
+def cleanup(main_app, service_process):
     if main_app is not None:
         print("\nCleaning up: Terminating the background process...")
         main_app.terminate()  # Sends a signal to the process asking it to close
         main_app.wait()  # Waits to ensure the process actually closes
         print("Background process safely closed.")
+
+    if service_process is not None:
+        print("\nCleaning up: Terminating the service process...")
+        service_process.terminate()
+        service_process.wait()
+        print("Service process safely closed.")
+
+
+def launch_service():
+    print(f"Launching '{SERVICE_SCRIPT_PATH}' in the background...")
+    try:
+        if not os.path.exists(WORKING_DIR):
+            print(f"Error: The directory '{WORKING_DIR}' does not exist.")
+            return None
+
+        command_list = [sys.executable, SERVICE_SCRIPT_PATH]
+
+        env = os.environ.copy()
+        env['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+
+        launched_process = subprocess.Popen(
+            command_list,
+            cwd=WORKING_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env
+        )
+        print("Service script launched.")
+
+        def read_output():
+            for line in iter(launched_process.stdout.readline, ''):
+                print(f"[OCR Service] {line}", end='')
+
+        threading.Thread(target=read_output, daemon=True).start()
+
+        return launched_process
+    except Exception as e:
+        print(f"Failed to launch the service script: {e}")
+        return None
 
 
 def launch_app():

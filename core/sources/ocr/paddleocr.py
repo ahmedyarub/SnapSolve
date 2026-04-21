@@ -32,7 +32,6 @@ class LocalPaddleOCREngine(OCREngine):
                     img = Image.new('RGB', (100, 100), color='white')
                     img.save(temp_file.name)
                     self.ocr.ocr(temp_file.name)
-                    os.remove(temp_file.name)
 
         except ImportError:
             raise Exception("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")

@@ -33,11 +33,7 @@ class RemotePaddleOCREngine(OCREngine):
             print(f"Warmup failed: {e}")
         finally:
             temp_file.close()
-            try:
-                os.remove(temp_file.name)
-            except OSError:
-                pass
-
+            # Intentionally not deleting the file
 
     def extract_text(self, image_path: str, status_callback=None) -> str:
         print("Using remote PaddleOCR engine.")
