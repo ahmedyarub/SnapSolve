@@ -14,7 +14,7 @@ from core.output import output_result, show_popup, toggle_control_panel, set_app
     set_active_source_ui, set_app_processing_state
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
-from core.sinks import PopupSink
+from core.sinks import PopupSink, AudioSink, CompositeSink
 from core.sources import ScreenshotSource, TextSource
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
 from ui.selector import get_coordinates
@@ -103,7 +103,10 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            audio_sink = AudioSink(config, cancel_event)
+            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
+            
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -119,6 +122,9 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 text=text,
                 cancel_event=cancel_event
             )
+            if hasattr(sink, 'finish'):
+                sink.finish()
+                
             if cancel_event.is_set():
                 print("Text processing was cancelled.")
                 return
@@ -127,12 +133,12 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
 
             final_result = result
             if show_headers:
-                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
+                if popup_sink.accumulated_fallback and len(popup_sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), config.get('voice_id'),
+            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
@@ -182,7 +188,9 @@ def handle_capture(config, active_profile, active_prompt_text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            audio_sink = AudioSink(config, cancel_event)
+            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
 
             result = process_pipeline(
                 source=active_src,
@@ -196,6 +204,9 @@ def handle_capture(config, active_profile, active_prompt_text):
                 coords=config.get('coordinates'),
                 cancel_event=cancel_event
             )
+            if hasattr(sink, 'finish'):
+                sink.finish()
+                
             if hasattr(active_src, 'cleanup_all'):
                 active_src.cleanup_all()
 
@@ -207,12 +218,12 @@ def handle_capture(config, active_profile, active_prompt_text):
 
             final_result = result
             if show_headers:
-                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
+                if popup_sink.accumulated_fallback and len(popup_sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), config.get('voice_id'),
+            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
@@ -349,7 +360,10 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+            audio_sink = AudioSink(config, cancel_event)
+            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
+
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -365,6 +379,9 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 text=combined_text,
                 cancel_event=cancel_event
             )
+            if hasattr(sink, 'finish'):
+                sink.finish()
+                
             if cancel_event.is_set():
                 print("Multi-capture processing was cancelled.")
                 return
@@ -373,12 +390,12 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
             final_result = result
             if show_headers:
-                if sink.accumulated_fallback and len(sink.accumulated_result) == 1:
+                if popup_sink.accumulated_fallback and len(popup_sink.accumulated_result) == 1:
                     final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), config.get('voice_id'),
+            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
 

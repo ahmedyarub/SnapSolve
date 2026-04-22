@@ -100,7 +100,7 @@ The Engine layer handles communication with the AI models.
 ## 4. Response Sink (`core/sinks/`)
 The Sink layer is responsible for taking the generated text and presenting it to the user.
 *   **Popup Sink:** Streams the text directly into a Tkinter Text widget (`ui/`). It implements a lightweight Markdown parser to natively render bold text, bullet points, markdown tables, and syntax-highlighted code blocks dynamically as chunks arrive.
-*   **Audio Sink:** A separate daemon thread runs `pyttsx3` to read the completed response aloud without blocking the UI.
+*   **Audio Sink:** A separate daemon thread runs Piper TTS to read the completed response aloud without blocking the UI.
 
 ## Directory Structure
 *   `core/`: Contains the main logic, including the pipeline orchestrator, sources, llm engines, and sinks.

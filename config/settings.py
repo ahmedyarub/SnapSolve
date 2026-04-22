@@ -58,7 +58,7 @@ def load_config():
         'save_images': False,
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
-        'voice_id': None, # The TTS voice/playback device ID
+        'piper_model': 'en_US-lessac-medium.onnx', # Path to piper model
         'active_profile_id': 'prof1',
         'ollama_url': 'http://localhost:11434',
         'google_genai_api_key': '',
@@ -68,7 +68,8 @@ def load_config():
         'show_control_panel': False,
         'default_source': 'text',
         'warmup_ocr': True,
-        'warmup_llm': True
+        'warmup_llm': True,
+        'warmup_tts': False
     }
 
     # Ensure config directory exists
@@ -131,7 +132,7 @@ def parse_args():
     parser.add_argument('--coords', type=int, nargs=4, metavar=('X1', 'Y1', 'X2', 'Y2'), help='Capture coordinates')
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
-    parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
+    parser.add_argument('--piper-model', type=str, help='Path to Piper .onnx model')
     parser.add_argument('--active-profile', type=str, help='Active profile ID')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
     parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
@@ -146,6 +147,7 @@ def parse_args():
     parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
+    parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
 
     return parser.parse_args()
 
@@ -175,8 +177,8 @@ def get_config():
     elif args.foreground:
         config['background'] = False
 
-    if args.voice_id:
-        config['voice_id'] = args.voice_id
+    if args.piper_model:
+        config['piper_model'] = args.piper_model
 
     if args.active_profile:
         config['active_profile_id'] = args.active_profile
@@ -217,5 +219,8 @@ def get_config():
 
     if args.disable_warmup_llm:
         config['warmup_llm'] = False
+        
+    if args.disable_warmup_tts:
+        config['warmup_tts'] = False
 
     return config

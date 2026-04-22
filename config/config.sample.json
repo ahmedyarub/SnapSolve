@@ -1,6 +1,7 @@
 {
     "output_mode": [
-        "popup"
+        "popup",
+        "audio"
     ],
     "hotkeys": [
         {
@@ -14,7 +15,8 @@
     ],
     "coordinates": null,
     "background": false,
-    "voice_id": null,
+    "piper_path": "piper",
+    "piper_model": "en_US-lessac-medium.onnx",
     "active_profile_id": "programming",
     "ollama_url": "http://localhost:11434",
     "google_genai_api_key": "",
