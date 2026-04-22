@@ -203,6 +203,8 @@ class PanelWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
 
+        self.is_multi_selecting = False
+
         # Close Btn
         top_layout = QHBoxLayout()
         top_layout.addStretch()
@@ -254,7 +256,9 @@ class PanelWidget(QWidget):
         self.move(x, y)
 
     def set_multi_state(self, in_progress):
+        self.is_multi_selecting = in_progress
         self.btn_end_multi.setVisible(in_progress)
+        self.btn_cancel.setVisible(in_progress)
         self.adjustSize()
         self.update_position()
 
@@ -267,7 +271,8 @@ class PanelWidget(QWidget):
         self.update_position()
 
     def set_processing_state(self, is_processing):
-        self.btn_cancel.setVisible(is_processing)
+        if not self.is_multi_selecting:
+            self.btn_cancel.setVisible(is_processing)
         for name, btn in self.buttons.items():
             if name != 'cancel':
                 btn.setEnabled(not is_processing)

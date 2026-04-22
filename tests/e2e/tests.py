@@ -1,16 +1,18 @@
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
 import time
-import socket
 
+import keyboard
 import pyautogui
 import pyperclip
 
 # --- Configuration variables ---
 WORKING_DIR = r"E:\Python\SnapSolve"
+CANCEL_SOURCE = 'button_cancel.png'
 CYCLE_SOURCE = 'button_cycle_source.png'
 RESELECT_SOURCE = 'button_reselect.png'
 CAPTURE_SOURCE = 'button_capture.png'
@@ -34,19 +36,23 @@ SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
 
 def run_tests():
+    def exit_tests():
+        print("\nExit shortcut pressed. Cleaning up and exiting...")
+        cleanup(app_process, service_process)
+        os._exit(0)
+
+    keyboard.add_hotkey('ctrl+shift+alt+q', exit_tests)
+
     app_process, service_process = init_tests()
 
     if not app_process:
         cleanup(app_process, service_process)
         return
 
+    poll_button(CYCLE_SOURCE)
+
     try:
-        time.sleep(3)
-
         test_text_source()
-
-        # FIXME we don't need to wait that long. The buttons are disabled so we should cancel the current operation to re-enable them
-        time.sleep(10)
 
         test_image_source()
     finally:
@@ -81,19 +87,11 @@ def test_text_source():
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
 
+    click_button(CANCEL_SOURCE, True)
 
-def poll_port(host, port, timeout=30):
-    print(f"Polling for service on {host}:{port}...")
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                print(f"Service on {host}:{port} is ready.")
-                return True
-        except (socket.timeout, ConnectionRefusedError, ConnectionResetError):
-            time.sleep(1)
-    print(f"Service on {host}:{port} did not become ready within {timeout} seconds.")
-    return False
+    poll_button(CANCEL_SOURCE, visible=False)
+
+    time.sleep(1)
 
 
 def test_image_source():
@@ -130,7 +128,7 @@ def test_capture():
     pyautogui.moveTo(x=1000, y=700)
 
     time.sleep(1)
-    pyautogui.dragTo(x=3400, y=1100, duration=2)
+    pyautogui.dragTo(x=3400, y=1100, duration=1)
 
     time.sleep(1)
     if not click_button(CAPTURE_SOURCE):
@@ -145,6 +143,12 @@ def test_capture():
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
+
+    click_button(CANCEL_SOURCE, True)
+
+    poll_button(CANCEL_SOURCE, visible=False)
+
+    time.sleep(1)
 
 
 def test_multi_capture():
@@ -165,6 +169,8 @@ def test_multi_capture():
     time.sleep(1)
     pyautogui.dragTo(x=2600, y=400, duration=1)
 
+    find_text("Captured")
+
     if not click_button(START_MULTISELECT_SOURCE):
         return
 
@@ -174,7 +180,8 @@ def test_multi_capture():
     time.sleep(1)
     pyautogui.dragTo(x=2500, y=1200, duration=1)
 
-    time.sleep(1)
+    find_text("Captured")
+
     if not click_button(END_MULTISELECT_SOURCE):
         return
 
@@ -187,6 +194,69 @@ def test_multi_capture():
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_PROGRAMMING}' was found in the text!")
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_PROGRAMMING}' was NOT found after multiple retries.")
+
+    click_button(CANCEL_SOURCE, True)
+
+    poll_button(CANCEL_SOURCE, visible=False)
+
+    time.sleep(1)
+
+
+def check_port_in_use(host, port):
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except (socket.timeout, ConnectionRefusedError, ConnectionResetError, OSError):
+        return False
+
+
+def poll_port(host, port, timeout=30):
+    print(f"Polling for service on {host}:{port}...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if check_port_in_use(host, port):
+            print(f"Service on {host}:{port} is ready.")
+            return True
+        time.sleep(1)
+    print(f"Service on {host}:{port} did not become ready within {timeout} seconds.")
+    return False
+
+
+def poll_button(image_path, visible=True, timeout=10, interval=0.5):
+    """
+    Polls until an image appears or disappears from the screen.
+    
+    Args:
+        image_path: Path to the image to search for.
+        visible: If True, polls until the image is found. If False, polls until the image is NOT found.
+        timeout: Maximum time to wait in seconds.
+        interval: Time to wait between checks.
+    
+    Returns:
+        The (x,y) coordinates of the image if found (and visible=True), or True if visible=False and image disappeared.
+        Returns None or False if the condition is not met within the timeout.
+    """
+    print(f"Polling for image '{image_path}' to be {'visible' if visible else 'hidden'}...")
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            location = pyautogui.locateCenterOnScreen(image_path, confidence=0.8)
+            if visible and location is not None:
+                print(f"Image '{image_path}' found at {location}.")
+                return location
+            elif not visible and location is None:
+                print(f"Image '{image_path}' is no longer visible.")
+                return True
+        except pyautogui.ImageNotFoundException:
+            if not visible:
+                print(f"Image '{image_path}' is no longer visible.")
+                return True
+
+        time.sleep(interval)
+
+    print(f"Timeout reached while waiting for '{image_path}' to be {'visible' if visible else 'hidden'}.")
+    return None if visible else False
 
 
 def find_text(text):
@@ -232,7 +302,11 @@ def init_tests():
     minimize_all_windows()
 
     # 2. Start the service
-    service_process = launch_service()
+    if check_port_in_use("127.0.0.1", 8000):
+        print("OCR service is already running. Using existing instance.")
+        service_process = None
+    else:
+        service_process = launch_service()
 
     # 3. Start the other script in a separate process
     app_process = launch_app()
@@ -243,13 +317,13 @@ def init_tests():
 def cleanup(main_app, service_process):
     if main_app is not None:
         print("\nCleaning up: Terminating the background process...")
-        main_app.terminate()  # Sends a signal to the process asking it to close
+        main_app.kill()  # Sends a signal to the process asking it to close
         main_app.wait()  # Waits to ensure the process actually closes
         print("Background process safely closed.")
 
     if service_process is not None:
         print("\nCleaning up: Terminating the service process...")
-        service_process.terminate()
+        service_process.kill()
         service_process.wait()
         print("Service process safely closed.")
 
@@ -324,7 +398,7 @@ def launch_app():
             return launched_process
         else:
             print("Error: App initialization timed out.")
-            launched_process.terminate()
+            launched_process.kill()
             return None
 
     except Exception as e:
@@ -332,23 +406,28 @@ def launch_app():
         return None
 
 
-def click_button(image):
-    try:
-        button_location = pyautogui.locateCenterOnScreen(image, confidence=0.8)
+def click_button(image, timeout=10, check_once=False):
+    if check_once:
+        try:
+            button_location = pyautogui.locateCenterOnScreen(image, confidence=0.8)
+            if button_location is None:
+                print(f"Could not find the button '{image}' on the screen (checked once).")
+                return True
+        except pyautogui.ImageNotFoundException:
+            print(f"Could not find the button '{image}' on the screen (checked once).")
+            return True
+    else:
+        button_location = poll_button(image, visible=True, timeout=timeout)
 
         if button_location is None:
-            print("Could not find the button on the screen.")
+            print(f"Could not find the button '{image}' on the screen.")
             return False
 
-        # 4. Click on it
-        print("Button found! Clicking...")
-        pyautogui.click(button_location)
+    # 4. Click on it
+    print("Button found! Clicking...")
+    pyautogui.click(button_location)
 
-        return True
-    except pyautogui.ImageNotFoundException:
-        print("Could not find the button on the screen.")
-
-        return False
+    return True
 
 
 def minimize_all_windows():
