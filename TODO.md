@@ -2,6 +2,25 @@
 
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
-## Planned Features
+## Core & Architecture Improvements
+- [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
+- [ ] **Migrate to Qt**: Full transition to Qt to enable native Markdown and LaTeX (MathJax) support in the UI.
+- [ ] **Asynchronous Remote OCR Service**: When the remote OCR source is enabled, start the service asynchronously. Disable the capture and multi-select buttons until the service port is successfully polled. Ensure that if the app starts the service, it correctly kills it upon exiting.
+- [ ] **Application Initialization State**: Introduce a "Ready" popup indicating that initialization has finished. Prevent showing the control panel or accepting keyboard shortcuts until the application is fully loaded.
 
-*   [ ] **Cancel Current Operation:** Add a mechanism to gracefully cancel the current operation. This should interrupt and cancel both the processing of a prompt (stopping LLM generation) and abort any ongoing multi-select capture sequence.
+## UI/UX Enhancements
+- [ ] **Cancel Global Operation**: Implement a unified "Cancel" action that interrupts both prompt processing and multi-select sequences. Ensure that canceling an operation does not hide currently visible response popups. Remove redundant, specialized cancel actions (e.g., specific to multi-select).
+- [ ] **Popup Sizing Stability**: Fix the issue where small prompt popups dynamically change sizes (starting large and subsequently shrinking).
+- [ ] **Large Output Scroll Position**: Maintain the user's scroll position when large chunks of text are streamed into the popup.
+- [ ] **Pre-allocate Space for Large Responses**: For large outputs, pre-allocate a configurable number of lines (e.g., 100) to allow smooth scrolling while text is actively streaming in.
+- [ ] **Active Profile Placement**: Move the active profile selection setting to the main application tab for easier access.
+- [ ] **Opacity Setting Fix**: Investigate and fix the issue where setting the popup/panel opacity does not correctly apply to the UI.
+- [ ] **Mermaid Diagram Rendering**: Fix the markdown parser/renderer so that Mermaid diagrams are displayed correctly.
+- [ ] **Popup State Reset**: Ensure that consecutive LLM responses correctly clear and reset the popup text instead of appending to stale content.
+
+## Processing & Integration
+- [ ] **LLM Retry Mechanism**: Implement an automatic retry mechanism (up to 3 times) with a 5-second timeout if the LLM provider returns a high-demand error (`code: 503, status: UNAVAILABLE`). This should apply when processing the main model, or the fallback model if the main model has not yet responded.
+- [ ] **Large Text Extraction**: Automatically extract exceptionally large chunks of text (like raw HTML) into separate output files rather than crowding the main popup window.
+- [ ] **Text-to-Speech (TTS) Improvements**: Enhance the TTS feature to read one sentence at a time, and include UI controls (buttons) to skip forward or backward through the spoken sentences.
+- [ ] **Grammar & Accuracy Corrections**: Introduce a dedicated feature/button to analyze and correct the grammar or factual accuracy of the extracted or generated text.
+- [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
