@@ -216,10 +216,11 @@ class PanelWidget(QWidget):
         # Buttons
         self.buttons = {}
         btn_style = "QPushButton { background-color: rgba(45, 45, 45, 180); color: white; border: none; padding: 8px; border-radius: 4px; font-size: 14px;} QPushButton:hover { background-color: rgba(62, 62, 62, 220); } QPushButton:disabled { color: #777; }"
+        cancel_btn_style = "QPushButton { background-color: rgba(178, 34, 34, 0.7); color: white; border: none; padding: 8px; border-radius: 4px; font-size: 14px;} QPushButton:hover { background-color: rgba(220, 20, 60, 0.8); }"
 
-        def create_btn(name, text, action):
+        def create_btn(name, text, action, style=btn_style):
             btn = QPushButton(text)
-            btn.setStyleSheet(btn_style)
+            btn.setStyleSheet(style)
             btn.clicked.connect(lambda: self.call_action(action))
             self.layout.addWidget(btn)
             self.buttons[name] = btn
@@ -229,12 +230,12 @@ class PanelWidget(QWidget):
         self.btn_reselect = create_btn('reselect', "🎯 Reselect", 'reselect')
         self.btn_multi = create_btn('multi', "➕ Multi-select", 'multi_capture')
         self.btn_end_multi = create_btn('end_multi', "✅ End Multi", 'end_multi_capture')
-        self.btn_cancel_multi = create_btn('cancel_multi', "❌ Cancel Multi", 'cancel_multi_capture')
         self.btn_stitching = create_btn('stitching', "🧵 Toggle Stitching", 'toggle_stitching')
         self.btn_cycle = create_btn('cycle', "🔄 Cycle Source", 'cycle_source')
+        self.btn_cancel = create_btn('cancel', "❌ Cancel", 'cancel', style=cancel_btn_style)
 
         self.btn_end_multi.hide()
-        self.btn_cancel_multi.hide()
+        self.btn_cancel.hide()
 
         self.resize(200, 300)
 
@@ -254,7 +255,6 @@ class PanelWidget(QWidget):
 
     def set_multi_state(self, in_progress):
         self.btn_end_multi.setVisible(in_progress)
-        self.btn_cancel_multi.setVisible(in_progress)
         self.adjustSize()
         self.update_position()
 
@@ -267,8 +267,13 @@ class PanelWidget(QWidget):
         self.update_position()
 
     def set_processing_state(self, is_processing):
-        for btn in self.buttons.values():
-            btn.setEnabled(not is_processing)
+        self.btn_cancel.setVisible(is_processing)
+        for name, btn in self.buttons.items():
+            if name != 'cancel':
+                btn.setEnabled(not is_processing)
+        self.adjustSize()
+        self.update_position()
+
 
 class TextInputWidget(QWidget):
     def __init__(self):

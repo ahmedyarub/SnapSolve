@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+import threading
 from .base import OCREngine
 
 class LocalPaddleOCREngine(OCREngine):
@@ -40,7 +41,10 @@ class LocalPaddleOCREngine(OCREngine):
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
             raise Exception(f"Error during OCR initialization: {str(e)}")
 
-    def extract_text(self, image_path: str, status_callback=None) -> str:
+    def extract_text(self, image_path: str, status_callback=None, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            raise ValueError("OCR cancelled.")
+            
         print("Using local PaddleOCR engine.")
         if status_callback:
             status_callback("Running PaddleOCR...")
@@ -49,6 +53,9 @@ class LocalPaddleOCREngine(OCREngine):
             start_time = time.time()
 
             results = self.ocr.ocr(image_path)
+            
+            if cancel_event and cancel_event.is_set():
+                raise ValueError("OCR cancelled.")
 
             text_lines = []
             if results:
@@ -87,6 +94,8 @@ class LocalPaddleOCREngine(OCREngine):
         except ImportError:
             raise Exception("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")
         except Exception as e:
+            if "cancelled" in str(e).lower():
+                raise
             import traceback
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
             raise Exception(f"Error during OCR execution: {str(e)}")

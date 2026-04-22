@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import time
+import threading
 from .base import LLMEngine
 from core.sinks.base import Sink
 
@@ -34,7 +35,10 @@ class GeminiCLIEngine(LLMEngine):
 
 
     def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True) -> str:
+                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+            
         print(f"[GeminiCLIEngine] Text Request started for model: {self.model}")
 
         gemini_cmd = shutil.which("gemini")
@@ -51,10 +55,13 @@ class GeminiCLIEngine(LLMEngine):
             "-m", self.model
         ]
 
-        return self._execute_request(cmd_args, status_callback, sink, is_main)
+        return self._execute_request(cmd_args, status_callback, sink, is_main, cancel_event)
 
     def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True) -> str:
+                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+            
         print(f"[GeminiCLIEngine] Image Request started for model: {self.model}")
 
         gemini_cmd = shutil.which("gemini")
@@ -77,29 +84,51 @@ class GeminiCLIEngine(LLMEngine):
             "-m", self.model
         ]
 
-        return self._execute_request(cmd_args, status_callback, sink, is_main)
+        return self._execute_request(cmd_args, status_callback, sink, is_main, cancel_event)
 
-    def _execute_request(self, cmd_args: list, status_callback, sink: Sink, is_main: bool) -> str:
+    def _execute_request(self, cmd_args: list, status_callback, sink: Sink, is_main: bool, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+            
         print(f"Executing command: {' '.join(cmd_args)}")
 
         if status_callback:
             status_callback("Processing with Gemini CLI...")
 
         try:
-            result = subprocess.run(
+            # We can't really pass a cancel_event to subprocess.run natively without wrapping it in Popen and checking
+            # For simplicity, we just check before and after. If we want we could check while it runs.
+            process = subprocess.Popen(
                 cmd_args,
-                capture_output=True,
-                text=True,
-                check=True
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
+            
+            # Simple polling loop to support cancellation
+            while process.poll() is None:
+                if cancel_event and cancel_event.is_set():
+                    process.terminate()
+                    return "Cancelled"
+                time.sleep(0.1)
+
+            stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                return f"CLI Error: {stderr}"
+
+            if cancel_event and cancel_event.is_set():
+                return "Cancelled"
+
             print("Processing command complete.")
 
-            data = json.loads(result.stdout)
+            data = json.loads(stdout)
             ans = data.get("response", "").strip()
 
-            if sink:
+            if sink and not (cancel_event and cancel_event.is_set()):
                 sink.process_chunk(ans, is_main=is_main)
 
             return ans
         except subprocess.CalledProcessError as e:
             return f"CLI Error: {e.stderr}"
+        except Exception as e:
+            return f"Error executing CLI: {str(e)}"

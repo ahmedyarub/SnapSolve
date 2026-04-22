@@ -1,7 +1,9 @@
-import time
 import mimetypes
-from .base import LLMEngine
+import threading
+
 from core.sinks.base import Sink
+from .base import LLMEngine
+
 
 class GoogleGenAIEngine(LLMEngine):
     def __init__(self, model: str, api_key: str, session_manager=None):
@@ -21,7 +23,7 @@ class GoogleGenAIEngine(LLMEngine):
             contents = [types.Content(role="user", parts=[types.Part.from_text(text="Hello")])]
             response_stream = client.models.generate_content_stream(model=self.model, contents=contents)
             for chunk in response_stream:
-                pass # Just consume it
+                pass  # Just consume it
             if status_callback:
                 status_callback("Google GenAI warmup complete.")
             return True
@@ -29,7 +31,6 @@ class GoogleGenAIEngine(LLMEngine):
             if status_callback:
                 status_callback(f"Google GenAI warmup failed: {str(e)}")
             return False
-
 
     @property
     def supports_images(self) -> bool:
@@ -52,7 +53,10 @@ class GoogleGenAIEngine(LLMEngine):
 
         return contents
 
-    def _execute_stream(self, client, contents, sink: Sink, is_main: bool) -> str:
+    def _execute_stream(self, client, contents, sink: Sink, is_main: bool, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+
         print("[GoogleGenAIEngine] Calling generate_content_stream...")
         response_stream = client.models.generate_content_stream(
             model=self.model,
@@ -63,6 +67,9 @@ class GoogleGenAIEngine(LLMEngine):
         ans_chunks = []
         buffer = ""
         for i, chunk in enumerate(response_stream):
+            if cancel_event and cancel_event.is_set():
+                return "Cancelled"
+
             print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
             ans_chunks.append(chunk.text)
             buffer += chunk.text
@@ -70,18 +77,24 @@ class GoogleGenAIEngine(LLMEngine):
                 last_newline_idx = buffer.rindex("\n")
                 complete_lines = buffer[:last_newline_idx + 1]
                 buffer = buffer[last_newline_idx + 1:]
-                if sink:
+                if sink and not (cancel_event and cancel_event.is_set()):
                     sink.process_chunk(complete_lines, is_main=is_main)
 
-        if buffer and sink:
+        if buffer and sink and not (cancel_event and cancel_event.is_set()):
             sink.process_chunk(buffer, is_main=is_main)
+
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
 
         ans = "".join(ans_chunks)
         print(f"Request finished successfully")
         return ans
 
     def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True) -> str:
+                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+
         if status_callback:
             status_callback("Processing with Google GenAI...")
 
@@ -96,7 +109,6 @@ class GoogleGenAIEngine(LLMEngine):
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
 
-
         try:
             client = genai.Client(api_key=self.api_key)
             contents = self._prepare_contents(prompt, enable_stitching, types)
@@ -104,13 +116,16 @@ class GoogleGenAIEngine(LLMEngine):
             current_parts = [types.Part.from_text(text=prompt)]
             contents.append(types.Content(role="user", parts=current_parts))
 
-            return self._execute_stream(client, contents, sink, is_main)
+            return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"
 
     def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True) -> str:
+                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+
         if status_callback:
             status_callback("Processing with Google GenAI...")
 
@@ -124,7 +139,6 @@ class GoogleGenAIEngine(LLMEngine):
 
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
-
 
         try:
             client = genai.Client(api_key=self.api_key)
@@ -149,7 +163,7 @@ class GoogleGenAIEngine(LLMEngine):
 
             contents.append(types.Content(role="user", parts=current_parts))
 
-            return self._execute_stream(client, contents, sink, is_main)
+            return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"

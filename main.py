@@ -31,6 +31,7 @@ except ImportError:
 is_running = True
 is_processing = False
 ocr_engine_instance = None
+cancel_event = threading.Event()
 
 from core.sources import get_active_source_instance, set_active_source_instance
 
@@ -75,6 +76,8 @@ def set_processing(state):
     global is_processing
     is_processing = state
     set_app_processing_state(state)
+    if not state:
+        cancel_event.clear() # Reset cancel event when not processing
 
 
 def handle_text_submit(config, active_profile, active_prompt_text, text):
@@ -100,7 +103,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model)
+            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -113,8 +116,13 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 enable_stitching=active_profile.get('enable_stitching', True),
                 sink=sink,
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                text=text
+                text=text,
+                cancel_event=cancel_event
             )
+            if cancel_event.is_set():
+                print("Text processing was cancelled.")
+                return
+
             print(f"Result: {result}")
 
             final_result = result
@@ -174,7 +182,7 @@ def handle_capture(config, active_profile, active_prompt_text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model)
+            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
 
             result = process_pipeline(
                 source=active_src,
@@ -185,10 +193,16 @@ def handle_capture(config, active_profile, active_prompt_text):
                 enable_stitching=active_profile.get('enable_stitching', True),
                 sink=sink,
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                coords=config.get('coordinates')
+                coords=config.get('coordinates'),
+                cancel_event=cancel_event
             )
             if hasattr(active_src, 'cleanup_all'):
                 active_src.cleanup_all()
+
+            if cancel_event.is_set():
+                print("Capture processing was cancelled.")
+                return
+
             print(f"Result: {result}")
 
             final_result = result
@@ -245,8 +259,10 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
 
             # Get coordinates specifically for this capture (don't update config)
             coords = get_coordinates()
-            if not coords:
+            if not coords or cancel_event.is_set():
                 print("Multi-capture: Selection cancelled.")
+                if is_multi_capturing:
+                    handle_cancel()
                 return
 
             def status_update(msg):
@@ -264,11 +280,15 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             temp_source.ocr_engine = ocr_engine_instance
             extracted_text = None
             try:
-                extracted_text = temp_source.get_text(coords=coords, status_callback=status_update)
+                extracted_text = temp_source.get_text(coords=coords, status_callback=status_update, cancel_event=cancel_event)
             except Exception as e:
                 status_update(f"Error during OCR: {str(e)}")
             finally:
                 temp_source.cleanup_all()
+
+            if cancel_event.is_set():
+                print("Multi-capture OCR was cancelled.")
+                return
 
             if extracted_text:
                 multi_capture_texts.append(extracted_text)
@@ -329,7 +349,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
                 show_headers = True
 
-            sink = PopupSink(config, show_headers, main_model, fallback_model)
+            sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -342,8 +362,13 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 enable_stitching=active_profile.get('enable_stitching', True),
                 sink=sink,
                 fallback_llm=fallback_llm_engine_instance if 'fallback_llm_engine_instance' in globals() else None,
-                text=combined_text
+                text=combined_text,
+                cancel_event=cancel_event
             )
+            if cancel_event.is_set():
+                print("Multi-capture processing was cancelled.")
+                return
+
             print(f"Result: {result}")
 
             final_result = result
@@ -414,16 +439,24 @@ def handle_toggle_panel(config):
     toggle_control_panel()
 
 
-def handle_cancel_multi_capture(config):
+def handle_cancel():
     global is_processing, is_multi_capturing, multi_capture_texts
+    print("Cancel requested.")
+    cancel_event.set()
+
+    # Reset multi-capture state if it was active
     if is_multi_capturing:
         is_multi_capturing = False
         multi_capture_texts = []
         update_multi_state(False)
-        print("Multi-capture canceled.")
-        if 'popup' in config.get('output_mode', ['popup']):
-            show_popup("Multi-capture canceled", auto_close=3000, opacity=config.get('popup_opacity', 0.8),
-                       is_result=False)
+
+    # Close any open popups and show a "Cancelled" message
+    from core.output import ui_signals
+    ui_signals.close_popup.emit()
+    show_popup("Cancelled", auto_close=2000, is_result=False)
+
+    # This will be called in the finally block of the processing threads
+    # set_processing(False)
 
 
 def handle_cycle_source(config, active_profile):
@@ -577,7 +610,7 @@ def main():
         'reselect': lambda: handle_reselect(config),
         'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
         'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
-        'cancel_multi_capture': lambda: handle_cancel_multi_capture(config),
+        'cancel': handle_cancel,
         'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
         'cycle_source': lambda: handle_cycle_source(config, active_profile),
         'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
@@ -690,8 +723,8 @@ def main():
             keyboard.add_hotkey(key, handle_multi_capture, args=[config, active_profile, active_prompt_text])
         elif action == 'end_multi_capture':
             keyboard.add_hotkey(key, handle_end_multi_capture, args=[config, active_profile, active_prompt_text])
-        elif action == 'cancel_multi_capture':
-            keyboard.add_hotkey(key, handle_cancel_multi_capture, args=[config])
+        elif action == 'cancel':
+            keyboard.add_hotkey(key, handle_cancel)
         elif action == 'toggle_panel':
             keyboard.add_hotkey(key, handle_toggle_panel, args=[config])
         elif action == 'new_chat_session':

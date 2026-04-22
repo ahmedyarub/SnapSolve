@@ -3,6 +3,7 @@ import time
 import urllib.request
 import urllib.error
 import base64
+import threading
 from .base import LLMEngine
 from core.sinks.base import Sink
 
@@ -45,8 +46,11 @@ class OllamaEngine(LLMEngine):
         return True # Ollama generally supports images if the model does, we let it try.
 
 
-    def _execute_request(self, payload: dict, sink: Sink, is_main: bool) -> str:
+    def _execute_request(self, payload: dict, sink: Sink, is_main: bool, cancel_event: threading.Event = None) -> str:
         try:
+            if cancel_event and cancel_event.is_set():
+                return "Cancelled"
+                
             print(f"[OllamaEngine] Sending request...")
             req = urllib.request.Request(
                 f"{self.ollama_url.rstrip('/')}/api/generate",
@@ -55,10 +59,12 @@ class OllamaEngine(LLMEngine):
                 method='POST'
             )
             with urllib.request.urlopen(req) as response:
+                if cancel_event and cancel_event.is_set():
+                    return "Cancelled"
                 data = json.loads(response.read().decode('utf-8'))
                 ans = data.get("response", "").strip()
 
-            if sink:
+            if sink and not (cancel_event and cancel_event.is_set()):
                 sink.process_chunk(ans, is_main=is_main)
             print(f"Request finished successfully")
             return ans
@@ -67,7 +73,10 @@ class OllamaEngine(LLMEngine):
             return f"Error calling Ollama API: {str(e)}"
 
     def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True) -> str:
+                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+            
         print(f"[OllamaEngine] Text Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing text with Ollama...")
@@ -80,10 +89,13 @@ class OllamaEngine(LLMEngine):
             "stream": False
         }
 
-        return self._execute_request(payload, sink, is_main)
+        return self._execute_request(payload, sink, is_main, cancel_event)
 
     def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True) -> str:
+                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+            
         print(f"[OllamaEngine] Image Request started for model: {self.model} at {self.ollama_url}")
         if status_callback:
             status_callback("Processing image with Ollama...")
@@ -103,4 +115,4 @@ class OllamaEngine(LLMEngine):
         except Exception as e:
             return f"Error reading image: {str(e)}"
 
-        return self._execute_request(payload, sink, is_main)
+        return self._execute_request(payload, sink, is_main, cancel_event)

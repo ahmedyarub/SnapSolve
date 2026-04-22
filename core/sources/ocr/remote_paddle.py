@@ -1,6 +1,7 @@
 import os
 import tempfile
 import httpx
+import threading
 from PIL import Image, ImageDraw
 
 from .base import OCREngine
@@ -35,7 +36,10 @@ class RemotePaddleOCREngine(OCREngine):
             temp_file.close()
             # Intentionally not deleting the file
 
-    def extract_text(self, image_path: str, status_callback=None) -> str:
+    def extract_text(self, image_path: str, status_callback=None, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set():
+            raise ValueError("OCR cancelled.")
+            
         print("Using remote PaddleOCR engine.")
         if status_callback:
             status_callback("Sending to Remote PaddleOCR...")
@@ -44,6 +48,8 @@ class RemotePaddleOCREngine(OCREngine):
             print(f"Sending payload to remote OCR: {payload}")
             with httpx.Client() as client:
                 response = client.post(self.url, json=payload, timeout=30.0)
+                if cancel_event and cancel_event.is_set():
+                    raise ValueError("OCR cancelled.")
                 response.raise_for_status()
                 response_data = response.json()
                 print(f"Received response from remote OCR: {response_data}")
