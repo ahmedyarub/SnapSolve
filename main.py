@@ -3,6 +3,7 @@ import os
 import platform
 import sys
 import threading
+import logging # Import logging module
 
 import keyboard
 from PyQt6.QtCore import Qt
@@ -37,6 +38,7 @@ from core.sources import get_active_source_instance, set_active_source_instance
 
 llm_engine_instance = None
 session_manager = None
+audio_sink_instance = None # Global AudioSink instance
 
 # Multi-capture state
 is_multi_capturing = False
@@ -94,7 +96,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
 
     def _process():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, audio_sink_instance
             show_headers = False
             fallback_model = active_profile.get('fallback_model', 'None')
             main_model = active_profile.get('model', 'gemini-2.5-flash-lite')
@@ -104,8 +106,8 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 show_headers = True
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
-            audio_sink = AudioSink(config, cancel_event)
-            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
+            # Use the global audio_sink_instance
+            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
             
             from core.sources import TextSource
             temp_source = TextSource()
@@ -170,7 +172,7 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     def _capture():
         try:
-            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+            global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, audio_sink_instance
             active_src = get_active_source_instance()
 
             if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
@@ -189,8 +191,8 @@ def handle_capture(config, active_profile, active_prompt_text):
                 show_headers = True
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
-            audio_sink = AudioSink(config, cancel_event)
-            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
+            # Use the global audio_sink_instance
+            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
 
             result = process_pipeline(
                 source=active_src,
@@ -238,7 +240,7 @@ def handle_capture(config, active_profile, active_prompt_text):
 
 
 def handle_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts
+    global is_processing
     if is_processing:
         return
 
@@ -335,7 +337,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
     update_multi_state(False)
 
     def _end_multi_capture():
-        global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance
+        global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance, audio_sink_instance
         try:
             if not multi_capture_texts:
                 if 'popup' in config.get('output_mode', ['popup']):
@@ -361,8 +363,8 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 show_headers = True
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
-            audio_sink = AudioSink(config, cancel_event)
-            sink = CompositeSink([popup_sink, audio_sink], cancel_event)
+            # Use the global audio_sink_instance
+            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
 
             from core.sources import TextSource
             temp_source = TextSource()
@@ -512,7 +514,7 @@ def handle_reselect(config):
     print("Reselecting coordinates...")
 
     try:
-        # Run in a separate thread so it doesn't block keyboard hooks
+        # Run in a separate thread so we don't block keyboard hooks
         def _reselect():
             coords = get_coordinates()
             if coords:
@@ -587,6 +589,9 @@ def validate_config(active_profile):
 
 
 def main():
+    # Configure logging early
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
     global is_running
 
     # Initialize PyQt application in the main thread
@@ -656,7 +661,7 @@ def main():
 
     # Initialize Engines
     print("Checking engine pre-initialization...")
-    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, session_manager
+    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance, session_manager, audio_sink_instance
     session_manager = SessionManager(config)
     ocr_type = active_profile.get('ocr_engine', 'none')
     if ocr_type == "paddleocr":
@@ -709,18 +714,12 @@ def main():
         if not warmup_success and llm_engine_instance:
             llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
-    llm_type = active_profile.get('llm_engine', 'gemini')
-    model = active_profile.get('model', 'gemini-2.5-flash-lite')
-    fallback_model = active_profile.get('fallback_model', 'None')
-    if llm_type == "ollama":
-        print("Initializing Ollama Engine...")
-        llm_engine_instance = OllamaEngine(model, config.get('ollama_url', 'http://localhost:11434'),
-                                           status_callback=lambda msg: print(f"Init status: {msg}"))
-        if fallback_model and fallback_model != "None":
-            print("Initializing Fallback Ollama Engine...")
-            fallback_llm_engine_instance = OllamaEngine(fallback_model,
-                                                        config.get('ollama_url', 'http://localhost:11434'),
-                                                        status_callback=lambda msg: print(f"Init status: {msg}"))
+    # Initialize AudioSink globally
+    audio_sink_instance = AudioSink(config, cancel_event)
+
+    # Warmup AudioSink asynchronously if enabled
+    if config.get('warmup_tts', False) and hasattr(audio_sink_instance, 'warmup'):
+        threading.Thread(target=audio_sink_instance.warmup, daemon=True).start()
 
     hotkeys = config.get('hotkeys', [])
 
@@ -753,7 +752,6 @@ def main():
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode with pystray...")
-        import threading
         def run_tray():
             icon = create_tray_icon(exit_app, config)
             icon.run()
@@ -770,10 +768,6 @@ def main():
 
     print("Initialization done.")
     sys.exit(app.exec())
-
-    # Cleanup
-    keyboard.unhook_all()
-    print("Goodbye!")
 
 
 if __name__ == '__main__':

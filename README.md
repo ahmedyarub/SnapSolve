@@ -92,8 +92,10 @@ If you want to use the high-quality local Text-to-Speech (TTS) feature:
 3. Update your `config.json` to enable audio output and point to your Piper model:
    ```json
    "output_mode": ["popup", "audio"],
-   "piper_model": "path/to/en_US-lessac-medium.onnx"
+   "piper_model": "path/to/en_US-lessac-medium.onnx",
+   "warmup_tts": false
    ```
+   *   `warmup_tts`: Set to `true` to pre-load the Piper model on application startup, reducing the delay for the first spoken output.
 
 ## Supported Engines
 
@@ -130,6 +132,7 @@ Create a file named `config.json` in the same directory as the script. Example:
     ],
     "background": false,
     "piper_model": "en_US-lessac-medium.onnx",
+    "warmup_tts": false,
     "model": "gemini-2.5-flash-lite",
     "llm_engine": "gemini",
     "ocr_engine": "none",
@@ -140,6 +143,7 @@ Create a file named `config.json` in the same directory as the script. Example:
 
 *   `output_mode`: Controls where the response is sent. Add `"audio"` to enable Piper TTS.
 *   `piper_model`: Path to the downloaded Piper `.onnx` voice model.
+*   `warmup_tts`: Set to `true` to pre-load the Piper model on application startup.
 *   `llm_engine`: Can be `"gemini"`, `"ollama"`, or `"google-genai"`.
 *   `ocr_engine`: Can be `"none"`, `"paddleocr"`, or `"remote_paddle"`.
 *   `ollama_url`: The URL to your Ollama API.
@@ -168,7 +172,7 @@ Extracts text locally, then asks a local LLM to answer the question.
 You can pass arguments directly when running the application. These will override the `config.json` settings:
 
 ```bash
-python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r"
+python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r" --piper-model "path/to/your/model.onnx" --warmup-tts
 ```
 
 ## Usage

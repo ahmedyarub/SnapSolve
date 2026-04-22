@@ -135,7 +135,7 @@ def parse_args():
     parser.add_argument('--piper-model', type=str, help='Path to Piper .onnx model')
     parser.add_argument('--active-profile', type=str, help='Active profile ID')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
-    parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
+    parser.add_argument('--google-genai-api_key', type=str, help='Google GenAI API Key')
     parser.add_argument('--auto-close-results', action='store_true', help='Auto close result popups')
     parser.add_argument('--no-auto-close-results', action='store_true', help='Do not auto close result popups')
     parser.add_argument('--popup-opacity', type=float, help='Opacity of the popup (0.0 to 1.0)')
