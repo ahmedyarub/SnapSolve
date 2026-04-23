@@ -1,13 +1,13 @@
-import sys
-import os
 import json
+import logging
+import os
+import sys
 import threading
-import time
 import wave
+
+import numpy as np
 import pyaudio
 import speech_recognition as sr
-import numpy as np
-import logging
 
 # Configure basic logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,7 +15,8 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QTextEdit,
                              QPushButton, QProgressBar)
-from PyQt6.QtCore import pyqtSignal, QObject, Qt
+from PyQt6.QtCore import pyqtSignal, QObject
+
 
 class WorkerSignals(QObject):
     update_volume = pyqtSignal(int)
@@ -23,6 +24,7 @@ class WorkerSignals(QObject):
     playback_finished = pyqtSignal()
     record_finished = pyqtSignal()
     log_message = pyqtSignal(str)
+
 
 class SoundTestApp(QMainWindow):
     def __init__(self):
@@ -38,7 +40,7 @@ class SoundTestApp(QMainWindow):
         self.signals.log_message.connect(self.log)
 
         # Hardcoded model
-        self.piper_model = 'en_US-lessac-medium.onnx'
+        self.piper_model = 'en_US-lessac-high.onnx'
         self.settings_file = 'sound_test_settings.json'
 
         self.is_recording = False
@@ -72,7 +74,7 @@ class SoundTestApp(QMainWindow):
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
         self.speak_text = QTextEdit()
-        self.speak_text.setText("This is a test of the text to speech system.")
+        self.speak_text.setText("this is a test of the audio system")
         self.speak_text.setMaximumHeight(80)
         layout.addWidget(self.speak_text)
 
@@ -294,11 +296,13 @@ class SoundTestApp(QMainWindow):
             # so let's use a lambda or QTimer, or better just use the main thread event loop.
             # We will use QMetaObject.invokeMethod.
             import PyQt6.QtCore as QtCore
-            QtCore.QMetaObject.invokeMethod(self.action_btn, "setEnabled", QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(bool, True))
+            QtCore.QMetaObject.invokeMethod(self.action_btn, "setEnabled", QtCore.Qt.ConnectionType.QueuedConnection,
+                                            QtCore.Q_ARG(bool, True))
 
     def closeEvent(self, event):
         self.p.terminate()
         super().closeEvent(event)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
