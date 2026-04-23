@@ -7,6 +7,10 @@ import wave
 import pyaudio
 import speech_recognition as sr
 import numpy as np
+import logging
+
+# Configure basic logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QTextEdit,
@@ -35,6 +39,7 @@ class SoundTestApp(QMainWindow):
 
         # Hardcoded model
         self.piper_model = 'en_US-lessac-medium.onnx'
+        self.settings_file = 'sound_test_settings.json'
 
         self.is_recording = False
         self.playback_done = False
@@ -62,6 +67,7 @@ class SoundTestApp(QMainWindow):
         layout.addLayout(in_layout)
 
         self.populate_devices()
+        self.load_settings()
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
@@ -97,6 +103,7 @@ class SoundTestApp(QMainWindow):
 
     def populate_devices(self):
         count = self.p.get_device_count()
+        logging.debug(f"Populating devices. Total devices found: {count}")
         for i in range(count):
             try:
                 info = self.p.get_device_info_by_index(i)
@@ -109,9 +116,41 @@ class SoundTestApp(QMainWindow):
                 if info['maxInputChannels'] > 0:
                     self.in_combo.addItem(desc, i)
             except Exception as e:
-                pass
+                logging.warning(f"Failed to load device index {i}: {e}")
+
+    def load_settings(self):
+        logging.debug("Attempting to load last selected devices...")
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, 'r') as f:
+                    settings = json.load(f)
+                    last_out = settings.get('last_out_index')
+                    last_in = settings.get('last_in_index')
+
+                    if last_out is not None:
+                        idx = self.out_combo.findData(last_out)
+                        if idx >= 0:
+                            self.out_combo.setCurrentIndex(idx)
+
+                    if last_in is not None:
+                        idx = self.in_combo.findData(last_in)
+                        if idx >= 0:
+                            self.in_combo.setCurrentIndex(idx)
+                logging.debug("Settings loaded successfully.")
+            except Exception as e:
+                logging.error(f"Failed to load settings: {e}")
+
+    def save_settings(self, out_idx, in_idx):
+        logging.debug("Saving last selected devices...")
+        try:
+            with open(self.settings_file, 'w') as f:
+                json.dump({'last_out_index': out_idx, 'last_in_index': in_idx}, f)
+            logging.debug("Settings saved successfully.")
+        except Exception as e:
+            logging.error(f"Failed to save settings: {e}")
 
     def log(self, message):
+        logging.info(message)
         self.log_text.append(message)
 
     def update_volume_bar(self, val):
@@ -138,6 +177,8 @@ class SoundTestApp(QMainWindow):
             self.log("Please select both input and output devices.")
             self.action_btn.setEnabled(True)
             return
+
+        self.save_settings(out_idx, in_idx)
 
         self.playback_done = False
         self.is_recording = True
