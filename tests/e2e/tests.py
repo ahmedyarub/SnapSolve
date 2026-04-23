@@ -1,6 +1,6 @@
 import json
 import os
-import queue  # Added for inter-thread communication
+import queue
 import socket
 import subprocess
 import sys
@@ -41,7 +41,7 @@ SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 # --- Global variables for background recording ---
 _stop_recording_event = threading.Event()
 _recorded_audio_queue = queue.Queue()  # To pass the AudioData object from recording thread to main thread
-_recording_thread = None  # To hold the reference to the recording thread
+_recording_thread: threading.Thread | None = None  # To hold the reference to the recording thread
 
 
 def get_microphone_index(target_name: str) -> int | None:
@@ -61,7 +61,8 @@ def get_microphone_index(target_name: str) -> int | None:
     print("Available devices:", mic_list)
     return None
 
-def _record_audio_in_background(recognizer, stop_event, audio_queue):
+
+def _record_audio_in_background(stop_event, audio_queue):
     """Records audio continuously in the background until stop_event is set."""
 
     frames = []
@@ -144,7 +145,7 @@ def test_text_source():
         except queue.Empty:
             pass
 
-    r = sr.Recognizer()  # Recognizer can be created once and passed
+    r: sr.Recognizer = sr.Recognizer()  # Recognizer can be created once and passed
 
     _recording_thread = threading.Thread(target=_record_audio_in_background,
                                          args=(r, _stop_recording_event, _recorded_audio_queue))
