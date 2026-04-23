@@ -590,7 +590,7 @@ def validate_config(active_profile):
 
 def main():
     # Configure logging early
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     global is_running
 
