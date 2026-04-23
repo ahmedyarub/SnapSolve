@@ -32,7 +32,8 @@ PROGRAMMING_QUESTION2 = "Use classes"
 SECOND_SCRIPT_PATH = 'main.py'
 SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
-    '--popup-opacity=1.0'
+    '--popup-opacity=1.0',
+    '--tts-output-device-name=CABLE Input (VB-Audio Virtual C'
 ]
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
@@ -151,7 +152,7 @@ def test_text_source():
     found_target_word = find_text(TARGET_WORD_BASIC)
 
     # Wait for 3 seconds before stopping the recording
-    time.sleep(10)
+    time.sleep(5)
 
     # --- Stop Background Recording ---
     _stop_recording_event.set()  # Signal the recording thread to stop
@@ -463,6 +464,7 @@ def launch_service():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
             bufsize=1,
             env=env
         )
@@ -495,6 +497,7 @@ def launch_app():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
             bufsize=1
         )
         print("Second script launched. Waiting for initialization...")
