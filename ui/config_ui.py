@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox, QApplication,
     QPushButton, QFileDialog
 )
+from config.settings import get_audio_devices # Import the function to get audio devices
 
 
 class ConfigUI(QDialog):
@@ -119,6 +120,23 @@ class ConfigUI(QDialog):
         browse_btn.clicked.connect(self.browse_piper_model)
         piper_model_layout.addWidget(browse_btn)
         layout.addRow("Piper Voice Model Path:", piper_model_layout)
+
+        self.tts_output_device_combo = QComboBox()
+
+        self.tts_output_device_combo.addItem("Default System Output", None) 
+        
+        audio_devices = get_audio_devices()
+        for device in audio_devices:
+            self.tts_output_device_combo.addItem(device['name'], device['name'])
+        
+        current_device_name = self.config.get('tts_output_device_name', None)
+
+        if current_device_name is not None:
+            idx = self.tts_output_device_combo.findData(current_device_name)
+            if idx >= 0:
+                self.tts_output_device_combo.setCurrentIndex(idx)
+        
+        layout.addRow("TTS Output Device:", self.tts_output_device_combo)
 
         # Background Mode
         self.background_mode = QCheckBox("Run in system tray")
@@ -306,6 +324,8 @@ class ConfigUI(QDialog):
         self.config['warmup_tts'] = self.warmup_tts.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
+        
+        self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
 
         # Clean up legacy piper path if it exists
         if 'piper_path' in self.config:

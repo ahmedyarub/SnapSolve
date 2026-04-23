@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import pyaudio # Import pyaudio
 
 CONFIG_FILE = os.path.join('config', 'config.json')
 PROFILES_FILE = os.path.join('config', 'profiles.json')
@@ -42,6 +43,37 @@ def load_prompts():
         }
     ]
 
+def get_audio_devices():
+    """
+    Lists all available audio output devices, filtering to include only "MME" devices.
+    Returns their name and index.
+    """
+    p = pyaudio.PyAudio()
+    
+    output_devices = []
+
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        
+        # Only consider output devices
+        if info['maxOutputChannels'] > 0:
+            host_api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+            
+            # Filter for "MME" devices
+            if host_api_name == "MME":
+                output_devices.append({
+                    'index': info['index'],
+                    'name': info['name'],
+                    # 'hostApiName': host_api_name # No longer storing hostApiName
+                })
+
+    p.terminate()
+
+    # Sort devices by name for consistent ordering
+    output_devices.sort(key=lambda x: x['name'].lower())
+
+    return output_devices
+
 def load_config():
     config = {
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
@@ -69,7 +101,8 @@ def load_config():
         'default_source': 'text',
         'warmup_ocr': True,
         'warmup_llm': True,
-        'warmup_tts': False
+        'warmup_tts': False,
+        'tts_output_device_name': None
     }
 
     # Ensure config directory exists
@@ -83,6 +116,7 @@ def load_config():
 
     if os.path.exists(CONFIG_FILE):
         try:
+            file_config = {}
             with open(CONFIG_FILE, 'r') as f:
                 file_config = json.load(f)
 
@@ -148,6 +182,7 @@ def parse_args():
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
     parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
+    parser.add_argument('--tts-output-device-name', type=str, help='Name of the audio device for TTS output')
 
     return parser.parse_args()
 
@@ -222,5 +257,8 @@ def get_config():
         
     if args.disable_warmup_tts:
         config['warmup_tts'] = False
+
+    if args.tts_output_device_name is not None:
+        config['tts_output_device_name'] = args.tts_output_device_name
 
     return config

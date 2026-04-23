@@ -6,7 +6,8 @@
         "model": "gemini-2.5-flash-lite",
         "ocr_engine": "remote_paddle",
         "prompt_id": "quick",
-        "enable_stitching": false
+        "enable_stitching": false,
+        "fallback_model": "None"
     },
     {
         "id": "programming",
