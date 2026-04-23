@@ -244,7 +244,6 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit(f"Starting recording on device {device_index}...")
 
             with sr.Microphone(device_index=device_index) as source:
-                r.adjust_for_ambient_noise(source, duration=0.5)
                 stream = source.stream
 
                 while not self.playback_done:

@@ -80,7 +80,7 @@ def _record_audio_in_background(stop_event, audio_queue):
             while not stop_event.is_set():
                 try:
                     # Read directly from the stream provided by sr.Microphone
-                    data = stream.listen(source.CHUNK)
+                    data = stream.read(source.CHUNK)
                     frames.append(data)
                 except Exception as e:
                     print(f"[Recorder] Error reading audio stream: {e}")
@@ -148,7 +148,7 @@ def test_text_source():
     r: sr.Recognizer = sr.Recognizer()  # Recognizer can be created once and passed
 
     _recording_thread = threading.Thread(target=_record_audio_in_background,
-                                         args=(r, _stop_recording_event, _recorded_audio_queue))
+                                         args=(_stop_recording_event, _recorded_audio_queue))
     _recording_thread.daemon = True  # Allow main program to exit even if thread is still running
     _recording_thread.start()
     print("Started background recording thread for TTS test.")
