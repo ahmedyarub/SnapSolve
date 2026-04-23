@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import threading
 import wave  # Import wave module
 
@@ -8,6 +9,47 @@ import pyaudio  # Import pyaudio for cross-platform audio playback
 from .base import Sink
 
 logger = logging.getLogger(__name__)
+
+
+def clean_text(text: str) -> str:
+    """
+    Removes common Markdown symbols from a string and returns the cleaned plain text.
+    """
+    if not text:
+        return ""
+
+    # 1. Remove horizontal rules (---, ***, ___)
+    text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+
+    # 2. Extract text from Links and Images: ![alt](url) -> alt, [text](url) -> text
+    text = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', r'\1', text)
+    text = re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', text)
+
+    # 3. Remove inline code backticks: `code` -> code
+    text = re.sub(r'`(.*?)`', r'\1', text)
+
+    # 4. Remove block code formatting (keeps the text inside)
+    text = re.sub(r'```\w*[\r\n]+(.*?)```', r'\1', text, flags=re.DOTALL)
+
+    # 5. Remove emphasis: bold, italic, strikethrough
+    text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
+    text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+
+    # 6. Remove headers: # Header -> Header
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    # 7. Remove blockquotes: > Quote -> Quote
+    text = re.sub(r'^\s*>\s?', '', text, flags=re.MULTILINE)
+
+    # 8. Remove list markers (unordered and ordered) at the start of a line
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+
+    # 9. Clean up excess whitespace/newlines left behind
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
 
 
 class AudioSink(Sink):
@@ -30,6 +72,8 @@ class AudioSink(Sink):
         if not text.strip():
             logger.debug("AudioSink._speak called with empty text, skipping.")
             return
+
+        text = clean_text(text)
 
         try:
             from piper import PiperVoice

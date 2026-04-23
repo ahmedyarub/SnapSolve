@@ -27,13 +27,14 @@ POPUP_X, POPUP_Y = 3500, 1800
 BASIC_QUESTION = "What is the fifth largest country in the world?"
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
+TTS_INPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
 SECOND_SCRIPT_PATH = 'main.py'
 SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
     '--popup-opacity=1.0',
-    '--tts-output-device-name=CABLE Input (VB-Audio Virtual C'
+    f'--tts-output-device-name={TTS_INPUT_DEVICE_NAME}'
 ]
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
@@ -43,23 +44,42 @@ _recorded_audio_queue = queue.Queue()  # To pass the AudioData object from recor
 _recording_thread = None  # To hold the reference to the recording thread
 
 
+def get_microphone_index(target_name: str) -> int | None:
+    """
+    Searches available microphones for a given name and returns its index.
+    """
+    # Fetch the list of all available audio devices recognized by PyAudio/SpeechRecognition
+    mic_list = sr.Microphone.list_microphone_names()
+
+    for index, name in enumerate(mic_list):
+        # Case-insensitive partial match
+        if target_name.lower() in name.lower():
+            print(f"Matched: [{index}] {name}")
+            return index
+
+    print(f"Error: No device matching '{target_name}' was found.")
+    print("Available devices:", mic_list)
+    return None
+
 def _record_audio_in_background(recognizer, stop_event, audio_queue):
     """Records audio continuously in the background until stop_event is set."""
-    print("[Recorder] Background audio recording started.")
+
     frames = []
     try:
+        print("[Recorder] Background audio recording started.")
         # Instantiate Microphone inside the thread's context for proper resource management
-        with sr.Microphone() as source:
-            recognizer.adjust_for_ambient_noise(source, duration=1)  # Adjust for ambient noise once
-            print("[Recorder] Adjusted for ambient noise.")
-
+        with sr.Microphone(device_index=get_microphone_index(TTS_INPUT_DEVICE_NAME), sample_rate=48000) as source:
             # Access the underlying PyAudio stream from the source object
             stream = source.stream
+
+            if stream is None:
+                print("[Recorder] No audio stream found.")
+                return
 
             while not stop_event.is_set():
                 try:
                     # Read directly from the stream provided by sr.Microphone
-                    data = stream.read(source.CHUNK, exception_on_overflow=False)
+                    data = stream.listen(source.CHUNK)
                     frames.append(data)
                 except Exception as e:
                     print(f"[Recorder] Error reading audio stream: {e}")
@@ -202,9 +222,9 @@ def test_text_source():
         print(f"\n❌ FAILURE (TTS): Could not request results from Google Speech Recognition service; {e}")
     except Exception as e:
         print(f"\n❌ FAILURE (TTS): An error occurred during speech recognition: {e}")
-    finally:
-        if os.path.exists(audio_filename):
-            os.remove(audio_filename)
+    # finally:
+    #     if os.path.exists(audio_filename):
+    #         os.remove(audio_filename)
     # --- End of TTS Recognition Test ---
 
     click_button(CANCEL_SOURCE, True)
