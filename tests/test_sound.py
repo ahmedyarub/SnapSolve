@@ -33,16 +33,8 @@ class SoundTestApp(QMainWindow):
         self.signals.playback_finished.connect(self.on_playback_finished)
         self.signals.log_message.connect(self.log)
 
-        # Self-contained logic for reading piper_model without relying on project root modules
+        # Hardcoded model
         self.piper_model = 'en_US-lessac-medium.onnx'
-        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    self.piper_model = config.get('piper_model', self.piper_model)
-            except Exception:
-                pass
 
         self.is_recording = False
         self.playback_done = False
