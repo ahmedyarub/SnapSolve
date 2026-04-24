@@ -72,10 +72,15 @@ def _record_audio_in_background(stop_event, audio_queue, device_index):
         print("[Recorder] Background audio recording started.")
         p = pyaudio.PyAudio()
 
+        device_info = p.get_device_info_by_index(device_index)
+        channels = int(device_info.get('maxInputChannels', 1))
+        rate = int(device_info.get('defaultSampleRate', 48000))
+        print(f"[Recorder] Opening stream with channels={channels}, rate={rate}")
+
         # Open the stream using PyAudio natively
         stream = p.open(format=pyaudio.paInt16,
-                        channels=2,
-                        rate=44100,
+                        channels=channels,
+                        rate=rate,
                         input=True,
                         input_device_index=device_index,
                         frames_per_buffer=1024)
@@ -90,14 +95,19 @@ def _record_audio_in_background(stop_event, audio_queue, device_index):
                 break
 
         if frames:
-            # speech_recognition requires mono audio (1 channel) for its APIs.
-            # Convert the stereo interleaved bytes to mono by taking only the left channel
-            import audioop
-            stereo_data = b''.join(frames)
-            mono_data = audioop.tomono(stereo_data, 2, 1, 0)
+            raw_data = b''.join(frames)
 
-            # 2 represents paInt16 byte width, rate is 44100
-            audio_data = sr.AudioData(mono_data, 44100, 2)
+            if channels > 1:
+                # speech_recognition requires mono audio (1 channel) for its APIs.
+                import audioop
+                # audioop.tomono takes (fragment, width, lfactor, rfactor)
+                # To mix down evenly from stereo, use 1.0, 1.0. For just the left channel, use 1.0, 0.0.
+                mono_data = audioop.tomono(raw_data, 2, 1.0, 1.0)
+            else:
+                mono_data = raw_data
+
+            # 2 represents paInt16 byte width
+            audio_data = sr.AudioData(mono_data, rate, 2)
             audio_queue.put(audio_data)
         print("[Recorder] Background audio recording stopped.")
     except Exception as e:
