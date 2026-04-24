@@ -10,7 +10,6 @@ import time
 import keyboard
 import pyautogui
 import pyperclip
-import pyaudio
 import speech_recognition as sr
 
 # --- Configuration variables ---
@@ -28,14 +27,15 @@ POPUP_X, POPUP_Y = 3500, 1800
 BASIC_QUESTION = "What is the fifth largest country in the world?"
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
-TTS_INPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
+TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual"
+TTS_OUTPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
 SECOND_SCRIPT_PATH = 'main.py'
 SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
     '--popup-opacity=1.0',
-    f'--tts-output-device-name={TTS_INPUT_DEVICE_NAME}'
+    f'--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}'
 ]
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
@@ -120,7 +120,7 @@ def run_tests():
 
     try:
         test_text_source()
-        # test_image_source() # Commented out as per original file
+        test_image_source()
     finally:
         # Ensure recording is stopped even if test_text_source fails
         _stop_recording_event.set()
@@ -176,7 +176,7 @@ def test_text_source():
     found_target_word = find_text(TARGET_WORD_BASIC)
 
     # Wait for 3 seconds before stopping the recording
-    time.sleep(5)
+    time.sleep(3)
 
     # --- Stop Background Recording ---
     _stop_recording_event.set()  # Signal the recording thread to stop
