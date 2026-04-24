@@ -230,9 +230,6 @@ class SoundTestApp(QMainWindow):
             stream.close()
             wf.close()
 
-            if os.path.exists(wav_file):
-                os.remove(wav_file)
-
         except Exception as e:
             self.signals.log_message.emit(f"Playback error: {e}")
         finally:
