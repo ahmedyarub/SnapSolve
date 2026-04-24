@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox, QApplication,
     QPushButton, QFileDialog
 )
-from config.settings import get_audio_devices # Import the function to get audio devices
+from config.settings import get_audio_devices, get_audio_input_devices # Import the function to get audio devices
 
 
 class ConfigUI(QDialog):

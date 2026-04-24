@@ -16,7 +16,7 @@ from core.output import output_result, show_popup, toggle_control_panel, set_app
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
 from core.sinks import PopupSink, AudioSink, CompositeSink
-from core.sources import ScreenshotSource, TextSource
+from core.sources import ScreenshotSource, TextSource, SoundSource
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
 from ui.selector import get_coordinates
 
@@ -159,6 +159,16 @@ def handle_capture(config, active_profile, active_prompt_text):
         return
 
     active_source = get_active_source_instance()
+    if active_source and active_source.name == "audio":
+        from core.output import ui_manager
+        if ui_manager and ui_manager.panel:
+            record_btn = ui_manager.panel.btn_record
+            if record_btn.is_recording:
+                record_btn.stop_record_action()
+            else:
+                record_btn.start_record_action()
+        return
+
     if active_source and active_source.name != "image":
         print(f"Capture is disabled for {active_source.name} source.")
         return
@@ -478,9 +488,50 @@ def handle_cancel():
     # set_processing(False)
 
 
+
+
+def handle_start_record(config, active_profile):
+    active_source = get_active_source_instance()
+    if not isinstance(active_source, SoundSource):
+        return
+
+    def status_update(msg):
+        from core.output import ui_signals
+        if 'popup' in config.get('output_mode', ['popup']):
+            ui_signals.show_popup.emit({"text": msg, "auto_close": 3000, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
+
+    active_source.start_recording(status_callback=status_update)
+
+def handle_stop_record(config, active_profile, active_prompt_text):
+    active_source = get_active_source_instance()
+    if not isinstance(active_source, SoundSource):
+        return
+
+    from core.output import ui_signals
+    def status_update(msg):
+        if 'popup' in config.get('output_mode', ['popup']):
+            ui_signals.show_popup.emit({"text": msg, "auto_close": None, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
+
+    status_update("Processing audio...")
+
+    def _process_audio():
+        text = active_source.stop_recording()
+        if not text:
+            status_update("No speech recognized.")
+            return
+
+        print(f"Recognized Speech: {text}")
+        status_update(f"Recognized: {text}\nSending to LLM...")
+
+        # We need to dispatch handle_text_submit via the callback dict or threading to not block,
+        # but handle_text_submit itself spawns a thread. Let's just call it directly.
+        handle_text_submit(config, active_profile, active_prompt_text, text)
+
+    threading.Thread(target=_process_audio, daemon=True).start()
+
 def handle_cycle_source(config, active_profile):
     global ocr_engine_instance
-    from core.sources import ScreenshotSource, TextSource
+    from core.sources import ScreenshotSource, TextSource, SoundSource
     active_source = get_active_source_instance()
     if isinstance(active_source, ScreenshotSource):
         new_source = TextSource()
@@ -621,6 +672,8 @@ def main():
     default_source = config.get('default_source', 'text')
     if default_source == 'image':
         set_active_source_instance(ScreenshotSource())
+    elif default_source == 'audio':
+        set_active_source_instance(SoundSource(config))
     else:
         set_active_source_instance(TextSource())
 
@@ -635,7 +688,9 @@ def main():
         'cancel': handle_cancel,
         'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
         'cycle_source': lambda: handle_cycle_source(config, active_profile),
-        'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text)
+        'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text),
+        'start_record': lambda: handle_start_record(config, active_profile),
+        'stop_record': lambda: handle_stop_record(config, active_profile, active_prompt_text)
     }
     # Initialize the UI Manager and set callbacks
     from core.output import init_ui_manager

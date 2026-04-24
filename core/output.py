@@ -177,6 +177,61 @@ class PopupWidget(QWidget):
 
         self.show()
 
+
+from PyQt6.QtCore import QTimer, pyqtSignal
+
+class RecordButton(QPushButton):
+    # Signals for different actions
+    start_recording = pyqtSignal()
+    stop_recording = pyqtSignal()
+
+    def __init__(self, text, style):
+        super().__init__(text)
+        self.setStyleSheet(style)
+        self.is_recording = False
+        self.is_long_press = False
+        self.press_timer = QTimer(self)
+        self.press_timer.setSingleShot(True)
+        self.press_timer.timeout.connect(self.on_long_press)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_long_press = False
+            self.press_timer.start(500) # 500ms for long press
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.press_timer.stop()
+            if self.is_long_press:
+                # It was a long press, so releasing stops the recording
+                self.stop_record_action()
+            else:
+                # It was a click, toggle recording state
+                if self.is_recording:
+                    self.stop_record_action()
+                else:
+                    self.start_record_action()
+
+    def on_long_press(self):
+        self.is_long_press = True
+        if not self.is_recording:
+            self.start_record_action()
+
+    def start_record_action(self):
+        self.is_recording = True
+        self.setText("⏹️ Stop / 🔴 Recording...")
+        self.setStyleSheet(self.styleSheet().replace("rgba(45, 45, 45, 180)", "rgba(178, 34, 34, 0.7)"))
+        self.start_recording.emit()
+
+    def stop_record_action(self):
+        self.is_recording = False
+        self.setText("🎙️ Record")
+        self.setStyleSheet(self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)"))
+        self.stop_recording.emit()
+
+
 class PanelWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -211,6 +266,12 @@ class PanelWidget(QWidget):
             self.layout.addWidget(btn)
             self.buttons[name] = btn
             return btn
+
+        self.btn_record = RecordButton("🎙️ Record", btn_style)
+        self.btn_record.start_recording.connect(lambda: self.call_action('start_record'))
+        self.btn_record.stop_recording.connect(lambda: self.call_action('stop_record'))
+        self.layout.addWidget(self.btn_record)
+        self.buttons['record'] = self.btn_record
 
         self.btn_capture = create_btn('capture', "📸 Capture", 'capture')
         self.btn_reselect = create_btn('reselect', "🎯 Reselect", 'reselect')
@@ -247,10 +308,12 @@ class PanelWidget(QWidget):
         self.update_position()
 
     def set_source(self, source_name):
-        is_image = source_name != "text"
+        is_image = source_name == "image"
+        is_audio = source_name == "audio"
         self.btn_capture.setVisible(is_image)
         self.btn_reselect.setVisible(is_image)
         self.btn_multi.setVisible(is_image)
+        self.btn_record.setVisible(is_audio)
         self.adjustSize()
         self.update_position()
 

@@ -74,6 +74,36 @@ def get_audio_devices():
 
     return output_devices
 
+
+def get_audio_input_devices():
+    """
+    Lists all available audio input devices.
+    Returns their name and index.
+    """
+    p = pyaudio.PyAudio()
+
+    input_devices = []
+
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+
+        # Only consider input devices
+        if info['maxInputChannels'] > 0:
+            host_api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+
+            # Filter for "MME" devices to match output behavior, or just MME
+            if host_api_name == "MME":
+                input_devices.append({
+                    'index': info['index'],
+                    'name': info['name'],
+                })
+
+    p.terminate()
+
+    input_devices.sort(key=lambda x: x['name'].lower())
+
+    return input_devices
+
 def load_config():
     config = {
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
@@ -102,7 +132,8 @@ def load_config():
         'warmup_ocr': True,
         'warmup_llm': True,
         'warmup_tts': False,
-        'tts_output_device_name': None
+        'tts_output_device_name': None,
+        'audio_input_device_name': None
     }
 
     # Ensure config directory exists
@@ -178,7 +209,7 @@ def parse_args():
     parser.add_argument('--hide-control-panel', action='store_true', help='Hide the control panel overlay')
     parser.add_argument('--continue-last', action='store_true', help='Continue the last chat session')
     parser.add_argument('--continue-session', type=str, help='Continue a specific chat session by ID')
-    parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
+    parser.add_argument('--default-source', type=str, choices=['text', 'image', 'audio'], help='Default source (text or image)')
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
     parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
