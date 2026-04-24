@@ -74,8 +74,8 @@ def _record_audio_in_background(stop_event, audio_queue, device_index):
 
         # Open the stream using PyAudio natively
         stream = p.open(format=pyaudio.paInt16,
-                        channels=1,
-                        rate=48000,
+                        channels=2,
+                        rate=44100,
                         input=True,
                         input_device_index=device_index,
                         frames_per_buffer=1024)
@@ -90,8 +90,14 @@ def _record_audio_in_background(stop_event, audio_queue, device_index):
                 break
 
         if frames:
-            # 2 represents paInt16 byte width
-            audio_data = sr.AudioData(b''.join(frames), 48000, 2)
+            # speech_recognition requires mono audio (1 channel) for its APIs.
+            # Convert the stereo interleaved bytes to mono by taking only the left channel
+            import audioop
+            stereo_data = b''.join(frames)
+            mono_data = audioop.tomono(stereo_data, 2, 1, 0)
+
+            # 2 represents paInt16 byte width, rate is 44100
+            audio_data = sr.AudioData(mono_data, 44100, 2)
             audio_queue.put(audio_data)
         print("[Recorder] Background audio recording stopped.")
     except Exception as e:
