@@ -39,9 +39,8 @@ SECOND_SCRIPT_ARGS = [
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
 # --- Global variables for background recording ---
-_stop_recording_event = threading.Event()
 _recorded_audio_queue = queue.Queue()  # To pass the AudioData object from recording thread to main thread
-_recording_thread: threading.Thread | None = None  # To hold the reference to the recording thread
+_stop_listening_func = None
 
 
 def get_microphone_index(target_name: str) -> int | None:
@@ -62,48 +61,12 @@ def get_microphone_index(target_name: str) -> int | None:
     return None
 
 
-def _record_audio_in_background(stop_event, audio_queue):
-    """Records audio continuously in the background until stop_event is set."""
-
-    frames = []
-    try:
-        print("[Recorder] Background audio recording started.")
-        # Instantiate Microphone inside the thread's context for proper resource management
-        with sr.Microphone(device_index=get_microphone_index(TTS_INPUT_DEVICE_NAME), sample_rate=48000) as source:
-            # Access the underlying PyAudio stream from the source object
-            stream = source.stream
-
-            if stream is None:
-                print("[Recorder] No audio stream found.")
-                return
-
-            while not stop_event.is_set():
-                try:
-                    # Read directly from the stream provided by sr.Microphone
-                    data = stream.read(source.CHUNK)
-                    frames.append(data)
-                except Exception as e:
-                    print(f"[Recorder] Error reading audio stream: {e}")
-                    break
-
-            # The stream will be closed by the 'with sr.Microphone() as source:' context manager
-            # when the loop exits and the 'with' block finishes.
-
-            if frames:
-                audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
-                audio_queue.put(audio_data)
-            print("[Recorder] Background audio recording stopped.")
-    except Exception as e:
-        print(f"[Recorder] Error during background recording setup or execution: {e}")
-
-
 def run_tests():
     def exit_tests():
         print("\nExit shortcut pressed. Cleaning up and exiting...")
         # Ensure recording is stopped if tests are exited prematurely
-        _stop_recording_event.set()
-        if _recording_thread and _recording_thread.is_alive():
-            _recording_thread.join(timeout=2)  # Give it a moment to stop
+        if _stop_listening_func:
+            _stop_listening_func(wait_for_stop=False)
         cleanup(app_process, service_process)
         os._exit(0)
 
@@ -122,14 +85,13 @@ def run_tests():
         # test_image_source() # Commented out as per original file
     finally:
         # Ensure recording is stopped even if test_text_source fails
-        _stop_recording_event.set()
-        if _recording_thread and _recording_thread.is_alive():
-            _recording_thread.join(timeout=2)  # Give it a moment to stop
+        if _stop_listening_func:
+            _stop_listening_func(wait_for_stop=False)
         cleanup(app_process, service_process)
 
 
 def test_text_source():
-    global _stop_recording_event, _recorded_audio_queue, _recording_thread
+    global _recorded_audio_queue, _stop_listening_func
 
     if not click_button(CYCLE_SOURCE):
         return
@@ -137,7 +99,6 @@ def test_text_source():
     time.sleep(1)
 
     # --- Start Background Recording ---
-    _stop_recording_event.clear()  # Reset the event for a new recording
     # Clear the queue for a new recording session
     while not _recorded_audio_queue.empty():
         try:
@@ -147,10 +108,15 @@ def test_text_source():
 
     r: sr.Recognizer = sr.Recognizer()  # Recognizer can be created once and passed
 
-    _recording_thread = threading.Thread(target=_record_audio_in_background,
-                                         args=(_stop_recording_event, _recorded_audio_queue))
-    _recording_thread.daemon = True  # Allow main program to exit even if thread is still running
-    _recording_thread.start()
+    def _audio_callback(recognizer, audio):
+        _recorded_audio_queue.put(audio)
+
+    mic_index = get_microphone_index(TTS_INPUT_DEVICE_NAME)
+    source = sr.Microphone(device_index=mic_index, sample_rate=48000)
+
+    # listen_in_background takes care of threading and continuously records audio,
+    # firing the callback whenever a phrase is complete.
+    _stop_listening_func = r.listen_in_background(source, _audio_callback, phrase_time_limit=10)
     print("Started background recording thread for TTS test.")
     # --- End Start Background Recording ---
 
@@ -176,12 +142,9 @@ def test_text_source():
     time.sleep(5)
 
     # --- Stop Background Recording ---
-    _stop_recording_event.set()  # Signal the recording thread to stop
-    if _recording_thread and _recording_thread.is_alive():
-        print("Waiting for background recording thread to finish...")
-        _recording_thread.join(timeout=5)  # Wait for the thread to finish, with a timeout
-        if _recording_thread.is_alive():
-            print("Warning: Background recording thread did not terminate in time.")
+    if _stop_listening_func:
+        _stop_listening_func(wait_for_stop=True)
+        _stop_listening_func = None
     print("Signaled background recording thread to stop.")
     # --- End Stop Background Recording ---
 
