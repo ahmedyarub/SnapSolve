@@ -168,19 +168,7 @@ class ConfigUI(QDialog):
         self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
         layout.addRow("Control Panel:", self.show_control_panel)
 
-        # Warmups
-        self.warmup_ocr = QCheckBox("Warmup OCR Engine")
-        self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
-        self.warmup_llm = QCheckBox("Warmup LLM Engine")
-        self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
-        self.warmup_tts = QCheckBox("Warmup TTS Engine")
-        self.warmup_tts.setChecked(self.config.get('warmup_tts', False))
 
-        warmup_layout = QHBoxLayout()
-        warmup_layout.addWidget(self.warmup_ocr)
-        warmup_layout.addWidget(self.warmup_llm)
-        warmup_layout.addWidget(self.warmup_tts)
-        layout.addRow("Warmup Settings:", warmup_layout)
 
         # API Keys & URLs
         self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
@@ -342,6 +330,7 @@ class ConfigUI(QDialog):
         self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
         self.config['warmup_llm'] = self.warmup_llm.isChecked()
         self.config['warmup_tts'] = self.warmup_tts.isChecked()
+        self.config['warmup_speech_recognition'] = self.warmup_sr.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
         

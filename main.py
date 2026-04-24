@@ -776,6 +776,12 @@ def main():
     if config.get('warmup_tts', False) and hasattr(audio_sink_instance, 'warmup'):
         threading.Thread(target=audio_sink_instance.warmup, daemon=True).start()
 
+    # Warmup Speech Recognition asynchronously if enabled
+    if config.get('warmup_speech_recognition', True):
+        from core.sources.sound import SoundSource
+        temp_sr = SoundSource(config)
+        threading.Thread(target=temp_sr.warmup, daemon=True).start()
+
     hotkeys = config.get('hotkeys', [])
 
     for hk in hotkeys:

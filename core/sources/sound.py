@@ -18,6 +18,15 @@ class SoundSource(Source):
         # Ensure we have SpeechRecognition ready
         self.recognizer = sr.Recognizer()
 
+    def warmup(self):
+        # We can just initialize PyAudio briefly to cache its startup
+        try:
+            p = pyaudio.PyAudio()
+            p.terminate()
+            logger.info("Speech Recognition / PyAudio warmup complete.")
+        except Exception as e:
+            logger.error(f"Speech Recognition warmup failed: {e}")
+
     @property
     def name(self):
         return "audio"

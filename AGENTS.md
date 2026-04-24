@@ -71,3 +71,4 @@ This application relies on a strictly decoupled architecture:
 * Sanity Tests:
     * The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
     * These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
+    * NEVER run sanity tests autonomously. These are strictly for developer usage and manual testing only.

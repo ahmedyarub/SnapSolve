@@ -132,6 +132,7 @@ def load_config():
         'warmup_ocr': True,
         'warmup_llm': True,
         'warmup_tts': False,
+        'warmup_speech_recognition': True,
         'tts_output_device_name': None,
         'audio_input_device_name': None
     }
@@ -213,6 +214,7 @@ def parse_args():
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
     parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
+    parser.add_argument('--disable-warmup-speech-recognition', action='store_true', help='Disable Speech Recognition warmup')
     parser.add_argument('--tts-output-device-name', type=str, help='Name of the audio device for TTS output')
 
     return parser.parse_args()
@@ -288,6 +290,9 @@ def get_config():
         
     if args.disable_warmup_tts:
         config['warmup_tts'] = False
+
+    if args.disable_warmup_speech_recognition:
+        config['warmup_speech_recognition'] = False
 
     if args.tts_output_device_name is not None:
         config['tts_output_device_name'] = args.tts_output_device_name
