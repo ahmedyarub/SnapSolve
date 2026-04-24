@@ -138,6 +138,26 @@ class ConfigUI(QDialog):
         
         layout.addRow("TTS Output Device:", self.tts_output_device_combo)
 
+        # Audio Input Device
+        self.audio_input_device_combo = QComboBox()
+        self.audio_input_device_combo.addItem("Default System Input", None)
+
+        try:
+            from config.settings import get_audio_input_devices
+            input_audio_devices = get_audio_input_devices()
+            for device in input_audio_devices:
+                self.audio_input_device_combo.addItem(device['name'], device['name'])
+        except Exception as e:
+            print(f"Failed to load audio input devices: {e}")
+
+        current_input_device_name = self.config.get('audio_input_device_name', None)
+        if current_input_device_name is not None:
+            idx = self.audio_input_device_combo.findData(current_input_device_name)
+            if idx >= 0:
+                self.audio_input_device_combo.setCurrentIndex(idx)
+
+        layout.addRow("Audio Input Device:", self.audio_input_device_combo)
+
         # Background Mode
         self.background_mode = QCheckBox("Run in system tray")
         self.background_mode.setChecked(self.config.get('background', False))
