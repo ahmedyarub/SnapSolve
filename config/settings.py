@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import pyaudio # Import pyaudio
 
 CONFIG_FILE = os.path.join('config', 'config.json')
 PROFILES_FILE = os.path.join('config', 'profiles.json')
@@ -42,6 +43,37 @@ def load_prompts():
         }
     ]
 
+def get_audio_devices():
+    """
+    Lists all available audio output devices, filtering to include only "MME" devices.
+    Returns their name and index.
+    """
+    p = pyaudio.PyAudio()
+    
+    output_devices = []
+
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        
+        # Only consider output devices
+        if info['maxOutputChannels'] > 0:
+            host_api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+            
+            # Filter for "MME" devices
+            if host_api_name == "MME":
+                output_devices.append({
+                    'index': info['index'],
+                    'name': info['name'],
+                    # 'hostApiName': host_api_name # No longer storing hostApiName
+                })
+
+    p.terminate()
+
+    # Sort devices by name for consistent ordering
+    output_devices.sort(key=lambda x: x['name'].lower())
+
+    return output_devices
+
 def load_config():
     config = {
         'output_mode': ['popup'], # Can be 'popup', 'audio', or both
@@ -58,7 +90,7 @@ def load_config():
         'save_images': False,
         'coordinates': None, # [x1, y1, x2, y2]
         'background': False,
-        'voice_id': None, # The TTS voice/playback device ID
+        'piper_model': 'en_US-lessac-medium.onnx', # Path to piper model
         'active_profile_id': 'prof1',
         'ollama_url': 'http://localhost:11434',
         'google_genai_api_key': '',
@@ -68,7 +100,9 @@ def load_config():
         'show_control_panel': False,
         'default_source': 'text',
         'warmup_ocr': True,
-        'warmup_llm': True
+        'warmup_llm': True,
+        'warmup_tts': False,
+        'tts_output_device_name': None
     }
 
     # Ensure config directory exists
@@ -82,6 +116,7 @@ def load_config():
 
     if os.path.exists(CONFIG_FILE):
         try:
+            file_config = {}
             with open(CONFIG_FILE, 'r') as f:
                 file_config = json.load(f)
 
@@ -131,10 +166,10 @@ def parse_args():
     parser.add_argument('--coords', type=int, nargs=4, metavar=('X1', 'Y1', 'X2', 'Y2'), help='Capture coordinates')
     parser.add_argument('--background', action='store_true', help='Run in background (system tray)')
     parser.add_argument('--foreground', action='store_true', help='Force run in foreground')
-    parser.add_argument('--voice-id', type=str, help='TTS Voice ID (often maps to a specific language/playback device setting in the OS)')
+    parser.add_argument('--piper-model', type=str, help='Path to Piper .onnx model')
     parser.add_argument('--active-profile', type=str, help='Active profile ID')
     parser.add_argument('--ollama-url', type=str, help='Ollama API URL (default: http://localhost:11434)')
-    parser.add_argument('--google-genai-api-key', type=str, help='Google GenAI API Key')
+    parser.add_argument('--google-genai-api_key', type=str, help='Google GenAI API Key')
     parser.add_argument('--auto-close-results', action='store_true', help='Auto close result popups')
     parser.add_argument('--no-auto-close-results', action='store_true', help='Do not auto close result popups')
     parser.add_argument('--popup-opacity', type=float, help='Opacity of the popup (0.0 to 1.0)')
@@ -146,6 +181,8 @@ def parse_args():
     parser.add_argument('--default-source', type=str, choices=['text', 'image'], help='Default source (text or image)')
     parser.add_argument('--disable-warmup-ocr', action='store_true', help='Disable OCR engine warmup')
     parser.add_argument('--disable-warmup-llm', action='store_true', help='Disable LLM engine warmup')
+    parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
+    parser.add_argument('--tts-output-device-name', type=str, help='Name of the audio device for TTS output')
 
     return parser.parse_args()
 
@@ -175,8 +212,8 @@ def get_config():
     elif args.foreground:
         config['background'] = False
 
-    if args.voice_id:
-        config['voice_id'] = args.voice_id
+    if args.piper_model:
+        config['piper_model'] = args.piper_model
 
     if args.active_profile:
         config['active_profile_id'] = args.active_profile
@@ -217,5 +254,11 @@ def get_config():
 
     if args.disable_warmup_llm:
         config['warmup_llm'] = False
+        
+    if args.disable_warmup_tts:
+        config['warmup_tts'] = False
+
+    if args.tts_output_device_name is not None:
+        config['tts_output_device_name'] = args.tts_output_device_name
 
     return config

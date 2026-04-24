@@ -1,4 +1,3 @@
-import pyttsx3
 import threading
 import json
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QScrollArea
@@ -24,21 +23,6 @@ ui_signals = UISignals()
 selector_signals = SelectorSignals()
 _app_callbacks = {}
 
-
-# --- Audio TTS ---
-def speak(text, voice_id=None):
-    def _speak():
-        try:
-            engine = pyttsx3.init()
-            rate = engine.getProperty('rate')
-            engine.setProperty('rate', rate + 25)
-            if voice_id:
-                engine.setProperty('voice', voice_id)
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as e:
-            print(f"TTS Error: {e}")
-    threading.Thread(target=_speak, daemon=True).start()
 
 # --- PyQt UI Components ---
 
@@ -422,8 +406,7 @@ def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0
     if not output_modes:
         output_modes = ['popup']
 
-    if 'audio' in output_modes:
-        speak(text, voice_id)
+    # Audio is now handled by the AudioSink in the pipeline
 
     if 'popup' in output_modes:
         show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True, fallback_language=fallback_language)

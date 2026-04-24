@@ -38,4 +38,4 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Popup Sink:** Displays responses in an unobtrusive, frameless window.
     *   Supports dynamic resizing based on text length.
     *   Renders rich Markdown, including bold, italics, lists, markdown tables, and syntax-highlighted code blocks.
-*   **Audio Sink (TTS):** Uses local Text-to-Speech (`pyttsx3`) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
+*   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.

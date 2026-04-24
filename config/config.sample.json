@@ -1,6 +1,7 @@
 {
     "output_mode": [
-        "popup"
+        "popup",
+        "audio"
     ],
     "hotkeys": [
         {
@@ -14,7 +15,7 @@
     ],
     "coordinates": null,
     "background": false,
-    "voice_id": null,
+    "piper_model": "en_US-lessac-medium.onnx",
     "active_profile_id": "programming",
     "ollama_url": "http://localhost:11434",
     "google_genai_api_key": "",
@@ -22,8 +23,9 @@
     "popup_opacity": 0.9,
     "fallback_language": "python",
     "toggle_panel": true,
-    "warmup_ocr": true,
+    "warmup_ocr": false,
     "warmup_llm": false,
+    "warmup_tts": false,
     "ocr_config": {
         "remote_ocr_host": "127.0.0.1",
         "port": 8000

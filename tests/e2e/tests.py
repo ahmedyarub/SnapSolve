@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import socket
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import time
 import keyboard
 import pyautogui
 import pyperclip
+import speech_recognition as sr
 
 # --- Configuration variables ---
 WORKING_DIR = r"E:\Python\SnapSolve"
@@ -25,19 +27,84 @@ POPUP_X, POPUP_Y = 3500, 1800
 BASIC_QUESTION = "What is the fifth largest country in the world?"
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
+TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual"
+TTS_OUTPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
 SECOND_SCRIPT_PATH = 'main.py'
 SECOND_SCRIPT_ARGS = [
     '--active-profile=quick',
-    '--popup-opacity=1.0'
+    '--popup-opacity=1.0',
+    f'--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}'
 ]
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
+
+# --- Global variables for background recording ---
+_stop_recording_event = threading.Event()
+_recorded_audio_queue = queue.Queue()  # To pass the AudioData object from recording thread to main thread
+_recording_thread: threading.Thread | None = None  # To hold the reference to the recording thread
+
+
+def get_microphone_index(target_name: str) -> int | None:
+    """
+    Searches available microphones for a given name and returns its index.
+    """
+    # Fetch the list of all available audio devices recognized by PyAudio/SpeechRecognition
+    mic_list = sr.Microphone.list_microphone_names()
+
+    for index, name in enumerate(mic_list):
+        # Case-insensitive partial match
+        if target_name.lower() in name.lower():
+            print(f"Matched: [{index}] {name}")
+            return index
+
+    print(f"Error: No device matching '{target_name}' was found.")
+    print("Available devices:", mic_list)
+    return None
+
+
+def _record_audio_in_background(stop_event, audio_queue, device_index):
+    """Records audio continuously in the background."""
+
+    frames = []
+    try:
+        print("[Recorder] Background audio recording started.")
+        # Instantiate Microphone inside the thread's context for proper resource management
+        with sr.Microphone(device_index=device_index) as source:
+            # Access the underlying PyAudio stream from the source object
+            stream = source.stream
+
+            if stream is None:
+                print("[Recorder] No audio stream found.")
+                return
+
+            while not stop_event.is_set():
+                try:
+                    # Read directly from the stream provided by sr.Microphone
+                    data = stream.read(source.CHUNK)
+                    frames.append(data)
+                except Exception as e:
+                    print(f"[Recorder] Error reading audio stream: {e}")
+                    break
+
+            # The stream will be closed by the 'with sr.Microphone() as source:' context manager
+            # when the loop exits and the 'with' block finishes.
+
+            if frames:
+                audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+                audio_queue.put(audio_data)
+            print("[Recorder] Background audio recording stopped.")
+    except Exception as e:
+        print(f"[Recorder] Error during background recording setup or execution: {e}")
 
 
 def run_tests():
     def exit_tests():
         print("\nExit shortcut pressed. Cleaning up and exiting...")
+        # Ensure recording is stopped if tests are exited prematurely
+        _stop_recording_event.set()
+        if _recording_thread and _recording_thread.is_alive():
+            _recording_thread.join(timeout=2)
         cleanup(app_process, service_process)
         os._exit(0)
 
@@ -53,18 +120,42 @@ def run_tests():
 
     try:
         test_text_source()
-
         test_image_source()
     finally:
+        # Ensure recording is stopped even if test_text_source fails
+        _stop_recording_event.set()
+        if _recording_thread and _recording_thread.is_alive():
+            _recording_thread.join(timeout=2)
         cleanup(app_process, service_process)
 
 
 def test_text_source():
+    global _stop_recording_event, _recorded_audio_queue, _recording_thread
+
     if not click_button(CYCLE_SOURCE):
         return
 
-    # 2. Wait for a second
     time.sleep(1)
+
+    # --- Start Background Recording ---
+    _stop_recording_event.clear()
+    # Clear the queue for a new recording session
+    while not _recorded_audio_queue.empty():
+        try:
+            _recorded_audio_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+    r: sr.Recognizer = sr.Recognizer()  # Recognizer can be created once and passed
+
+    mic_index = get_microphone_index(TTS_INPUT_DEVICE_NAME)
+
+    _recording_thread = threading.Thread(target=_record_audio_in_background,
+                                         args=(_stop_recording_event, _recorded_audio_queue, mic_index))
+    _recording_thread.daemon = True  # Allow main program to exit even if thread is still running
+    _recording_thread.start()
+    print("Started background recording thread for TTS test.")
+    # --- End Start Background Recording ---
 
     # 3. Click on a specific screen position
     print(f"Clicking specific position ({PROMPT_X}, {PROMPT_Y})...")
@@ -72,9 +163,9 @@ def test_text_source():
 
     # 4. Paste the text instead of typing
     print(f"Pasting the question...")
-    pyperclip.copy(BASIC_QUESTION)  # Send the text to your clipboard
-    time.sleep(0.1)  # Tiny pause to let the clipboard register
-    pyautogui.hotkey('ctrl', 'v')  # Paste it (Use 'command', 'v' on Mac)
+    pyperclip.copy(BASIC_QUESTION)
+    time.sleep(0.1)
+    pyautogui.hotkey('ctrl', 'v')
 
     # 5. Click enter
     pyautogui.press('enter')
@@ -82,15 +173,66 @@ def test_text_source():
     # 6. Wait
     time.sleep(2)
 
-    if find_text(TARGET_WORD_BASIC):
+    found_target_word = find_text(TARGET_WORD_BASIC)
+
+    # Wait for 3 seconds before stopping the recording
+    time.sleep(3)
+
+    # --- Stop Background Recording ---
+    _stop_recording_event.set()  # Signal the recording thread to stop
+    if _recording_thread and _recording_thread.is_alive():
+        print("Waiting for background recording thread to finish...")
+        _recording_thread.join(timeout=5)  # Wait for the thread to finish, with a timeout
+        if _recording_thread.is_alive():
+            print("Warning: Background recording thread did not terminate in time.")
+    print("Signaled background recording thread to stop.")
+    # --- End Stop Background Recording ---
+
+    if found_target_word:
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
+        return  # End test prematurely if target word not found
+
+    # --- TTS Recognition Test (Process recorded audio) ---
+    print("\n--- Starting TTS Recognition Test (Processing recorded audio) ---")
+    audio_filename = "recorded_tts_output.wav"
+
+    try:
+        if not _recorded_audio_queue.empty():
+            audio = _recorded_audio_queue.get(timeout=5)  # Get the recorded AudioData object, with a timeout
+
+            with open(audio_filename, "wb") as f:
+                f.write(audio.get_wav_data())
+            print(f"Audio recorded to {audio_filename}")
+
+            # Now, recognize the speech
+            # Use the AudioData object directly with the recognizer
+            recognized_text = r.recognize_google(audio)
+            print(f"Recognized text: '{recognized_text}'")
+
+            if TARGET_WORD_BASIC.lower() in recognized_text.lower():
+                print(f"\n✅ SUCCESS (TTS): The word '{TARGET_WORD_BASIC}' was found in the spoken audio!")
+            else:
+                print(f"\n❌ FAILURE (TTS): The word '{TARGET_WORD_BASIC}' was NOT found in the spoken audio.")
+        else:
+            print("\n❌ FAILURE (TTS): No audio data was recorded by the background thread.")
+
+    except queue.Empty:
+        print("\n❌ FAILURE (TTS): Timed out waiting for recorded audio data from the queue.")
+    except sr.UnknownValueError:
+        print("\n❌ FAILURE (TTS): Speech Recognition could not understand audio.")
+    except sr.RequestError as e:
+        print(f"\n❌ FAILURE (TTS): Could not request results from Google Speech Recognition service; {e}")
+    except Exception as e:
+        print(f"\n❌ FAILURE (TTS): An error occurred during speech recognition: {e}")
+    # finally:
+    #     if os.path.exists(audio_filename):
+    #         os.remove(audio_filename)
+    # --- End of TTS Recognition Test ---
 
     click_button(CANCEL_SOURCE, True)
-
     poll_button(CANCEL_SOURCE, visible=False)
-
     time.sleep(1)
 
 
@@ -346,6 +488,7 @@ def launch_service():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
             bufsize=1,
             env=env
         )
@@ -378,6 +521,7 @@ def launch_app():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
             bufsize=1
         )
         print("Second script launched. Waiting for initialization...")

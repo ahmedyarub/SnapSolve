@@ -1,10 +1,14 @@
 import json
+import os
+import sys
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
     QWidget, QLabel, QLineEdit, QComboBox, QMessageBox,
-    QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox
+    QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox, QApplication,
+    QPushButton, QFileDialog
 )
+from config.settings import get_audio_devices # Import the function to get audio devices
 
 
 class ConfigUI(QDialog):
@@ -83,6 +87,11 @@ class ConfigUI(QDialog):
         self.should_run = True
         self.save_all()
 
+    def browse_piper_model(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Piper Model", "", "ONNX Files (*.onnx);;All Files (*)")
+        if file_path:
+            self.piper_model.setText(file_path)
+
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
 
@@ -103,9 +112,31 @@ class ConfigUI(QDialog):
         self.fallback_language = QLineEdit(self.config.get('fallback_language', 'python'))
         layout.addRow("Fallback Lexer Language:", self.fallback_language)
 
-        # Voice ID
-        self.voice_id = QLineEdit(self.config.get('voice_id', ''))
-        layout.addRow("Voice ID (Optional):", self.voice_id)
+        # TTS Piper settings
+        self.piper_model = QLineEdit(self.config.get('piper_model', 'en_US-lessac-medium.onnx'))
+        piper_model_layout = QHBoxLayout()
+        piper_model_layout.addWidget(self.piper_model)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_piper_model)
+        piper_model_layout.addWidget(browse_btn)
+        layout.addRow("Piper Voice Model Path:", piper_model_layout)
+
+        self.tts_output_device_combo = QComboBox()
+
+        self.tts_output_device_combo.addItem("Default System Output", None) 
+        
+        audio_devices = get_audio_devices()
+        for device in audio_devices:
+            self.tts_output_device_combo.addItem(device['name'], device['name'])
+        
+        current_device_name = self.config.get('tts_output_device_name', None)
+
+        if current_device_name is not None:
+            idx = self.tts_output_device_combo.findData(current_device_name)
+            if idx >= 0:
+                self.tts_output_device_combo.setCurrentIndex(idx)
+        
+        layout.addRow("TTS Output Device:", self.tts_output_device_combo)
 
         # Background Mode
         self.background_mode = QCheckBox("Run in system tray")
@@ -122,10 +153,13 @@ class ConfigUI(QDialog):
         self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
         self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
+        self.warmup_tts = QCheckBox("Warmup TTS Engine")
+        self.warmup_tts.setChecked(self.config.get('warmup_tts', False))
 
         warmup_layout = QHBoxLayout()
         warmup_layout.addWidget(self.warmup_ocr)
         warmup_layout.addWidget(self.warmup_llm)
+        warmup_layout.addWidget(self.warmup_tts)
         layout.addRow("Warmup Settings:", warmup_layout)
 
         # API Keys & URLs
@@ -282,13 +316,20 @@ class ConfigUI(QDialog):
         self.config['output_mode'] = modes
 
         self.config['fallback_language'] = self.fallback_language.text()
-        self.config['voice_id'] = self.voice_id.text() or None
+        self.config['piper_model'] = self.piper_model.text() or 'en_US-lessac-medium.onnx'
         self.config['background'] = self.background_mode.isChecked()
         self.config['show_control_panel'] = self.show_control_panel.isChecked()
         self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
         self.config['warmup_llm'] = self.warmup_llm.isChecked()
+        self.config['warmup_tts'] = self.warmup_tts.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
+        
+        self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
+
+        # Clean up legacy piper path if it exists
+        if 'piper_path' in self.config:
+            del self.config['piper_path']
 
         # Save Profile Settings
         self.save_current_profile()
@@ -330,12 +371,7 @@ def open_config_ui(config_path, models_path, profiles_path, prompts_path):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
     # Temporarily create app for the config UI if run directly
-    from PyQt6.QtWidgets import QApplication
-
     # Only create if it doesn't exist
     if not QApplication.instance():
         app = QApplication(sys.argv)
