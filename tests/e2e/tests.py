@@ -64,60 +64,38 @@ def get_microphone_index(target_name: str) -> int | None:
 
 
 def _record_audio_in_background(stop_event, audio_queue, device_index):
-    """Records audio continuously in the background using PyAudio directly."""
+    """Records audio continuously in the background."""
+
     frames = []
-    p = None
-    stream = None
     try:
         print("[Recorder] Background audio recording started.")
-        p = pyaudio.PyAudio()
+        # Instantiate Microphone inside the thread's context for proper resource management
+        with sr.Microphone(device_index=device_index) as source:
+            # Access the underlying PyAudio stream from the source object
+            stream = source.stream
 
-        device_info = p.get_device_info_by_index(device_index)
-        channels = int(device_info.get('maxInputChannels', 1))
-        rate = int(device_info.get('defaultSampleRate', 48000))
-        print(f"[Recorder] Opening stream with channels={channels}, rate={rate}")
+            if stream is None:
+                print("[Recorder] No audio stream found.")
+                return
 
-        # Open the stream using PyAudio natively
-        stream = p.open(format=pyaudio.paInt16,
-                        channels=channels,
-                        rate=rate,
-                        input=True,
-                        input_device_index=device_index,
-                        frames_per_buffer=1024)
+            while not stop_event.is_set():
+                try:
+                    # Read directly from the stream provided by sr.Microphone
+                    data = stream.read(source.CHUNK)
+                    frames.append(data)
+                except Exception as e:
+                    print(f"[Recorder] Error reading audio stream: {e}")
+                    break
 
-        while not stop_event.is_set():
-            try:
-                # Read 1024 frames directly from the device
-                data = stream.read(1024, exception_on_overflow=False)
-                frames.append(data)
-            except Exception as e:
-                print(f"[Recorder] Error reading audio stream: {e}")
-                break
+            # The stream will be closed by the 'with sr.Microphone() as source:' context manager
+            # when the loop exits and the 'with' block finishes.
 
-        if frames:
-            raw_data = b''.join(frames)
-
-            if channels > 1:
-                # speech_recognition requires mono audio (1 channel) for its APIs.
-                import audioop
-                # audioop.tomono takes (fragment, width, lfactor, rfactor)
-                # To mix down evenly from stereo, use 1.0, 1.0. For just the left channel, use 1.0, 0.0.
-                mono_data = audioop.tomono(raw_data, 2, 1.0, 1.0)
-            else:
-                mono_data = raw_data
-
-            # 2 represents paInt16 byte width
-            audio_data = sr.AudioData(mono_data, rate, 2)
-            audio_queue.put(audio_data)
-        print("[Recorder] Background audio recording stopped.")
+            if frames:
+                audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+                audio_queue.put(audio_data)
+            print("[Recorder] Background audio recording stopped.")
     except Exception as e:
         print(f"[Recorder] Error during background recording setup or execution: {e}")
-    finally:
-        if stream is not None:
-            stream.stop_stream()
-            stream.close()
-        if p is not None:
-            p.terminate()
 
 
 def run_tests():
