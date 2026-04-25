@@ -29,7 +29,12 @@ class SoundSource(Source):
             with sr.AudioFile(test_file) as source:
                 audio_data = self.recognizer.record(source)
                 text = self.recognizer.recognize_google(audio_data)
-                logger.info(f"Warmup recognition success: {text}")
+
+                expected_text = "this is a test of the audio system"
+                if text.lower() == expected_text:
+                    logger.info(f"Warmup recognition success: {text}")
+                else:
+                    logger.error(f"Warmup recognition failed: expected '{expected_text}', got '{text}'")
 
             logger.info("Speech Recognition / PyAudio warmup complete.")
         except sr.UnknownValueError:
