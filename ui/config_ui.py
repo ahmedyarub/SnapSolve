@@ -374,6 +374,7 @@ class ConfigUI(QDialog):
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
         
         self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
+        self.config['audio_input_device_name'] = self.audio_input_device_combo.currentData()
 
         # Clean up legacy piper path if it exists
         if 'piper_path' in self.config:
