@@ -1,9 +1,9 @@
 import json
+import logging  # Import logging module
 import os
 import platform
 import sys
 import threading
-import logging # Import logging module
 
 import keyboard
 from PyQt6.QtCore import Qt
@@ -38,7 +38,7 @@ from core.sources import get_active_source_instance, set_active_source_instance
 
 llm_engine_instance = None
 session_manager = None
-audio_sink_instance = None # Global AudioSink instance
+audio_sink_instance = None  # Global AudioSink instance
 
 # Multi-capture state
 is_multi_capturing = False
@@ -79,7 +79,7 @@ def set_processing(state):
     is_processing = state
     set_app_processing_state(state)
     if not state:
-        cancel_event.clear() # Reset cancel event when not processing
+        cancel_event.clear()  # Reset cancel event when not processing
 
 
 def handle_text_submit(config, active_profile, active_prompt_text, text):
@@ -108,7 +108,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
             # Use the global audio_sink_instance
             sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
-            
+
             from core.sources import TextSource
             temp_source = TextSource()
 
@@ -126,7 +126,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
             )
             if hasattr(sink, 'finish'):
                 sink.finish()
-                
+
             if cancel_event.is_set():
                 print("Text processing was cancelled.")
                 return
@@ -140,7 +140,7 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
+            output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
@@ -218,7 +218,7 @@ def handle_capture(config, active_profile, active_prompt_text):
             )
             if hasattr(sink, 'finish'):
                 sink.finish()
-                
+
             if hasattr(active_src, 'cleanup_all'):
                 active_src.cleanup_all()
 
@@ -235,7 +235,7 @@ def handle_capture(config, active_profile, active_prompt_text):
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
+            output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
         except Exception as e:
@@ -303,7 +303,8 @@ def handle_multi_capture(config, active_profile, active_prompt_text):
             temp_source.ocr_engine = ocr_engine_instance
             extracted_text = None
             try:
-                extracted_text = temp_source.get_text(coords=coords, status_callback=status_update, cancel_event=cancel_event)
+                extracted_text = temp_source.get_text(coords=coords, status_callback=status_update,
+                                                      cancel_event=cancel_event)
             except Exception as e:
                 status_update(f"Error during OCR: {str(e)}")
             finally:
@@ -393,7 +394,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             )
             if hasattr(sink, 'finish'):
                 sink.finish()
-                
+
             if cancel_event.is_set():
                 print("Multi-capture processing was cancelled.")
                 return
@@ -407,7 +408,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 else:
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
-            output_result(final_result, config.get('output_mode'), None, # Deprecated voice_id
+            output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
 
@@ -488,8 +489,6 @@ def handle_cancel():
     # set_processing(False)
 
 
-
-
 def handle_start_record(config, active_profile):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
@@ -498,9 +497,11 @@ def handle_start_record(config, active_profile):
     def status_update(msg):
         from core.output import ui_signals
         if 'popup' in config.get('output_mode', ['popup']):
-            ui_signals.show_popup.emit({"text": msg, "auto_close": 3000, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
+            ui_signals.show_popup.emit(
+                {"text": msg, "auto_close": 3000, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
 
     active_source.start_recording(status_callback=status_update)
+
 
 def handle_stop_record(config, active_profile, active_prompt_text):
     active_source = get_active_source_instance()
@@ -510,7 +511,8 @@ def handle_stop_record(config, active_profile, active_prompt_text):
     from core.output import ui_signals
     def status_update(msg):
         if 'popup' in config.get('output_mode', ['popup']):
-            ui_signals.show_popup.emit({"text": msg, "auto_close": None, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
+            ui_signals.show_popup.emit(
+                {"text": msg, "auto_close": None, "opacity": config.get('popup_opacity', 0.8), "is_result": False})
 
     status_update("Processing audio...")
 
@@ -529,9 +531,10 @@ def handle_stop_record(config, active_profile, active_prompt_text):
 
     threading.Thread(target=_process_audio, daemon=True).start()
 
+
 def handle_cycle_source(config, active_profile):
     global ocr_engine_instance
-    from core.sources import ScreenshotSource, TextSource, SoundSource
+    from core.sources import ScreenshotSource, TextSource
     active_source = get_active_source_instance()
     if isinstance(active_source, ScreenshotSource):
         new_source = TextSource()
@@ -813,6 +816,7 @@ def main():
 
     if config.get('background', False) and HAS_PYSTRAY:
         print("Running in background tray mode with pystray...")
+
         def run_tray():
             icon = create_tray_icon(exit_app, config)
             icon.run()

@@ -1,9 +1,11 @@
-import os
 import tempfile
 import threading
+
 from PIL import ImageGrab
+
 from .base import ImageSource
 from .ocr.base import OCREngine
+
 
 class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
@@ -13,7 +15,7 @@ class ScreenshotSource(ImageSource):
     def _capture(self, coords, cancel_event: threading.Event = None) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
-            
+
         if not coords or len(coords) != 4:
             raise ValueError("Invalid coordinates. Please run coordinate selection again.")
 
@@ -38,17 +40,18 @@ class ScreenshotSource(ImageSource):
     def get_text(self, coords=None, status_callback=None, cancel_event: threading.Event = None, *args, **kwargs) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
-            
+
         if not self.ocr_engine or self.ocr_engine.__class__.__name__ == "NoOCREngine":
             raise ValueError("ScreenshotSource cannot provide text without an active OCR engine.")
 
         image_path = self._capture(coords, cancel_event)
-        
+
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
-            
+
         try:
-            if hasattr(self.ocr_engine, 'extract_text') and 'cancel_event' in self.ocr_engine.extract_text.__code__.co_varnames:
+            if hasattr(self.ocr_engine,
+                       'extract_text') and 'cancel_event' in self.ocr_engine.extract_text.__code__.co_varnames:
                 text = self.ocr_engine.extract_text(image_path, status_callback, cancel_event)
             else:
                 text = self.ocr_engine.extract_text(image_path, status_callback)

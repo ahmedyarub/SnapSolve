@@ -9,3 +9,4 @@ piper-tts
 pyautogui
 pyperclip
 speechrecognition
+pyaudio

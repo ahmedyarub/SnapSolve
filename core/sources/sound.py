@@ -1,12 +1,14 @@
+import logging
+import threading
+from typing import Callable, Optional
+
 import pyaudio
 import speech_recognition as sr
-import threading
-import logging
-from typing import Callable, Optional
 
 from .base import Source
 
 logger = logging.getLogger(__name__)
+
 
 class SoundSource(Source):
     def __init__(self, config=None):
@@ -19,7 +21,6 @@ class SoundSource(Source):
         self.recognizer = sr.Recognizer()
 
     def warmup(self):
-        import os
         try:
             p = pyaudio.PyAudio()
             p.terminate()
