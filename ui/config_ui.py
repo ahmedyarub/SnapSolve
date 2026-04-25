@@ -62,14 +62,17 @@ class ConfigUI(QDialog):
         # Create tabs
         self.app_tab = QWidget()
         self.profile_tab = QWidget()
+        self.warmup_tab = QWidget()
         self.shortcuts_tab = QWidget()
 
         self.tabs.addTab(self.app_tab, "Application Settings")
         self.tabs.addTab(self.profile_tab, "Profile Settings")
+        self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
 
         self.setup_app_tab()
         self.setup_profile_tab()
+        self.setup_warmup_tab()
         self.setup_shortcuts_tab()
 
         # Buttons
@@ -287,6 +290,27 @@ class ConfigUI(QDialog):
 
         # Update combo box text
         self.profile_combo.setItemText(index, profile['name'])
+
+
+    def setup_warmup_tab(self):
+        layout = QFormLayout(self.warmup_tab)
+
+        self.warmup_ocr = QCheckBox("Warmup OCR Engine")
+        self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
+
+        self.warmup_llm = QCheckBox("Warmup LLM Engine")
+        self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
+
+        self.warmup_tts = QCheckBox("Warmup TTS Engine")
+        self.warmup_tts.setChecked(self.config.get('warmup_tts', False))
+
+        self.warmup_sr = QCheckBox("Warmup Speech Recognition")
+        self.warmup_sr.setChecked(self.config.get('warmup_speech_recognition', True))
+
+        layout.addRow("OCR:", self.warmup_ocr)
+        layout.addRow("LLM:", self.warmup_llm)
+        layout.addRow("TTS:", self.warmup_tts)
+        layout.addRow("Speech Recognition:", self.warmup_sr)
 
     def setup_shortcuts_tab(self):
         scroll = QScrollArea()
