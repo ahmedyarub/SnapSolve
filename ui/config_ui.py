@@ -98,6 +98,19 @@ class ConfigUI(QDialog):
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
 
+        # Default Source
+        self.default_source_combo = QComboBox()
+        self.default_source_combo.addItem("Text", "text")
+        self.default_source_combo.addItem("Image", "image")
+        self.default_source_combo.addItem("Audio", "audio")
+
+        current_source = self.config.get('default_source', 'text')
+        idx = self.default_source_combo.findData(current_source)
+        if idx >= 0:
+            self.default_source_combo.setCurrentIndex(idx)
+
+        layout.addRow("Default Source:", self.default_source_combo)
+
         # Output Mode
         self.output_mode_popup = QCheckBox("Popup Notification")
         self.output_mode_audio = QCheckBox("Text-to-Speech (Audio)")
@@ -342,6 +355,8 @@ class ConfigUI(QDialog):
 
     def save_all(self):
         # Save App Settings
+        self.config['default_source'] = self.default_source_combo.currentData()
+
         modes = []
         if self.output_mode_popup.isChecked(): modes.append('popup')
         if self.output_mode_audio.isChecked(): modes.append('audio')
@@ -359,6 +374,7 @@ class ConfigUI(QDialog):
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
         
         self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
+        self.config['audio_input_device_name'] = self.audio_input_device_combo.currentData()
 
         # Clean up legacy piper path if it exists
         if 'piper_path' in self.config:

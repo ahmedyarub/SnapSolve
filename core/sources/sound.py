@@ -95,7 +95,7 @@ class SoundSource(Source):
                     # Do not adjust for ambient noise to avoid delay on start, as per tests or just start streaming
                     stream = source.stream
                     while not self._stop_event.is_set():
-                        data = stream.read(source.CHUNK, exception_on_overflow=False)
+                        data = stream.read(source.CHUNK)
                         self.audio_frames.append(data)
             except Exception as e:
                 logger.error(f"Recording error: {e}")
