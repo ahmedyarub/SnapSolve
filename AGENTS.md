@@ -67,7 +67,7 @@ This application relies on a strictly decoupled architecture:
 * **Types:** Always add type hints and annotations when practical. If using a `class | None` pattern, always assert that
   it is not `None` before use.
 * **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever
-  you introduce new settings.
+  you introduce new settings. **Important:** Any time a new Source, LLM engine, OCR engine, or Sink is added, you must remember to update `ui/config_ui.py` to allow the user to select them.
 * Sanity Tests:
     * The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
     * These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
