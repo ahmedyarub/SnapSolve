@@ -19,13 +19,30 @@ class SoundSource(Source):
         self.recognizer = sr.Recognizer()
 
     def warmup(self):
-        # We can just initialize PyAudio briefly to cache its startup
+        import os
         try:
             p = pyaudio.PyAudio()
             p.terminate()
+
+            test_file = 'test_sound.wav'
+            if os.path.exists(test_file):
+                logger.info(f"Testing recognition with {test_file}...")
+                with sr.AudioFile(test_file) as source:
+                    audio_data = self.recognizer.record(source)
+                    text = self.recognizer.recognize_google(audio_data)
+                    logger.info(f"Warmup recognition success: {text}")
+            else:
+                logger.info("test_sound.wav not found, skipping speech_recognition test.")
+
             logger.info("Speech Recognition / PyAudio warmup complete.")
+        except sr.UnknownValueError:
+            logger.warning("Warmup recognition could not understand audio.")
+        except sr.RequestError as e:
+            logger.warning(f"Warmup recognition request failed: {e}")
         except Exception as e:
             logger.error(f"Speech Recognition warmup failed: {e}")
+            # Ensure we fail gracefully
+            pass
 
     @property
     def name(self):
