@@ -1,9 +1,10 @@
-import sys
-import json
 import argparse
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel
+import json
+import sys
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QShortcut, QKeySequence
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel
 
 
 class BottomUI(QWidget):
