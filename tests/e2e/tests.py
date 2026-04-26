@@ -13,29 +13,30 @@ import pyperclip
 import speech_recognition as sr
 
 # --- Configuration variables ---
-WORKING_DIR = r"E:\Python\SnapSolve"
-CANCEL_SOURCE = 'button_cancel.png'
-CYCLE_SOURCE = 'button_cycle_source.png'
-RESELECT_SOURCE = 'button_reselect.png'
-CAPTURE_SOURCE = 'button_capture.png'
-START_MULTISELECT_SOURCE = 'button_start_multiselect.png'
-END_MULTISELECT_SOURCE = 'button_end_multiselect.png'
+WORKING_DIR = r"../../"
+CANCEL_SOURCE = 'images/button_cancel.png'
+CYCLE_SOURCE = 'images/button_cycle_source.png'
+RESELECT_SOURCE = 'images/button_reselect.png'
+CAPTURE_SOURCE = 'images/button_capture.png'
+START_MULTISELECT_SOURCE = 'images/button_start_multiselect.png'
+END_MULTISELECT_SOURCE = 'images/button_end_multiselect.png'
 TARGET_WORD_BASIC = 'Brazil'
 TARGET_WORD_PROGRAMMING = 'class'
 PROMPT_X, PROMPT_Y = 1900, 1900
 POPUP_X, POPUP_Y = 3500, 1800
-BASIC_QUESTION = "What is the fifth largest country in the world?"
+BASIC_QUESTION = "What is the fifth largest country in the world? Answer with one word only."
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
 TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual"
 TTS_OUTPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
-SECOND_SCRIPT_PATH = 'main.py'
-SECOND_SCRIPT_ARGS = [
+MAIN_SCRIPT_PATH = 'main.py'
+MAIN_SCRIPT_ARGS = [
     '--active-profile=quick',
     '--popup-opacity=1.0',
-    f'--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}'
+    f'--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}',
+    '--default-source=text'
 ]
 SERVICE_SCRIPT_PATH = os.path.join('services', 'ocr_service.py')
 
@@ -131,11 +132,6 @@ def run_tests():
 
 def test_text_source():
     global _stop_recording_event, _recorded_audio_queue, _recording_thread
-
-    if not click_button(CYCLE_SOURCE):
-        return
-
-    time.sleep(1)
 
     # --- Start Background Recording ---
     _stop_recording_event.clear()
@@ -242,8 +238,7 @@ def test_image_source():
         return
 
     # 1. Switch to image source
-    if not click_button(CYCLE_SOURCE):
-        return
+    cycle_until(CAPTURE_SOURCE)
 
     # 2. Wait for a second
     time.sleep(1)
@@ -342,6 +337,18 @@ def test_multi_capture():
     poll_button(CANCEL_SOURCE, visible=False)
 
     time.sleep(1)
+
+
+def cycle_until(target_button):
+    while True:
+        try:
+            if pyautogui.locateCenterOnScreen(target_button, confidence=0.8) is not None:
+                return
+        except pyautogui.ImageNotFoundException:
+            pass
+
+        click_button(CYCLE_SOURCE)
+        time.sleep(1)
 
 
 def check_port_in_use(host, port):
@@ -507,13 +514,13 @@ def launch_service():
 
 
 def launch_app():
-    print(f"Launching '{SECOND_SCRIPT_PATH}' in the background...")
+    print(f"Launching '{MAIN_SCRIPT_PATH}' in the background...")
     try:
         if not os.path.exists(WORKING_DIR):
             print(f"Error: The directory '{WORKING_DIR}' does not exist.")
             return None
 
-        command_list = [sys.executable, SECOND_SCRIPT_PATH] + SECOND_SCRIPT_ARGS
+        command_list = [sys.executable, MAIN_SCRIPT_PATH] + MAIN_SCRIPT_ARGS
 
         launched_process = subprocess.Popen(
             command_list,
