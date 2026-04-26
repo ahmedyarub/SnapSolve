@@ -484,6 +484,10 @@ def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_lan
     })
 
 
+def close_popup():
+    ui_signals.close_popup.emit()
+
+
 def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
     if not output_modes:
         output_modes = ['popup']

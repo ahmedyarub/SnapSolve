@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, LLMEngine
-from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, \
+from core.output import output_result, show_popup, close_popup, toggle_control_panel, set_app_callbacks, update_multi_state, \
     set_active_source_ui, set_app_processing_state
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
@@ -434,14 +434,8 @@ def handle_new_chat_session(config):
         session_id = session_manager.start_new_session()
         # Visual reset and popup
         if 'popup' in config.get('output_mode', ['popup']):
-            # Find and destroy any open result popups first
-            from ui.popups import active_popups
-            for popup in list(active_popups):
-                try:
-                    popup.destroy()
-                    active_popups.remove(popup)
-                except Exception:
-                    pass
+            # Close any open popup first
+            close_popup()
 
             # Then show the new status popup
             show_popup(f"New Chat Session Started\nID: {session_id}", auto_close=3000,
