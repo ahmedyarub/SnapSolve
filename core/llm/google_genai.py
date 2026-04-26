@@ -71,6 +71,10 @@ class GoogleGenAIEngine(LLMEngine):
                 return "Cancelled"
 
             print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
+
+            if chunk.text is None:
+                continue
+
             ans_chunks.append(chunk.text)
             buffer += chunk.text
             if "\n" in buffer:

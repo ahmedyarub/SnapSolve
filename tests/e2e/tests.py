@@ -40,6 +40,38 @@ _stop_recording_event = threading.Event()
 _recorded_audio_queue = queue.Queue()
 _recording_thread: threading.Thread | None = None
 
+# --- Test result tracking ---
+test_results = {
+    "test_text_source": "NOT_RUN",  # Text prompt test
+    "test_tts": "NOT_RUN",  # TTS test (part of test_text_source)
+    "test_capture": "NOT_RUN",  # Single image capture test
+    "test_multi_capture": "NOT_RUN",  # Multi-select image capture test
+    "test_audio_source": "NOT_RUN"  # Audio input test
+}
+
+
+def show_test_summary():
+    """Display a summary of all test results."""
+    print("\n" + "=" * 60)
+    print("TEST SUMMARY")
+    print("=" * 60)
+
+    for test_name, result in test_results.items():
+        status_symbol = "❓" if result == "NOT_RUN" else ("✅" if result == "PASSED" else "❌")
+        print(f"{status_symbol} {test_name}: {result}")
+
+    print("=" * 60)
+
+    passed_count = sum(1 for result in test_results.values() if result == "PASSED")
+    failed_count = sum(1 for result in test_results.values() if result == "FAILED")
+    not_run_count = sum(1 for result in test_results.values() if result == "NOT_RUN")
+
+    print(f"Total: {len(test_results)} tests")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {failed_count}")
+    print(f"Not Run: {not_run_count}")
+    print("=" * 60)
+
 
 def run_tests():
     def exit_tests():
@@ -70,6 +102,7 @@ def run_tests():
         test_image_source()
         test_audio_source()
     finally:
+        show_test_summary()
         _stop_recording_event.set()
         if _recording_thread and _recording_thread.is_alive():
             _recording_thread.join(timeout=2)
@@ -78,6 +111,8 @@ def run_tests():
 
 def test_text_source():
     global _stop_recording_event, _recorded_audio_queue, _recording_thread
+    test_results["test_text_source"] = "FAILED"
+    test_results["test_tts"] = "FAILED"
 
     _stop_recording_event.clear()
     while not _recorded_audio_queue.empty():
@@ -124,6 +159,7 @@ def test_text_source():
 
     if found_target_word:
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
+        test_results["test_text_source"] = "PASSED"
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
         return
@@ -144,6 +180,7 @@ def test_text_source():
 
             if TARGET_WORD_BASIC.lower() in recognized_text.lower():
                 print(f"\n✅ SUCCESS (TTS): The word '{TARGET_WORD_BASIC}' was found in the spoken audio!")
+                test_results["test_tts"] = "PASSED"
             else:
                 print(f"\n❌ FAILURE (TTS): The word '{TARGET_WORD_BASIC}' was NOT found in the spoken audio.")
         else:
@@ -180,6 +217,8 @@ def test_image_source():
 
 
 def test_audio_source():
+    test_results["test_audio_source"] = "FAILED"
+
     cycle_until(RECORD_BUTTON)
 
     click_button(RECORD_BUTTON)
@@ -193,12 +232,15 @@ def test_audio_source():
     time.sleep(1)
 
     if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
-        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
+        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the audio!")
+        test_results["test_audio_source"] = "PASSED"
     else:
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
 
 
 def finalize_image_test(capture_button, target_word, ui_process):
+    test_results["test_capture_temp"] = "FAILED"
+
     if not click_button(capture_button):
         return
 
@@ -209,6 +251,7 @@ def finalize_image_test(capture_button, target_word, ui_process):
 
     if find_text(target_word, POPUP_X, POPUP_Y):
         print(f"\n✅ SUCCESS: The word '{target_word}' was found in the text!")
+        test_results["test_capture_temp"] = "PASSED"
     else:
         print(f"\n❌ FAILURE: The word '{target_word}' was NOT found after multiple retries.")
 
@@ -220,6 +263,8 @@ def finalize_image_test(capture_button, target_word, ui_process):
 
 
 def test_capture():
+    test_results["test_capture"] = "FAILED"
+
     ui_process = show_test_ui(ui_data=[
         {"text": BASIC_QUESTION, "x": 500, "y": 300}
     ])
@@ -240,8 +285,16 @@ def test_capture():
 
     finalize_image_test(CAPTURE_BUTTON, TARGET_WORD_BASIC, ui_process)
 
+    # Update result based on whether the test passed
+    if test_results.get("test_capture_temp") == "PASSED":
+        test_results["test_capture"] = "PASSED"
+    # Clean up temp result
+    test_results.pop("test_capture_temp", None)
+
 
 def test_multi_capture():
+    test_results["test_multi_capture"] = "FAILED"
+
     ui_process = show_test_ui(ui_data=[
         {"text": PROGRAMMING_QUESTION1, "x": 500, "y": 100},
         {"text": PROGRAMMING_QUESTION2, "x": 500, "y": 400}
@@ -272,6 +325,12 @@ def test_multi_capture():
     find_text("Captured", POPUP_X, POPUP_Y)
 
     finalize_image_test(END_MULTISELECT_SOURCE, TARGET_WORD_PROGRAMMING, ui_process)
+
+    # Update result based on whether the test passed
+    if test_results.get("test_capture_temp") == "PASSED":
+        test_results["test_multi_capture"] = "PASSED"
+    # Clean up temp result
+    test_results.pop("test_capture_temp", None)
 
 
 if __name__ == "__main__":
