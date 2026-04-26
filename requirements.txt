@@ -10,3 +10,4 @@ pyautogui
 pyperclip
 speechrecognition
 pyaudio
+piper
