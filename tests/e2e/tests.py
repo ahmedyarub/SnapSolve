@@ -93,6 +93,8 @@ def test_text_source():
     _recording_thread = threading.Thread(target=record_audio_in_background,
                                          args=(_stop_recording_event, _recorded_audio_queue, mic_index))
     _recording_thread.daemon = True
+
+    assert _recording_thread is not None
     _recording_thread.start()
     print("Started background recording thread for TTS test.")
 
@@ -137,7 +139,7 @@ def test_text_source():
                 f.write(audio.get_wav_data())
             print(f"Audio recorded to {audio_filename}")
 
-            recognized_text = r.recognize_google(audio)
+            recognized_text = r.recognize_google(audio)  # type: ignore[attr-defined]
             print(f"Recognized text: '{recognized_text}'")
 
             if TARGET_WORD_BASIC.lower() in recognized_text.lower():
@@ -196,6 +198,27 @@ def test_audio_source():
         print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
 
 
+def finalize_image_test(capture_button, target_word, ui_process):
+    if not click_button(capture_button):
+        return
+
+    time.sleep(1)
+
+    ui_process.kill()
+    ui_process.wait()
+
+    if find_text(target_word, POPUP_X, POPUP_Y):
+        print(f"\n✅ SUCCESS: The word '{target_word}' was found in the text!")
+    else:
+        print(f"\n❌ FAILURE: The word '{target_word}' was NOT found after multiple retries.")
+
+    click_button(CANCEL_SOURCE, True)
+
+    poll_button(CANCEL_SOURCE, visible=False)
+
+    time.sleep(1)
+
+
 def test_capture():
     ui_process = show_test_ui(ui_data=[
         {"text": BASIC_QUESTION, "x": 500, "y": 300}
@@ -214,24 +237,8 @@ def test_capture():
     pyautogui.dragTo(x=3400, y=1100, duration=1)
 
     time.sleep(1)
-    if not click_button(CAPTURE_BUTTON):
-        return
 
-    time.sleep(1)
-
-    ui_process.kill()
-    ui_process.wait()
-
-    if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
-        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
-    else:
-        print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
-
-    click_button(CANCEL_SOURCE, True)
-
-    poll_button(CANCEL_SOURCE, visible=False)
-
-    time.sleep(1)
+    finalize_image_test(CAPTURE_BUTTON, TARGET_WORD_BASIC, ui_process)
 
 
 def test_multi_capture():
@@ -264,24 +271,7 @@ def test_multi_capture():
 
     find_text("Captured", POPUP_X, POPUP_Y)
 
-    if not click_button(END_MULTISELECT_SOURCE):
-        return
-
-    time.sleep(1)
-
-    ui_process.kill()
-    ui_process.wait()
-
-    if find_text(TARGET_WORD_PROGRAMMING, POPUP_X, POPUP_Y):
-        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_PROGRAMMING}' was found in the text!")
-    else:
-        print(f"\n❌ FAILURE: The word '{TARGET_WORD_PROGRAMMING}' was NOT found after multiple retries.")
-
-    click_button(CANCEL_SOURCE, True)
-
-    poll_button(CANCEL_SOURCE, visible=False)
-
-    time.sleep(1)
+    finalize_image_test(END_MULTISELECT_SOURCE, TARGET_WORD_PROGRAMMING, ui_process)
 
 
 if __name__ == "__main__":
