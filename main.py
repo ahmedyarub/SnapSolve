@@ -1,16 +1,18 @@
 import json
-import logging  # Import logging module
+import logging
 import os
 import platform
 import sys
 import threading
 
 import keyboard
+import pystray
+from PIL import Image
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
-from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine
+from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, LLMEngine
 from core.output import output_result, show_popup, toggle_control_panel, set_app_callbacks, update_multi_state, \
     set_active_source_ui, set_app_processing_state
 from core.pipeline import process_pipeline
@@ -20,14 +22,6 @@ from core.sources import ScreenshotSource, TextSource, SoundSource
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
 from ui.selector import get_coordinates
 
-try:
-    from PIL import Image
-    import pystray
-
-    HAS_PYSTRAY = True
-except ImportError:
-    HAS_PYSTRAY = False
-
 # Global state
 is_running = True
 is_processing = False
@@ -36,9 +30,10 @@ cancel_event = threading.Event()
 
 from core.sources import get_active_source_instance, set_active_source_instance
 
-llm_engine_instance = None
-session_manager = None
-audio_sink_instance = None  # Global AudioSink instance
+llm_engine_instance: LLMEngine | None = None
+fallback_llm_engine_instance: LLMEngine | None = None
+session_manager: SessionManager | None = None
+audio_sink_instance: AudioSink | None = None  # Global AudioSink instance
 
 # Multi-capture state
 is_multi_capturing = False
@@ -49,8 +44,8 @@ if platform.system() == "Windows":
     import ctypes
 
     try:
-        # 2 = PROCESS_PER_MONITOR_DPI_AWARE
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        SetProcessDpiAwareness = getattr(ctypes.windll.shcore, "SetProcessDpiAwareness")
+        SetProcessDpiAwareness(2)
     except Exception as e:
         print(f"Warning: Failed to set DPI awareness: {e}")
 
@@ -106,11 +101,14 @@ def handle_text_submit(config, active_profile, active_prompt_text, text):
                 show_headers = True
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
-            # Use the global audio_sink_instance
+
+            assert audio_sink_instance is not None
             sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
 
             from core.sources import TextSource
             temp_source = TextSource()
+
+            assert llm_engine_instance is not None
 
             result = process_pipeline(
                 source=temp_source,
@@ -202,7 +200,11 @@ def handle_capture(config, active_profile, active_prompt_text):
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
             # Use the global audio_sink_instance
+            assert audio_sink_instance is not None
             sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
+
+            assert active_src is not None
+            assert llm_engine_instance is not None
 
             result = process_pipeline(
                 source=active_src,
@@ -375,11 +377,13 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
             popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
             # Use the global audio_sink_instance
+            assert audio_sink_instance is not None
             sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
 
             from core.sources import TextSource
             temp_source = TextSource()
 
+            assert llm_engine_instance is not None
             result = process_pipeline(
                 source=temp_source,
                 llm=llm_engine_instance,
@@ -797,25 +801,25 @@ def main():
         print(f"Listening for '{action}' hotkey: {key}")
 
         if action == 'capture':
-            keyboard.add_hotkey(key, handle_capture, args=[config, active_profile, active_prompt_text])
+            keyboard.add_hotkey(key, handle_capture, args=(config, active_profile, active_prompt_text))
         elif action == 'reselect':
-            keyboard.add_hotkey(key, handle_reselect, args=[config])
+            keyboard.add_hotkey(key, handle_reselect, args=(config,))
         elif action == 'multi_capture':
-            keyboard.add_hotkey(key, handle_multi_capture, args=[config, active_profile, active_prompt_text])
+            keyboard.add_hotkey(key, handle_multi_capture, args=(config, active_profile, active_prompt_text))
         elif action == 'end_multi_capture':
-            keyboard.add_hotkey(key, handle_end_multi_capture, args=[config, active_profile, active_prompt_text])
+            keyboard.add_hotkey(key, handle_end_multi_capture, args=(config, active_profile, active_prompt_text))
         elif action == 'cancel':
             keyboard.add_hotkey(key, handle_cancel)
         elif action == 'toggle_panel':
-            keyboard.add_hotkey(key, handle_toggle_panel, args=[config])
+            keyboard.add_hotkey(key, handle_toggle_panel, args=(config,))
         elif action == 'new_chat_session':
-            keyboard.add_hotkey(key, handle_new_chat_session, args=[config])
+            keyboard.add_hotkey(key, handle_new_chat_session, args=(config,))
         elif action == 'toggle_stitching':
-            keyboard.add_hotkey(key, handle_toggle_stitching, args=[config, active_profile])
+            keyboard.add_hotkey(key, handle_toggle_stitching, args=(config, active_profile))
         elif action == 'cycle_source':
-            keyboard.add_hotkey(key, handle_cycle_source, args=[config, active_profile])
+            keyboard.add_hotkey(key, handle_cycle_source, args=(config, active_profile))
 
-    if config.get('background', False) and HAS_PYSTRAY:
+    if config.get('background', False):
         print("Running in background tray mode with pystray...")
 
         def run_tray():
