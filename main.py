@@ -536,15 +536,17 @@ def handle_cycle_source(config, active_profile):
     global ocr_engine_instance
     from core.sources import ScreenshotSource, TextSource
     active_source = get_active_source_instance()
-    if isinstance(active_source, ScreenshotSource):
-        new_source = TextSource()
-    else:
+    if isinstance(active_source, TextSource):
         new_source = ScreenshotSource()
         if ocr_engine_instance is None and active_profile.get('ocr_engine', 'none') == 'paddleocr':
             print("Loading PaddleOCR engine on demand for cycle source...")
             from core.sources.ocr import LocalPaddleOCREngine
             ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
+    elif isinstance(active_source, ScreenshotSource):
+        new_source = SoundSource()
+    else:
+        new_source = TextSource()
 
     set_active_source_instance(new_source)
     set_active_source_ui(new_source.name, opacity=config.get('popup_opacity', 0.8))
