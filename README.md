@@ -1,18 +1,20 @@
 # Screen Capture & QA
 
-A very fast and simple application that captures a user-defined rectangular area of the screen, processes it to extract text and generate answers, and provides a very short answer to the question in the image.
-
-The answer is outputted via a frameless popup notification and/or local Text-to-Speech (TTS).
+A very fast and simple application that captures user-defined input (text, images, or audio), processes it to generate answers, and provides responses via frameless popup notifications and/or local Text-to-Speech (TTS).
 
 ## Features Overview
+*   **Multiple Input Sources:** Support for text input, screen capture (images), and audio input with speech recognition.
 *   **Fast Screen Capture:** Capture user-defined areas with minimal overhead.
 *   **Multiple LLM Backends:** Use Gemini (via CLI or API), or a local Ollama server.
 *   **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
-*   **Chat History:** Maintain conversational context over multiple queries.
+*   **Chat History:** Maintain conversational context over multiple queries with session management.
 *   **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
 *   **Advanced OCR:** Optional PaddleOCR integration for reliable text extraction before prompting.
 *   **Flexible Output Sinks:** Render rich markdown answers in a floating popup and/or read them aloud via TTS.
 *   **Background Mode:** Run the app seamlessly from your system tray.
+*   **Multi-Capture Support:** Capture multiple screen regions in sequence for combined processing.
+*   **Audio Input:** Record and transcribe audio input using speech recognition.
+*   **Remote OCR Service:** Offload OCR processing to a remote server.
 
 For a full, detailed breakdown of all features, see [FEATURES.md](FEATURES.md).
 For technical details regarding how data flows through the application, see [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -104,6 +106,11 @@ If you want to use the high-quality local Text-to-Speech (TTS) feature:
 *   `ollama` - Uses a local Ollama server. Can process both images and text-only depending on the model.
 *   `google-genai` - Uses the official Python SDK for Google GenAI. Requires an API key. Supports both image and text inputs.
 
+**Input Sources (`default_source`):**
+*   `text` - Direct text input via the control panel.
+*   `image` - Screen capture using coordinate selection.
+*   `audio` - Audio recording with speech recognition.
+
 **OCR Engines (`ocr_engine`):**
 *   `none` - Does not perform local OCR. The full image is sent directly to the LLM.
 *   `paddleocr` - Uses local PaddleOCR to extract text from the image, sending only the extracted text to the LLM.
@@ -123,48 +130,114 @@ Create a file named `config.json` in the same directory as the script. Example:
     "hotkeys": [
         {
             "action": "capture",
-            "key": "ctrl+alt+shift+s"
+            "key": "ctrl+alt+shift+c"
         },
         {
             "action": "reselect",
-            "key": "ctrl+alt+shift+r"
+            "key": "ctrl+alt+shift+s"
+        },
+        {
+            "action": "multi_capture",
+            "key": "ctrl+alt+shift+m"
+        },
+        {
+            "action": "end_multi_capture",
+            "key": "ctrl+alt+shift+n"
+        },
+        {
+            "action": "toggle_panel",
+            "key": "ctrl+alt+shift+p"
+        },
+        {
+            "action": "new_chat_session",
+            "key": "ctrl+alt+shift+h"
+        },
+        {
+            "action": "toggle_stitching",
+            "key": "ctrl+alt+shift+i"
         }
     ],
+    "coordinates": null,
     "background": false,
     "piper_model": "en_US-lessac-medium.onnx",
-    "warmup_tts": false,
-    "model": "gemini-2.5-flash-lite",
-    "llm_engine": "gemini",
-    "ocr_engine": "none",
+    "active_profile_id": "programming",
     "ollama_url": "http://localhost:11434",
-    "google_genai_api_key": ""
+    "google_genai_api_key": "",
+    "auto_close_results": false,
+    "popup_opacity": 0.9,
+    "fallback_language": "python",
+    "show_control_panel": false,
+    "default_source": "text",
+    "warmup_ocr": false,
+    "warmup_llm": false,
+    "warmup_tts": false,
+    "warmup_speech_recognition": true,
+    "tts_output_device_name": null,
+    "audio_input_device_name": null,
+    "ocr_config": {
+        "remote_ocr_host": "127.0.0.1",
+        "port": 8000
+    }
 }
 ```
 
 *   `output_mode`: Controls where the response is sent. Add `"audio"` to enable Piper TTS.
 *   `piper_model`: Path to the downloaded Piper `.onnx` voice model.
 *   `warmup_tts`: Set to `true` to pre-load the Piper model on application startup.
-*   `llm_engine`: Can be `"gemini"`, `"ollama"`, or `"google-genai"`.
-*   `ocr_engine`: Can be `"none"`, `"paddleocr"`, or `"remote_paddle"`.
-*   `ollama_url`: The URL to your Ollama API.
-*   `google_genai_api_key`: Your API key for the Google GenAI SDK (only needed if `llm_engine` is `"google-genai"`).
+*   `warmup_ocr`: Set to `true` to pre-load the OCR engine on application startup.
+*   `warmup_llm`: Set to `true` to pre-load the LLM engine on application startup.
+*   `warmup_speech_recognition`: Set to `true` to pre-load the speech recognition engine on application startup.
+*   `default_source`: Default input source (`"text"`, `"image"`, or `"audio"`).
+*   `tts_output_device_name`: Name of the audio device for TTS output (optional).
+*   `audio_input_device_name`: Name of the audio device for audio input/speech recognition (optional).
+*   `show_control_panel`: Set to `true` to show the control panel on startup.
+*   `active_profile_id`: ID of the profile to use from `profiles.json`.
+*   `ocr_config`: Configuration for remote OCR service (host and port).
+*   Profile-specific settings are managed in `profiles.json`, including `llm_engine`, `model`, `ocr_engine`, `prompt_id`, and `enable_stitching`.
 
 ### Example Combinations
+
 **Gemini Vision (Default)**
 Sends the image directly to the Gemini API.
 ```json
-"model": "gemini-2.5-flash-lite",
-"llm_engine": "gemini",
-"ocr_engine": "none"
+"active_profile_id": "default"
+```
+With corresponding profile in `profiles.json`:
+```json
+{
+    "id": "default",
+    "name": "Default Profile",
+    "llm_engine": "gemini",
+    "model": "gemini-2.5-flash-lite",
+    "ocr_engine": "none",
+    "prompt_id": "default",
+    "enable_stitching": true
+}
 ```
 
 **PaddleOCR + Ollama**
 Extracts text locally, then asks a local LLM to answer the question.
 ```json
-"model": "llama3",
-"llm_engine": "ollama",
-"ocr_engine": "paddleocr",
-"ollama_url": "http://localhost:11434"
+"active_profile_id": "local-ocr"
+```
+With corresponding profile in `profiles.json`:
+```json
+{
+    "id": "local-ocr",
+    "name": "Local OCR with Ollama",
+    "llm_engine": "ollama",
+    "model": "llama3",
+    "ocr_engine": "paddleocr",
+    "prompt_id": "default",
+    "enable_stitching": true
+}
+```
+
+**Audio Input with Speech Recognition**
+Use audio input with speech recognition.
+```json
+"default_source": "audio",
+"audio_input_device_name": "Microphone (Realtek Audio)"
 ```
 
 ### Option 2: Command Line Arguments
@@ -172,8 +245,35 @@ Extracts text locally, then asks a local LLM to answer the question.
 You can pass arguments directly when running the application. These will override the `config.json` settings:
 
 ```bash
-python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r" --piper-model "path/to/your/model.onnx" --warmup-tts
+python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-reselect "ctrl+shift+r" --piper-model "path/to/your/model.onnx" --warmup-tts --default-source audio --audio-input-device-name "Microphone (Realtek Audio)"
 ```
+
+**Available Command Line Arguments:**
+*   `--output-mode`: Output mode (`popup`, `audio`, `both`)
+*   `--hotkey-capture`: Keyboard shortcut for capture
+*   `--hotkey-reselect`: Keyboard shortcut for reselect coordinates
+*   `--coords`: Capture coordinates (X1 Y1 X2 Y2)
+*   `--background`: Run in background (system tray)
+*   `--foreground`: Force run in foreground
+*   `--piper-model`: Path to Piper .onnx model
+*   `--active-profile`: Active profile ID
+*   `--ollama-url`: Ollama API URL
+*   `--google-genai-api_key`: Google GenAI API Key
+*   `--auto-close-results`: Auto close result popups
+*   `--no-auto-close-results`: Do not auto close result popups
+*   `--popup-opacity`: Opacity of the popup (0.0 to 1.0)
+*   `--fallback-language`: Fallback language for code blocks
+*   `--show-control-panel`: Show the control panel overlay
+*   `--hide-control-panel`: Hide the control panel overlay
+*   `--continue-last`: Continue the last chat session
+*   `--continue-session`: Continue a specific chat session by ID
+*   `--default-source`: Default source (`text`, `image`, `audio`)
+*   `--disable-warmup-ocr`: Disable OCR engine warmup
+*   `--disable-warmup-llm`: Disable LLM engine warmup
+*   `--disable-warmup-tts`: Disable TTS engine warmup
+*   `--disable-warmup-speech-recognition`: Disable Speech Recognition warmup
+*   `--tts-output-device-name`: Name of the audio device for TTS output
+*   `--audio-input-device-name`: Name of the audio device for audio input
 
 ## Usage
 
@@ -181,9 +281,26 @@ python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-resel
    ```bash
    python main.py
    ```
-2. **First Run (Coordinate Selection):** If you haven't set `coordinates` in your configuration, the screen will turn slightly gray. Click and drag your mouse to draw a rectangle over the area where your questions will appear. The application will save these coordinates to `config.json` automatically.
-3. Once running, press the capture hotkey (default: `Ctrl + Alt + Shift + S`). The application will capture the region, send it to Gemini, and output the short answer using your chosen methods.
-4. If you need to **reselect coordinates** while the app is running, press the reselect hotkey (default: `Ctrl + Alt + Shift + R`).
+2. **First Run (Coordinate Selection):** If you haven't set `coordinates` in your configuration and you're using image capture, the screen will turn slightly gray. Click and drag your mouse to draw a rectangle over the area where your questions will appear. The application will save these coordinates to `config.json` automatically.
+3. Once running, you can:
+   - **Text Input:** Type your question directly in the control panel and press Enter or click Submit.
+   - **Image Capture:** Press the capture hotkey (default: `Ctrl + Alt + Shift + C`) to capture the configured screen region.
+   - **Audio Input:** Switch to audio source and press the capture hotkey to start/stop recording.
+   - **Multi-Capture:** Press the multi-capture hotkey (default: `Ctrl + Alt + Shift + M`) to capture multiple regions in sequence.
+4. If you need to **reselect coordinates** while the app is running, press the reselect hotkey (default: `Ctrl + Alt + Shift + S`).
+5. Use the **control panel** to switch between input sources, change profiles, and manage sessions.
+
+## Hotkeys
+
+Default hotkeys (configurable in `config.json`):
+*   `Ctrl + Alt + Shift + C` - Capture (text/image/audio depending on active source)
+*   `Ctrl + Alt + Shift + S` - Reselect coordinates
+*   `Ctrl + Alt + Shift + M` - Start multi-capture mode
+*   `Ctrl + Alt + Shift + N` - End multi-capture mode
+*   `Ctrl + Alt + Shift + T` - Cancel multi-capture mode
+*   `Ctrl + Alt + Shift + P` - Toggle control panel
+*   `Ctrl + Alt + Shift + H` - New chat session
+*   `Ctrl + Alt + Shift + I` - Toggle context stitching
 
 ## Background Mode
 

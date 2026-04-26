@@ -7,9 +7,10 @@ End-to-end tests for SnapSolve application that verify core functionality throug
 These tests simulate real user interactions with the SnapSolve application by:
 - Launching the main application and OCR service
 - Automating UI interactions using PyAutoGUI
-- Testing text input and image capture workflows
+- Testing text input, image capture, and audio input workflows
 - Verifying TTS (Text-to-Speech) functionality
 - Validating OCR service integration
+- Testing speech recognition with audio recording
 
 ## Prerequisites
 
@@ -25,9 +26,10 @@ pip install -r requirements.txt
 ```
 
 ### Audio Setup
-For TTS tests, you need VB-Audio Virtual Cable installed:
+For TTS and speech recognition tests, you need VB-Audio Virtual Cable installed:
 - **CABLE Output (VB-Audio Virtual)** - Used as TTS input device
 - **CABLE Input (VB-Audio Virtual C)** - Used as TTS output device
+- **Microphone or virtual input device** - Used for speech recognition testing
 
 ## Test Structure
 
@@ -36,6 +38,7 @@ Contains the primary test orchestration and test cases:
 - `run_tests()` - Main entry point that initializes and runs all tests
 - `test_text_source()` - Tests text input and TTS functionality
 - `test_image_source()` - Tests image capture and OCR integration
+- `test_audio_source()` - Tests audio input with speech recognition
 - `test_capture()` - Tests single image capture workflow
 - `test_multi_capture()` - Tests multi-select image capture workflow
 
@@ -100,21 +103,28 @@ Process management utilities:
    - Runs single capture test
    - Runs multi-capture test
 
-4. **Single Capture Test**
+4. **Audio Source Test**
+   - Cycles to audio input mode
+   - Starts audio recording
+   - Records test audio input
+   - Stops recording and processes transcription
+   - Verifies speech recognition results contain target word
+
+5. **Single Capture Test**
    - Launches test UI with sample text
    - Selects reselect mode
    - Drags to capture text region
    - Captures and processes image
    - Verifies OCR results contain target word
 
-5. **Multi-Capture Test**
+6. **Multi-Capture Test**
    - Launches test UI with multiple text regions
    - Captures first text region
    - Captures second text region
    - Ends multi-select mode
    - Verifies combined OCR results contain target word
 
-6. **Cleanup**
+7. **Cleanup**
    - Stops background recording
    - Terminates application and service processes
 
@@ -148,16 +158,25 @@ Expected answers in `config.py`:
 - `TARGET_WORD_PROGRAMMING` - Expected answer for programming questions (default: "class")
 
 ### Audio Devices
-Configure TTS audio devices in `config.py`:
-- `TTS_INPUT_DEVICE_NAME` - Virtual cable output device
-- `TTS_OUTPUT_DEVICE_NAME` - Virtual cable input device
+Configure audio devices in `config.py`:
+- `TTS_INPUT_DEVICE_NAME` - Virtual cable output device for TTS
+- `TTS_OUTPUT_DEVICE_NAME` - Virtual cable input device for TTS
+- `AUDIO_INPUT_DEVICE_NAME` - Input device for speech recognition testing
 
 ### Application Arguments
 Modify `MAIN_SCRIPT_ARGS` in `config.py` to change application startup parameters.
 
 ## Test Images
 
-UI button images are stored in the `images/` directory.
+UI button images are stored in the `images/` directory:
+- `button_capture.png` - Capture button
+- `button_cancel.png` - Cancel button
+- `button_cycle_source.png` - Source cycling button
+- `button_end_multiselect.png` - End multi-select button
+- `button_record.png` - Start recording button
+- `button_record_stop.png` - Stop recording button
+- `button_reselect.png` - Reselect coordinates button
+- `button_start_multiselect.png` - Start multi-select button
 
 ## Notes
 
@@ -166,3 +185,5 @@ UI button images are stored in the `images/` directory.
 - All processes are properly cleaned up on test completion or interruption
 - Tests use image recognition with configurable confidence thresholds
 - OCR service is reused if already running to avoid conflicts
+- Speech recognition tests require audio input devices and may need test audio files
+- Audio recording tests use virtual audio devices for TTS verification

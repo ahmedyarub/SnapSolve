@@ -7,17 +7,19 @@ and codebase specific conventions to ensure your modifications are safe and perf
 
 This application relies on a strictly decoupled architecture:
 
-1. **`core/`**: The main business logic. Includes:
-    * `sources/`: For extracting text or images (Screen capture, OCR).
-    * `llm/`: LLM Engines (`GoogleGenAIEngine`, `OllamaEngine`, etc.).
-    * `sinks/`: Where data is sent (`PopupSink`, `AudioSink`).
-    * `pipeline/`: Orchestrates the flow from Source -> LLM -> Sink.
-2. **`ui/`**: All Tkinter-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
-3. **`config/`**: Configuration parsing and profile management.
-4. **`sessions/`**: Local storage for chat session history.
-5. **`tests/`**: Contains the tests.
-    * `e2e/`: Contains the end-to-end tests that should only run on the developer's machine. Don't run or modify the
-      files inside.
+1.  **`core/`**: The main business logic. Includes:
+    *   `sources/`: For extracting text or images (Text, Screen capture, Audio/Sound).
+    *   `llm/`: LLM Engines (`GoogleGenAIEngine`, `OllamaEngine`, `GeminiCLIEngine`).
+    *   `sinks/`: Where data is sent (`PopupSink`, `AudioSink`, `CompositeSink`).
+    *   `pipeline/`: Orchestrates the flow from Source -> LLM -> Sink.
+2.  **`ui/`**: All Tkinter-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
+3.  **`config/`**: Configuration parsing and profile management.
+4.  `services/`: Service implementations like the remote OCR service.
+5.  `sessions/`: Local storage for chat session history.
+6.  `tests/`: Contains the tests.
+    *   `e2e/`: Contains the end-to-end tests that should only run on the developer's machine. Don't run or modify the
+      files inside without understanding the full test infrastructure.
+    *   `sanity/`: Contains standalone sanity check scripts for component verification.
 
 ## Crucial Technical Constraints
 
@@ -44,6 +46,15 @@ This application relies on a strictly decoupled architecture:
 * Engines implement a `warmup()` method. When dealing with engine instantiation, remember to call this method to
   pre-load models into memory.
 
+### Audio Processing
+
+* **Audio Recording:** The `SoundSource` uses background threading for audio recording to avoid blocking the UI.
+* **Speech Recognition:** Google Speech-to-Text is used for transcription. Ensure proper error handling for network issues
+  or unrecognized speech.
+* **Audio Devices:** The application supports configurable audio input and output devices. Always validate device names
+  and handle cases where specified devices are not available.
+* **TTS Integration:** Piper TTS runs in a separate daemon thread. Ensure proper cleanup and resource management.
+
 ### File Handling & OCR
 
 * On Windows, do not use `delete=True` with `tempfile.NamedTemporaryFile` if the file needs to be accessed by another
@@ -68,7 +79,24 @@ This application relies on a strictly decoupled architecture:
   it is not `None` before use.
 * **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever
   you introduce new settings. **Important:** Any time a new Source, LLM engine, OCR engine, or Sink is added, you must remember to update `ui/config_ui.py` to allow the user to select them.
+* **Profile Management:** When adding new configuration options, consider whether they should be profile-specific or
+  global settings. Update `profiles.json` structure accordingly.
+* **Hotkey Management:** New hotkeys should be added to the default configuration in `config/settings.py` and properly
+  handled in the main application logic.
 * Sanity Tests:
-    * The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
-    * These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
-    * NEVER run sanity tests autonomously. These are strictly for developer usage and manual testing only.
+    *   The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
+    *   These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
+    *   NEVER run sanity tests autonomously. These are strictly for developer usage and manual testing only.
+
+## Testing Guidelines
+
+### E2E Tests
+* E2E tests are designed for developer machines only and require specific setup (VB-Audio Virtual Cable, specific screen resolution).
+* Tests use image recognition for UI interaction and require specific button images in `tests/e2e/images/`.
+* Audio recording tests use virtual audio devices for TTS verification.
+* Never modify E2E test files without understanding the full test infrastructure and requirements.
+
+### Component Testing
+* Sanity tests should be self-contained and not depend on the main application logic.
+* Audio tests require proper device configuration and may need specific test files (e.g., `test_sound.wav`).
+* Always test audio components with appropriate device configurations and error handling.

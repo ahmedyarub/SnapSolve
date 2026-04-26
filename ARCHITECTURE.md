@@ -11,15 +11,21 @@ flowchart TD
     User([User Input / Hotkey]) --> Orchestrator[Pipeline Orchestrator]
 
     subgraph Source Layer
-        Orchestrator --> Screen[Screen Capture]
+        Orchestrator --> SourceSelector{Source Type}
+        SourceSelector --> Text[Text Source]
+        SourceSelector --> Screen[Screen Capture]
+        SourceSelector --> Audio[Audio Input]
         Screen --> OCR{OCR Enabled?}
         OCR -- Yes --> Extract[Extract Text]
         OCR -- No --> Raw[Raw Image]
+        Audio --> Transcribe[Speech Recognition]
     end
 
     subgraph Enrichment Layer
-        Extract --> Enrich[Enrich Prompt]
+        Text --> Enrich[Enrich Prompt]
+        Extract --> Enrich
         Raw --> Enrich
+        Transcribe --> Enrich
         Config[(Config & Prompts)] -.-> Enrich
         Session[(Chat History)] -.-> Enrich
     end
@@ -33,11 +39,11 @@ flowchart TD
         MainLLM --> Sinks[Concurrent Sink Wrapper]
         FallbackLLM --> Sinks
         Sinks --> Popup[Tkinter Popup Sink]
-        Sinks --> Audio[TTS Audio Sink]
+        Sinks --> AudioOut[TTS Audio Sink]
     end
 
     Popup --> Output([User Output])
-    Audio --> Output
+    AudioOut --> Output
 ```
 
 ### Execution Sequence Diagram
@@ -55,9 +61,20 @@ sequenceDiagram
     User->>Hotkey: Presses Capture Shortcut
     Hotkey->>Pipe: Trigger Capture Event
     activate Pipe
-    Pipe->>Source: get_image() / get_text()
+    Pipe->>Source: get_image() / get_text() / start_recording()
     activate Source
-    Source-->>Pipe: Return Data
+    
+    alt Image Source
+        Source-->>Pipe: Return Image/Text
+    else Audio Source
+        Source->>Source: Record Audio
+        User->>Source: Stop Recording
+        Source->>Source: Transcribe Audio
+        Source-->>Pipe: Return Transcribed Text
+    else Text Source
+        Source-->>Pipe: Return Text
+    end
+    
     deactivate Source
 
     Pipe->>LLM: stream_response(data)
@@ -78,10 +95,15 @@ sequenceDiagram
 
 ## 1. Source (`core/sources/`)
 The Source is responsible for capturing the initial raw data.
-*   The primary source is screen capture (`PIL.ImageGrab`).
+*   **Multiple Source Types:**
+    *   **TextSource:** Direct text input from the control panel.
+    *   **ScreenshotSource:** Screen capture using coordinate selection.
+    *   **SoundSource:** Audio recording with speech recognition.
 *   **OCR Integration (`core/sources/ocr/`):** If a local OCR engine (like PaddleOCR) or remote OCR service is configured, the pipeline attempts to extract text via the source's `get_text()` method.
+*   **Speech Recognition:** The SoundSource uses Google Speech-to-Text to transcribe audio input in real-time.
 *   If OCR is disabled or fails, the pipeline falls back to capturing the raw image (`get_image()`), provided the downstream LLM engine supports multimodal inputs.
 *   Image OCR extraction is optimized to run only once, regardless of how many LLM models are running concurrently.
+*   Audio recording runs in a background thread to avoid blocking the UI during capture.
 
 ## 2. Enrich Prompt
 Before sending data to the LLM, the application enriches the prompt:
@@ -104,9 +126,17 @@ The Sink layer is responsible for taking the generated text and presenting it to
 
 ## Directory Structure
 *   `core/`: Contains the main logic, including the pipeline orchestrator, sources, llm engines, and sinks.
+    *   `sources/`: Input sources (text, screenshot, sound) and OCR engines.
+    *   `llm/`: LLM engine implementations (Gemini CLI, Google GenAI, Ollama).
+    *   `sinks/`: Output sinks (popup, audio, composite).
+    *   `pipeline/`: Pipeline orchestration and processing logic.
 *   `ui/`: Contains the Tkinter GUI logic, control panels, configuration UI, popup notifications, and coordinate selection overlays.
 *   `config/`: Manages configuration files (`config.json`, `profiles.json`, `prompts.json`), dynamic profile switching, and prompt definitions.
+*   `services/`: Contains service implementations like the remote OCR service.
 *   `sessions/`: Stores serialized JSON files representing the chat history of previous sessions.
+*   `tests/`: Contains test suites.
+    *   `e2e/`: End-to-end tests for automated UI interaction testing.
+    *   `sanity/`: Standalone sanity check scripts for component verification.
 
 ## Threading & UI State
 *   **Tkinter Mainloop:** The UI runs in a persistent background thread (`mainloop()`).
