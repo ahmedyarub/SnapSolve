@@ -16,4 +16,3 @@ numpy
 pyqt6-sip
 opencv-python
 fastapi
-pydantic

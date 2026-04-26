@@ -44,7 +44,7 @@ This application relies on a strictly decoupled architecture:
 * When testing modifications to LLM engines or sinks, ensure that your changes handle the abrupt replacement of fallback
   text with main model text correctly.
 * Engines implement a `warmup()` method. When dealing with engine instantiation, remember to call this method to
-  pre-load models into memory.
+  preload models into memory.
 
 ### Audio Processing
 
@@ -66,7 +66,7 @@ This application relies on a strictly decoupled architecture:
 ### Output & Rendering
 
 * The `PopupSink` features a custom, lightweight Markdown parser native to Tkinter's `Text` widget tags.
-* If you need to add new markdown features (e.g., blockquotes), modify the parser in `core/output.py` or the sink
+* If you need to add new Markdown features (e.g., blockquotes), modify the parser in `core/output.py` or the sink
   directly, utilizing Tkinter text tags rather than pulling in external HTML rendering libraries.
 
 ## General Practices
