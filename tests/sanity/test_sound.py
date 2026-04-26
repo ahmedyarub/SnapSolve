@@ -10,7 +10,7 @@ import pyaudio
 import speech_recognition as sr
 
 # Configure basic logging
-#logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QTextEdit,
@@ -47,6 +47,15 @@ class SoundTestApp(QMainWindow):
         self.playback_done = False
         self.audio_frames = []
 
+        # UI components (initialized in init_ui)
+        self.out_combo = QComboBox()
+        self.in_combo = QComboBox()
+        self.speak_text = QTextEdit()
+        self.heard_text= QTextEdit()
+        self.volume_bar= QProgressBar()
+        self.log_text= QTextEdit()
+        self.action_btn= QPushButton()
+
         self.init_ui()
 
     def init_ui(self):
@@ -57,14 +66,12 @@ class SoundTestApp(QMainWindow):
         # Output Device
         out_layout = QHBoxLayout()
         out_layout.addWidget(QLabel("Output Device:"))
-        self.out_combo = QComboBox()
         out_layout.addWidget(self.out_combo)
         layout.addLayout(out_layout)
 
         # Input Device
         in_layout = QHBoxLayout()
         in_layout.addWidget(QLabel("Input Device:"))
-        self.in_combo = QComboBox()
         in_layout.addWidget(self.in_combo)
         layout.addLayout(in_layout)
 
@@ -73,28 +80,24 @@ class SoundTestApp(QMainWindow):
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
-        self.speak_text = QTextEdit()
         self.speak_text.setText("this is a test of the audio system")
         self.speak_text.setMaximumHeight(80)
         layout.addWidget(self.speak_text)
 
         # Text Heard
         layout.addWidget(QLabel("Text Heard:"))
-        self.heard_text = QTextEdit()
         self.heard_text.setReadOnly(True)
         self.heard_text.setMaximumHeight(80)
         layout.addWidget(self.heard_text)
 
         # Volume Progress Bar
         layout.addWidget(QLabel("Microphone Volume:"))
-        self.volume_bar = QProgressBar()
         self.volume_bar.setRange(0, 100)
         self.volume_bar.setValue(0)
         layout.addWidget(self.volume_bar)
 
         # Log
         layout.addWidget(QLabel("Log:"))
-        self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         layout.addWidget(self.log_text)
 
@@ -109,7 +112,7 @@ class SoundTestApp(QMainWindow):
         for i in range(count):
             try:
                 info = self.p.get_device_info_by_index(i)
-                host_api = self.p.get_host_api_info_by_index(info['hostApi'])['name']
+                host_api = self.p.get_host_api_info_by_index(int(info['hostApi']))['name']
                 name = info['name']
                 desc = f"[{host_api}] {name} (Index: {i})"
 
@@ -266,7 +269,7 @@ class SoundTestApp(QMainWindow):
             if self.audio_frames:
                 audio_data = sr.AudioData(b''.join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
                 try:
-                    recognized_text = r.recognize_google(audio_data)
+                    recognized_text = r.recognize_google(audio_data)  # type: ignore[attr-defined]
                     self.signals.update_heard.emit(recognized_text)
                     self.signals.log_message.emit("Recognition successful.")
 
@@ -286,11 +289,6 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit(f"Recording thread error: {e}")
         finally:
             self.is_recording = False
-            # Re-enable the button safely on the main thread via signals if possible,
-            # but for simplicity we'll just re-enable it directly (Qt may warn, so let's emit a signal)
-            # Actually, modifying GUI directly from a thread is unsafe in PyQt,
-            # so let's use a lambda or QTimer, or better just use the main thread event loop.
-            # We will use QMetaObject.invokeMethod.
             import PyQt6.QtCore as QtCore
             QtCore.QMetaObject.invokeMethod(self.action_btn, "setEnabled", QtCore.Qt.ConnectionType.QueuedConnection,
                                             QtCore.Q_ARG(bool, True))

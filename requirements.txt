@@ -11,3 +11,6 @@ pyperclip
 speechrecognition
 pyaudio
 piper
+paddleocr
+numpy
+pyqt6-sip
