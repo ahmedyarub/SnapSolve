@@ -22,8 +22,8 @@ def clean_text(text: str) -> str:
     text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
 
     # 2. Extract text from Links and Images: ![alt](url) -> alt, [text](url) -> text
-    text = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', r'\1', text)
-    text = re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', text)
+    text = re.sub(r'!\[([^]]*)]\([^)]+\)', r'\1', text)
+    text = re.sub(r'\[([^]]*)]\([^)]+\)', r'\1', text)
 
     # 3. Remove inline code backticks: `code` -> code
     text = re.sub(r'`(.*?)`', r'\1', text)
@@ -33,7 +33,7 @@ def clean_text(text: str) -> str:
 
     # 5. Remove emphasis: bold, italic, strikethrough
     text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
-    text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
+    text = re.sub(r'([*_])(.*?)\1', r'\2', text)
     text = re.sub(r'~~(.*?)~~', r'\1', text)
 
     # 6. Remove headers: # Header -> Header
@@ -108,15 +108,15 @@ class AudioSink(Sink):
                 wf = wave.open(wav_file, 'rb')
                 p = pyaudio.PyAudio()
 
-                target_device_index = None
+                target_device_index: int | None = None
                 if self.tts_output_device_name:
                     for i in range(p.get_device_count()):
                         info = p.get_device_info_by_index(i)
-                        host_api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+                        host_api_name = p.get_host_api_info_by_index(int(info['hostApi']))['name']
 
                         # Hardcode "MME" for comparison
                         if info['name'] == self.tts_output_device_name and host_api_name == "MME":
-                            target_device_index = info['index']
+                            target_device_index = int(info['index'])
                             logger.info(
                                 f"Found configured audio device: {self.tts_output_device_name} (MME) at index {target_device_index}")
                             break
