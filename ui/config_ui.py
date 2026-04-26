@@ -8,7 +8,18 @@ from PyQt6.QtWidgets import (
     QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox, QApplication,
     QPushButton, QFileDialog
 )
-from config.settings import get_audio_devices, get_audio_input_devices # Import the function to get audio devices
+
+from config.settings import get_audio_devices
+
+
+def load_json(path, default):
+    try:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading {path}: {e}")
+    return default
 
 
 class ConfigUI(QDialog):
@@ -27,25 +38,30 @@ class ConfigUI(QDialog):
         self.profiles_path = profiles_path
         self.prompts_path = prompts_path
 
+        # Load configurations
+        self.config = load_json(self.config_path, {})
+        self.models_data = load_json(self.models_path, {})
+        self.profiles = load_json(self.profiles_path, [])
+        self.prompts = load_json(self.prompts_path, [])
+
+        self.tabs = QTabWidget()
+        self.warmup_tab = QWidget()
+        self.default_source_combo = QComboBox()
+        self.fallback_language = QLineEdit(self.config.get('fallback_language', 'python'))
+        self.piper_model = QLineEdit(self.config.get('piper_model', 'en_US-lessac-medium.onnx'))
+        self.tts_output_device_combo = QComboBox()
+        self.audio_input_device_combo = QComboBox()
+        self.background_mode = QCheckBox("Run in system tray")
+        self.warmup_ocr = QCheckBox("Warmup OCR Engine")
+        self.warmup_llm = QCheckBox("Warmup LLM Engine")
+        self.warmup_tts = QCheckBox("Warmup TTS Engine")
+        self.warmup_sr = QCheckBox("Warmup Speech Recognition")
+        self._current_profile_data = None
+
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
 
-        # Load configurations
-        self.config = self.load_json(self.config_path, {})
-        self.models_data = self.load_json(self.models_path, {})
-        self.profiles = self.load_json(self.profiles_path, [])
-        self.prompts = self.load_json(self.prompts_path, [])
-
         self.init_ui()
-
-    def load_json(self, path, default):
-        try:
-            if os.path.exists(path):
-                with open(path, 'r') as f:
-                    return json.load(f)
-        except Exception as e:
-            print(f"Error loading {path}: {e}")
-        return default
 
     def save_json(self, path, data):
         try:
@@ -56,13 +72,11 @@ class ConfigUI(QDialog):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
         # Create tabs
         self.app_tab = QWidget()
         self.profile_tab = QWidget()
-        self.warmup_tab = QWidget()
         self.shortcuts_tab = QWidget()
 
         self.tabs.addTab(self.app_tab, "Application Settings")
@@ -76,11 +90,14 @@ class ConfigUI(QDialog):
         self.setup_shortcuts_tab()
 
         # Buttons
-        self.button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box = QDialogButtonBox()
+        self.button_box.addButton(QDialogButtonBox.StandardButton.Save)
+        self.button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+
         self.btn_save_run = self.button_box.addButton("Save and Run", QDialogButtonBox.ButtonRole.ActionRole)
         self.button_box.accepted.connect(self.save_all)
         self.button_box.rejected.connect(self.reject)
+        assert self.btn_save_run is not None
         self.btn_save_run.clicked.connect(self.save_and_run)
         layout.addWidget(self.button_box)
 
@@ -99,7 +116,6 @@ class ConfigUI(QDialog):
         layout = QFormLayout(self.app_tab)
 
         # Default Source
-        self.default_source_combo = QComboBox()
         self.default_source_combo.addItem("Text", "text")
         self.default_source_combo.addItem("Image", "image")
         self.default_source_combo.addItem("Audio", "audio")
@@ -125,11 +141,9 @@ class ConfigUI(QDialog):
         layout.addRow("Output Mode:", mode_layout)
 
         # Fallback Language
-        self.fallback_language = QLineEdit(self.config.get('fallback_language', 'python'))
         layout.addRow("Fallback Lexer Language:", self.fallback_language)
 
         # TTS Piper settings
-        self.piper_model = QLineEdit(self.config.get('piper_model', 'en_US-lessac-medium.onnx'))
         piper_model_layout = QHBoxLayout()
         piper_model_layout.addWidget(self.piper_model)
         browse_btn = QPushButton("Browse...")
@@ -137,25 +151,22 @@ class ConfigUI(QDialog):
         piper_model_layout.addWidget(browse_btn)
         layout.addRow("Piper Voice Model Path:", piper_model_layout)
 
-        self.tts_output_device_combo = QComboBox()
+        self.tts_output_device_combo.addItem("Default System Output", None)
 
-        self.tts_output_device_combo.addItem("Default System Output", None) 
-        
         audio_devices = get_audio_devices()
         for device in audio_devices:
             self.tts_output_device_combo.addItem(device['name'], device['name'])
-        
+
         current_device_name = self.config.get('tts_output_device_name', None)
 
         if current_device_name is not None:
             idx = self.tts_output_device_combo.findData(current_device_name)
             if idx >= 0:
                 self.tts_output_device_combo.setCurrentIndex(idx)
-        
+
         layout.addRow("TTS Output Device:", self.tts_output_device_combo)
 
         # Audio Input Device
-        self.audio_input_device_combo = QComboBox()
         self.audio_input_device_combo.addItem("Default System Input", None)
 
         try:
@@ -175,7 +186,6 @@ class ConfigUI(QDialog):
         layout.addRow("Audio Input Device:", self.audio_input_device_combo)
 
         # Background Mode
-        self.background_mode = QCheckBox("Run in system tray")
         self.background_mode.setChecked(self.config.get('background', False))
         layout.addRow("Background Mode:", self.background_mode)
 
@@ -183,8 +193,6 @@ class ConfigUI(QDialog):
         self.show_control_panel = QCheckBox("Show control panel on startup")
         self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
         layout.addRow("Control Panel:", self.show_control_panel)
-
-
 
         # API Keys & URLs
         self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
@@ -304,20 +312,12 @@ class ConfigUI(QDialog):
         # Update combo box text
         self.profile_combo.setItemText(index, profile['name'])
 
-
     def setup_warmup_tab(self):
         layout = QFormLayout(self.warmup_tab)
 
-        self.warmup_ocr = QCheckBox("Warmup OCR Engine")
         self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
-
-        self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
-
-        self.warmup_tts = QCheckBox("Warmup TTS Engine")
         self.warmup_tts.setChecked(self.config.get('warmup_tts', False))
-
-        self.warmup_sr = QCheckBox("Warmup Speech Recognition")
         self.warmup_sr.setChecked(self.config.get('warmup_speech_recognition', True))
 
         layout.addRow("OCR:", self.warmup_ocr)
@@ -372,7 +372,7 @@ class ConfigUI(QDialog):
         self.config['warmup_speech_recognition'] = self.warmup_sr.isChecked()
         self.config['ollama_url'] = self.ollama_url.text()
         self.config['google_genai_api_key'] = self.google_genai_api_key.text()
-        
+
         self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
         self.config['audio_input_device_name'] = self.audio_input_device_combo.currentData()
 
