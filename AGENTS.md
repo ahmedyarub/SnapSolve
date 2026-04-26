@@ -101,6 +101,21 @@ This application relies on a strictly decoupled architecture:
   - Defining attributes in __init__ with a default value (like None) ensures they always exist
   - This is especially important for attributes that are used in other methods or accessed externally
   - Makes the class interface clear and predictable
+* **Code Formatting:** **CRITICAL** - Always respect the `.editorconfig` file settings for code formatting:
+  - **Indentation:** Use 4 spaces for indentation (no tabs)
+  - **Line Length:** Maximum line length of 120 characters
+  - **Line Endings:** Use CRLF (`\r\n`) line endings on Windows
+  - **Final Newlines:** Do not insert final newlines at end of files
+  - **File Encoding:** Use UTF-8 encoding
+  - **Python-specific:** Follow Python formatting rules (blank lines around classes/methods, etc.)
+  - **JSON-specific:** Use 2 spaces for JSON files
+  - **Markdown-specific:** Follow Markdown formatting rules for consistent documentation
+  - **Why this matters:**
+    - Ensures consistent code style across all contributors and AI agents
+    - Prevents unnecessary diff noise and merge conflicts
+    - Maintains code readability and maintainability
+    - Follows project-specific conventions that may differ from general Python standards
+    - IDEs and editors automatically apply these settings when .editorconfig is respected
 * **Pydantic Models:** When working with Pydantic models (v2+), use `model_dump_json()` instead of the deprecated `json()` method
   for serializing models to JSON strings. The `json()` method was deprecated in Pydantic v2 and will be removed in future versions.
 * **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever
