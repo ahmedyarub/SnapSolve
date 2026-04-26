@@ -216,6 +216,7 @@ def parse_args():
     parser.add_argument('--disable-warmup-tts', action='store_true', help='Disable TTS engine warmup')
     parser.add_argument('--disable-warmup-speech-recognition', action='store_true', help='Disable Speech Recognition warmup')
     parser.add_argument('--tts-output-device-name', type=str, help='Name of the audio device for TTS output')
+    parser.add_argument('--audio-input-device-name', type=str, help='Name of the audio device for audio input')
 
     return parser.parse_args()
 
@@ -296,5 +297,8 @@ def get_config():
 
     if args.tts_output_device_name is not None:
         config['tts_output_device_name'] = args.tts_output_device_name
+
+    if args.audio_input_device_name is not None:
+        config['audio_input_device_name'] = args.audio_input_device_name
 
     return config
