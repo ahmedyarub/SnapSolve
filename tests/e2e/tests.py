@@ -8,11 +8,11 @@ import pyautogui
 import pyperclip
 import speech_recognition as sr
 
-from audio_utils import get_microphone_index, record_audio_in_background
+from audio_utils import get_microphone_index, record_audio_in_background, speak
 from config import (
     BASIC_QUESTION,
     CANCEL_SOURCE,
-    CAPTURE_SOURCE,
+    CAPTURE_BUTTON,
     CYCLE_SOURCE,
     END_MULTISELECT_SOURCE,
     MAIN_SCRIPT_ARGS,
@@ -29,7 +29,7 @@ from config import (
     TARGET_WORD_BASIC,
     TARGET_WORD_PROGRAMMING,
     TTS_INPUT_DEVICE_NAME,
-    WORKING_DIR,
+    WORKING_DIR, RECORD_BUTTON, STOP_RECORD_BUTTON, TTS_OUTPUT_DEVICE_NAME,
 )
 from network_utils import check_port_in_use, poll_port
 from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
@@ -68,6 +68,7 @@ def run_tests():
     try:
         test_text_source()
         test_image_source()
+        test_audio_source()
     finally:
         _stop_recording_event.set()
         if _recording_thread and _recording_thread.is_alive():
@@ -165,7 +166,7 @@ def test_image_source():
         print("OCR service not available. Aborting image tests.")
         return
 
-    cycle_until(CAPTURE_SOURCE)
+    cycle_until(CAPTURE_BUTTON)
 
     time.sleep(1)
 
@@ -174,6 +175,25 @@ def test_image_source():
     time.sleep(1)
 
     test_multi_capture()
+
+
+def test_audio_source():
+    cycle_until(RECORD_BUTTON)
+
+    click_button(RECORD_BUTTON)
+
+    time.sleep(1)
+
+    speak(BASIC_QUESTION, TTS_OUTPUT_DEVICE_NAME)
+
+    click_button(STOP_RECORD_BUTTON)
+
+    time.sleep(1)
+
+    if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
+        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
+    else:
+        print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
 
 
 def test_capture():
@@ -194,7 +214,7 @@ def test_capture():
     pyautogui.dragTo(x=3400, y=1100, duration=1)
 
     time.sleep(1)
-    if not click_button(CAPTURE_SOURCE):
+    if not click_button(CAPTURE_BUTTON):
         return
 
     time.sleep(1)
