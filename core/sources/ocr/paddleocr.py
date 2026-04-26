@@ -6,6 +6,7 @@ from .base import OCREngine
 
 class LocalPaddleOCREngine(OCREngine):
     def __init__(self, status_callback=None, warmup=True):
+        self.ocr = None
         if status_callback:
             status_callback("Initializing PaddleOCR...")
         try:

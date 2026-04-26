@@ -77,6 +77,30 @@ This application relies on a strictly decoupled architecture:
 * **Clean Code:** Always remove unused imports, variables, and function arguments. Optimize imports.
 * **Types:** Always add type hints and annotations when practical. If using a `class | None` pattern, always assert that
   it is not `None` before use.
+* **Instance Attributes:** **CRITICAL** - All instance attributes must be defined in the `__init__` method of every class.
+  Never define instance attributes in other methods. This ensures:
+  - All attributes are documented in one place
+  - IDE autocomplete works correctly
+  - Code is more maintainable and easier to understand
+  - Prevents runtime errors from missing attributes
+  - Follows Python best practices for class initialization
+  Example:
+  ```python
+  class MyClass:
+      def __init__(self):
+          self.attribute1 = None  # Define all attributes here
+          self.attribute2 = []
+          self._private_attribute = None
+      
+      def some_method(self):
+          # Use attributes, don't define new ones
+          self.attribute1 = "value"
+  ```
+  **Why this matters:**
+  - If an attribute is defined conditionally (e.g., inside a try/except block in __init__), it may not exist when accessed later, causing AttributeError
+  - Defining attributes in __init__ with a default value (like None) ensures they always exist
+  - This is especially important for attributes that are used in other methods or accessed externally
+  - Makes the class interface clear and predictable
 * **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever
   you introduce new settings. **Important:** Any time a new Source, LLM engine, OCR engine, or Sink is added, you must remember to update `ui/config_ui.py` to allow the user to select them.
 * **Profile Management:** When adding new configuration options, consider whether they should be profile-specific or
