@@ -4,3 +4,5 @@ pyperclip
 pillow
 pytest
 PyQt6
+keyboard
+speechrecognition
