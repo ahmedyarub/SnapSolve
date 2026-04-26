@@ -37,14 +37,14 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
 *   **Remote OCR:** Offload OCR processing to a remote PaddleOCR service.
-*   **Concurrent Execution & Warmup:** Models are pre-loaded (warmed up) during application startup for reduced latency.
+*   **Concurrent Execution & Warmup:** Models are preloaded (warmed up) during application startup for reduced latency.
 *   **Speech Recognition:** Google Speech-to-Text integration for audio input processing with configurable warmup.
 
 ## Sink (Output Generation)
 
 *   **Popup Sink:** Displays responses in an unobtrusive, frameless window.
     *   Supports dynamic resizing based on text length.
-    *   Renders rich Markdown, including bold, italics, lists, markdown tables, and syntax-highlighted code blocks.
+    *   Renders rich Markdown, including bold, italics, lists, Markdown tables, and syntax-highlighted code blocks.
     *   Configurable opacity for visual integration.
 *   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
     *   Support for multiple voice models (.onnx format).

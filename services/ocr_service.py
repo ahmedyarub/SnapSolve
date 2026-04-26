@@ -76,7 +76,7 @@ app = FastAPI()
 
 @app.post("/ocr")
 async def extract_text(request: ImageRequest):
-    logging.info(f"Received OCR request: {request.json()}")
+    logging.info(f"Received OCR request: {request.model_dump_json()}")
     # 1. Validate the file exists
     if not os.path.exists(request.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk.")

@@ -38,7 +38,7 @@ flowchart TD
     subgraph Sink Layer
         MainLLM --> Sinks[Concurrent Sink Wrapper]
         FallbackLLM --> Sinks
-        Sinks --> Popup[Tkinter Popup Sink]
+        Sinks --> Popup[PyQt6 Popup Sink]
         Sinks --> AudioOut[TTS Audio Sink]
     end
 
@@ -52,7 +52,7 @@ flowchart TD
 sequenceDiagram
     actor User
     participant Hotkey as Keyboard Listener (Background Thread)
-    participant UI as Tkinter Main UI Thread
+    participant UI as PyQt6 Main UI Thread
     participant Pipe as Pipeline Orchestrator
     participant Source as Capture & OCR
     participant LLM as LLM Engine(s)
@@ -82,14 +82,14 @@ sequenceDiagram
 
     loop Every Chunk
         LLM-->>Sink: process_chunk()
-        Sink->>UI: root.after(render_markdown)
+        Sink->>UI: QTimer.singleShot(render_markdown)
         UI-->>User: Visual Update
     end
 
     LLM-->>Pipe: Streaming Complete
     deactivate LLM
     Pipe->>Sink: finalize()
-    Sink->>UI: root.after(finalize_ui)
+    Sink->>UI: QTimer.singleShot(finalize_ui)
     deactivate Pipe
 ```
 
@@ -121,7 +121,7 @@ The Engine layer handles communication with the AI models.
 
 ## 4. Response Sink (`core/sinks/`)
 The Sink layer is responsible for taking the generated text and presenting it to the user.
-*   **Popup Sink:** Streams the text directly into a Tkinter Text widget (`ui/`). It implements a lightweight Markdown parser to natively render bold text, bullet points, markdown tables, and syntax-highlighted code blocks dynamically as chunks arrive.
+*   **Popup Sink:** Streams the text directly into a PyQt6 QTextEdit widget (`ui/`). It implements a lightweight Markdown parser to natively render bold text, bullet points, markdown tables, and syntax-highlighted code blocks dynamically as chunks arrive.
 *   **Audio Sink:** A separate daemon thread runs Piper TTS to read the completed response aloud without blocking the UI.
 
 ## Directory Structure
@@ -130,7 +130,7 @@ The Sink layer is responsible for taking the generated text and presenting it to
     *   `llm/`: LLM engine implementations (Gemini CLI, Google GenAI, Ollama).
     *   `sinks/`: Output sinks (popup, audio, composite).
     *   `pipeline/`: Pipeline orchestration and processing logic.
-*   `ui/`: Contains the Tkinter GUI logic, control panels, configuration UI, popup notifications, and coordinate selection overlays.
+*   `ui/`: Contains the PyQt6 GUI logic, control panels, configuration UI, popup notifications, and coordinate selection overlays.
 *   `config/`: Manages configuration files (`config.json`, `profiles.json`, `prompts.json`), dynamic profile switching, and prompt definitions.
 *   `services/`: Contains service implementations like the remote OCR service.
 *   `sessions/`: Stores serialized JSON files representing the chat history of previous sessions.
@@ -139,5 +139,5 @@ The Sink layer is responsible for taking the generated text and presenting it to
     *   `sanity/`: Standalone sanity check scripts for component verification.
 
 ## Threading & UI State
-*   **Tkinter Mainloop:** The UI runs in a persistent background thread (`mainloop()`).
-*   **Thread Safety:** Because global hotkeys (via the `keyboard` module) run in their own threads, all UI updates triggered by hotkeys or incoming LLM streams are dispatched safely back to the main UI thread using `root.after()` or thread-safe `queue.Queue` communication.
+*   **PyQt6 Event Loop:** The UI runs in a persistent background thread (`QApplication.exec()`).
+*   **Thread Safety:** Because global hotkeys (via the `keyboard` module) run in their own threads, all UI updates triggered by hotkeys or incoming LLM streams are dispatched safely back to the main UI thread using `QTimer.singleShot()` or Qt signals/slots.

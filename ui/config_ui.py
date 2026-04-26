@@ -25,6 +25,30 @@ def load_json(path, default):
 class ConfigUI(QDialog):
     def __init__(self, config_path, models_path, profiles_path, prompts_path):
         super().__init__()
+
+        # Load configurations
+        self.config_path = config_path
+        self.models_path = models_path
+        self.profiles_path = profiles_path
+        self.prompts_path = prompts_path
+        self.config = load_json(self.config_path, {})
+        self.models_data = load_json(self.models_path, {})
+        self.profiles = load_json(self.profiles_path, [])
+        self.prompts = load_json(self.prompts_path, [])
+
+        self.shortcut_inputs = {}
+        self.shortcuts_layout = None
+        self.show_control_panel = QCheckBox("Show control panel on startup")
+        self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
+        self.google_genai_api_key = QLineEdit(self.config.get('google_genai_api_key', ''))
+        self.profile_combo = QComboBox()
+        self.profile_form = QWidget()
+        self.prof_name = QLineEdit()
+        self.prof_llm_engine = QComboBox()
+        self.prof_model = QComboBox()
+        self.prof_fallback_model = QComboBox()
+        self.prof_ocr_engine = QComboBox()
+        self.prof_prompt = QComboBox()
         self.output_mode_audio = None
         self.output_mode_popup = None
         self.should_run = None
@@ -33,16 +57,6 @@ class ConfigUI(QDialog):
         self.shortcuts_tab = None
         self.profile_tab = None
         self.app_tab = None
-        self.config_path = config_path
-        self.models_path = models_path
-        self.profiles_path = profiles_path
-        self.prompts_path = prompts_path
-
-        # Load configurations
-        self.config = load_json(self.config_path, {})
-        self.models_data = load_json(self.models_path, {})
-        self.profiles = load_json(self.profiles_path, [])
-        self.prompts = load_json(self.prompts_path, [])
 
         self.tabs = QTabWidget()
         self.warmup_tab = QWidget()
@@ -190,15 +204,12 @@ class ConfigUI(QDialog):
         layout.addRow("Background Mode:", self.background_mode)
 
         # Show Control Panel
-        self.show_control_panel = QCheckBox("Show control panel on startup")
         self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
         layout.addRow("Control Panel:", self.show_control_panel)
 
         # API Keys & URLs
-        self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
         layout.addRow("Ollama URL:", self.ollama_url)
 
-        self.google_genai_api_key = QLineEdit(self.config.get('google_genai_api_key', ''))
         self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
 
@@ -208,35 +219,27 @@ class ConfigUI(QDialog):
         # Profile selection
         h_layout = QHBoxLayout()
         h_layout.addWidget(QLabel("Active Profile:"))
-        self.profile_combo = QComboBox()
         self.populate_profiles()
         self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
         h_layout.addWidget(self.profile_combo)
         layout.addLayout(h_layout)
 
         # Profile Form
-        self.profile_form = QWidget()
         form_layout = QFormLayout(self.profile_form)
 
-        self.prof_name = QLineEdit()
         form_layout.addRow("Profile Name:", self.prof_name)
 
-        self.prof_llm_engine = QComboBox()
         self.prof_llm_engine.addItems(["gemini", "ollama", "google-genai"])
         self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
         form_layout.addRow("LLM Engine:", self.prof_llm_engine)
 
-        self.prof_model = QComboBox()
         form_layout.addRow("Main Model:", self.prof_model)
 
-        self.prof_fallback_model = QComboBox()
         form_layout.addRow("Fallback Model:", self.prof_fallback_model)
 
-        self.prof_ocr_engine = QComboBox()
         self.prof_ocr_engine.addItems(["none", "paddleocr", "remote_paddle"])
         form_layout.addRow("OCR Engine:", self.prof_ocr_engine)
 
-        self.prof_prompt = QComboBox()
         self.populate_prompts()
         form_layout.addRow("Prompt:", self.prof_prompt)
 
@@ -330,8 +333,6 @@ class ConfigUI(QDialog):
         scroll.setWidgetResizable(True)
         container = QWidget()
         self.shortcuts_layout = QFormLayout(container)
-
-        self.shortcut_inputs = {}
 
         # Default actions
         default_actions = [

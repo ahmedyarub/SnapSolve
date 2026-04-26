@@ -12,7 +12,7 @@ This application relies on a strictly decoupled architecture:
     *   `llm/`: LLM Engines (`GoogleGenAIEngine`, `OllamaEngine`, `GeminiCLIEngine`).
     *   `sinks/`: Where data is sent (`PopupSink`, `AudioSink`, `CompositeSink`).
     *   `pipeline/`: Orchestrates the flow from Source -> LLM -> Sink.
-2.  **`ui/`**: All Tkinter-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
+2.  **`ui/`**: All PyQt6-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
 3.  **`config/`**: Configuration parsing and profile management.
 4.  `services/`: Service implementations like the remote OCR service.
 5.  `sessions/`: Local storage for chat session history.
@@ -23,14 +23,14 @@ This application relies on a strictly decoupled architecture:
 
 ## Crucial Technical Constraints
 
-### Tkinter & Thread Safety
+### PyQt6 & Thread Safety
 
-* The Tkinter GUI uses a persistent background thread (`mainloop()`).
+* The PyQt6 GUI uses a persistent event loop (`QApplication.exec()`).
 * **Global Hotkeys:** The `keyboard` module captures hotkeys in a blocking fashion. Any callback triggered by
-  `keyboard.read_hotkey()` **must not** perform long-running blocking operations or attempt to update Tkinter UI
+  `keyboard.read_hotkey()` **must not** perform long-running blocking operations or attempt to update PyQt6 UI
   elements directly.
 * **UI Updates:** All updates to the UI from background threads (like LLM streaming chunks or hotkey callbacks) must be
-  dispatched to the main UI thread using `root.after(0, lambda: ...)` or handled via thread-safe `queue.Queue`.
+  dispatched to the main UI thread using `QTimer.singleShot()` or Qt signals/slots.
 
 ### Windows DPI & Coordinates
 

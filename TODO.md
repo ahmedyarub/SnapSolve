@@ -24,7 +24,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Pre-allocate Space for Large Responses**: For large outputs, pre-allocate a configurable number of lines (e.g., 100) to allow smooth scrolling while text is actively streaming in.
 - [ ] **Active Profile Placement**: Move the active profile selection setting to the main application tab for easier access.
 - [ ] **Opacity Setting Fix**: Investigate and fix the issue where setting the popup/panel opacity does not correctly apply to the UI.
-- [ ] **Mermaid Diagram Rendering**: Fix the markdown parser/renderer so that Mermaid diagrams are displayed correctly.
+- [ ] **Mermaid Diagram Rendering**: Fix the Markdown parser/renderer so that Mermaid diagrams are displayed correctly.
 - [ ] **Popup State Reset**: Ensure that consecutive LLM responses correctly clear and reset the popup text instead of appending to stale content.
 - [ ] **Audio Recording UI**: Improve visual feedback during audio recording with better indicators and controls.
 

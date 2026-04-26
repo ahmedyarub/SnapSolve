@@ -50,15 +50,15 @@ if platform.system() == "Windows":
         print(f"Warning: Failed to set DPI awareness: {e}")
 
 
-def create_tray_icon(on_exit, config):
+def create_tray_icon(on_exit):
     # Create a simple tray icon
     img = Image.new('RGB', (64, 64), color=(73, 109, 137))
 
-    def quit_action(icon, item):
+    def quit_action(icon):
         icon.stop()
         on_exit()
 
-    def toggle_panel_action(icon, item):
+    def toggle_panel_action():
         toggle_control_panel()
 
     menu = pystray.Menu(
@@ -77,7 +77,7 @@ def set_processing(state):
         cancel_event.clear()  # Reset cancel event when not processing
 
 
-def handle_text_submit(config, active_profile, active_prompt_text, text):
+def handle_text_submit(config, active_profile, text):
     global is_processing
     if is_processing:
         return
@@ -251,7 +251,7 @@ def handle_capture(config, active_profile, active_prompt_text):
     threading.Thread(target=_capture, daemon=True).start()
 
 
-def handle_multi_capture(config, active_profile, active_prompt_text):
+def handle_multi_capture(config, active_profile):
     global is_processing
     if is_processing:
         return
@@ -468,7 +468,7 @@ def handle_toggle_stitching(config, active_profile):
                    is_result=False)
 
 
-def handle_toggle_panel(config):
+def handle_toggle_panel():
     # Toggle control panel state internally
     toggle_control_panel()
 
@@ -484,7 +484,7 @@ def handle_cancel():
         multi_capture_texts = []
         update_multi_state(False)
 
-    # Close any open popups and show a "Cancelled" message
+    # Close any open popups and show a "Canceled" message
     from core.output import ui_signals
     ui_signals.close_popup.emit()
     show_popup("Cancelled", auto_close=2000, is_result=False)
@@ -493,7 +493,7 @@ def handle_cancel():
     # set_processing(False)
 
 
-def handle_start_record(config, active_profile):
+def handle_start_record(config):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
@@ -531,7 +531,7 @@ def handle_stop_record(config, active_profile, active_prompt_text):
 
         # We need to dispatch handle_text_submit via the callback dict or threading to not block,
         # but handle_text_submit itself spawns a thread. Let's just call it directly.
-        handle_text_submit(config, active_profile, active_prompt_text, text)
+        handle_text_submit(config, active_profile, text)
 
     threading.Thread(target=_process_audio, daemon=True).start()
 
@@ -692,13 +692,13 @@ def main():
     callbacks = {
         'capture': lambda: handle_capture(config, active_profile, active_prompt_text),
         'reselect': lambda: handle_reselect(config),
-        'multi_capture': lambda: handle_multi_capture(config, active_profile, active_prompt_text),
+        'multi_capture': lambda: handle_multi_capture(config, active_profile),
         'end_multi_capture': lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
         'cancel': handle_cancel,
         'toggle_stitching': lambda: handle_toggle_stitching(config, active_profile),
         'cycle_source': lambda: handle_cycle_source(config, active_profile),
-        'text_submit': lambda text: handle_text_submit(config, active_profile, active_prompt_text, text),
-        'start_record': lambda: handle_start_record(config, active_profile),
+        'text_submit': lambda text: handle_text_submit(config, active_profile, text),
+        'start_record': lambda: handle_start_record(config),
         'stop_record': lambda: handle_stop_record(config, active_profile, active_prompt_text)
     }
     # Initialize the UI Manager and set callbacks
@@ -823,7 +823,7 @@ def main():
         print("Running in background tray mode with pystray...")
 
         def run_tray():
-            icon = create_tray_icon(exit_app, config)
+            icon = create_tray_icon(exit_app)
             icon.run()
 
         threading.Thread(target=run_tray, daemon=True).start()

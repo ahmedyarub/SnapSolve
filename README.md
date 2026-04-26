@@ -12,7 +12,7 @@ answers, and provides responses via frameless popup notifications and/or local T
 * **Chat History:** Maintain conversational context over multiple queries with session management.
 * **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
 * **Advanced OCR:** Optional PaddleOCR integration for reliable text extraction before prompting.
-* **Flexible Output Sinks:** Render rich markdown answers in a floating popup and/or read them aloud via TTS.
+* **Flexible Output Sinks:** Render rich Markdown answers in a floating popup and/or read them aloud via TTS.
 * **Background Mode:** Run the app seamlessly from your system tray.
 * **Multi-Capture Support:** Capture multiple screen regions in sequence for combined processing.
 * **Audio Input:** Record and transcribe audio input using speech recognition.
@@ -120,7 +120,7 @@ If you want to use the high-quality local Text-to-Speech (TTS) feature:
    "warmup_tts": false
    }
    ```
-    * `warmup_tts`: Set to `true` to pre-load the Piper model on application startup, reducing the delay for the first
+    * `warmup_tts`: Set to `true` to preload the Piper model on application startup, reducing the delay for the first
       spoken output.
 
 ## Supported Engines
@@ -214,10 +214,10 @@ Create a file named `config.json` in the same directory as the script. Example:
 
 * `output_mode`: Controls where the response is sent. Add `"audio"` to enable Piper TTS.
 * `piper_model`: Path to the downloaded Piper `.onnx` voice model.
-* `warmup_tts`: Set to `true` to pre-load the Piper model on application startup.
-* `warmup_ocr`: Set to `true` to pre-load the OCR engine on application startup.
-* `warmup_llm`: Set to `true` to pre-load the LLM engine on application startup.
-* `warmup_speech_recognition`: Set to `true` to pre-load the speech recognition engine on application startup.
+* `warmup_tts`: Set to `true` to preload the Piper model on application startup.
+* `warmup_ocr`: Set to `true` to preload the OCR engine on application startup.
+* `warmup_llm`: Set to `true` to preload the LLM engine on application startup.
+* `warmup_speech_recognition`: Set to `true` to preload the speech recognition engine on application startup.
 * `default_source`: Default input source (`"text"`, `"image"`, or `"audio"`).
 * `tts_output_device_name`: Name of the audio device for TTS output (optional).
 * `audio_input_device_name`: Name of the audio device for audio input/speech recognition (optional).
@@ -327,7 +327,7 @@ python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-resel
    ```bash
    python main.py
    ```
-2. **First Run (Coordinate Selection):** If you haven't set `coordinates` in your configuration and you're using image
+2. **First Run (Coordinate Selection):** If you haven't set `coordinates` in your configuration, and you're using image
    capture, the screen will turn slightly gray. Click and drag your mouse to draw a rectangle over the area where your
    questions will appear. The application will save these coordinates to `config.json` automatically.
 3. Once running, you can:

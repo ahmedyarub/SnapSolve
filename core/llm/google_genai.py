@@ -116,6 +116,7 @@ class GoogleGenAIEngine(LLMEngine):
             current_parts = [types.Part.from_text(text=prompt)]
             contents.append(types.Content(role="user", parts=current_parts))
 
+            assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
@@ -163,6 +164,7 @@ class GoogleGenAIEngine(LLMEngine):
 
             contents.append(types.Content(role="user", parts=current_parts))
 
+            assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
