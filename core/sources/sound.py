@@ -197,7 +197,9 @@ class SoundSource(Source):
     def _display_subtitle(text: str):
         """Display transcription as subtitle."""
         try:
+            logger.info(f"Attempting to display subtitle: {text}")
             show_subtitle(text)
+            logger.info("Subtitle display signal sent successfully")
         except Exception as e:
             logger.error(f"Error displaying subtitle: {e}")
 

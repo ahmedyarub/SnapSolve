@@ -8,14 +8,30 @@ echo "🔍 Starting Static Analysis & Verification Loop..."
 echo "Running Python Checks (Ruff)..."
 # Check for unused imports, variables, and linting errors
 ruff check .
+RUFF_CHECK_EXIT_CODE=$?
+if [ "$RUFF_CHECK_EXIT_CODE" -ne 0 ]; then
+    echo -e "\e[31mRuff check failed. Fix the issues listed above.\e[0m"
+    exit 1
+fi
+
 # Check formatting without modifying files (forces AI to run the fix command if it fails)
 ruff format --check .
+RUFF_FORMAT_EXIT_CODE=$?
+if [ "$RUFF_FORMAT_EXIT_CODE" -ne 0 ]; then
+    echo -e "\e[31mRuff format check failed. Run 'ruff format .' to fix formatting issues.\e[0m"
+    exit 1
+fi
 
 # 2. JetBrains Qodana (Headless PyCharm/IntelliJ Inspections)
 echo "Running IDE Inspections (Qodana)..."
 # Fails if any new problems are introduced beyond the baseline threshold
 export NONINTERACTIVE=true
 qodana scan --fail-threshold 0 --print-problems --apply-fixes
+QODANA_EXIT_CODE=$?
+if [ "$QODANA_EXIT_CODE" -ne 0 ]; then
+    echo -e "\e[31mQodana inspection failed. Fix the issues listed above.\e[0m"
+    exit 1
+fi
 
 # 3. SonarQube Scanner
 echo "Running SonarQube Quality Gate..."

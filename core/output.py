@@ -279,6 +279,11 @@ class SubtitleWidget(QWidget):
     def add_subtitle(self, text: str):
         """Add a new subtitle line."""
         import time
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"add_subtitle called with text: {text}")
+        logger.info(f"Subtitle widget visible: {self.isVisible()}")
+        logger.info(f"Subtitle widget position: {self.pos()}, size: {self.size()}")
 
         # Create new subtitle label
         label = QLabel(text)
@@ -308,13 +313,23 @@ class SubtitleWidget(QWidget):
             self.layout.removeWidget(oldest)
             oldest.deleteLater()
 
+        # Force layout update before adjusting size
+        self.layout.activate()
+
         # Update widget size
         self.adjustSize()
         self.update_position()
 
+        # Ensure widget has minimum height
+        if self.height() == 0:
+            self.setMinimumHeight(50)
+            self.adjustSize()
+
         # Show if hidden
         if not self.isVisible():
+            logger.info("Subtitle widget was hidden, attempting to show it")
             self.show()
+            logger.info(f"After show(), widget visible: {self.isVisible()}, size: {self.size()}")
 
     def clear_subtitles(self):
         """Clear all subtitles."""
@@ -537,12 +552,16 @@ class UIManager(QObject):
         selector_signals.request_coords.connect(_handle_request_coords)
 
     def _init_ui(self):
+        import logging
+        logger = logging.getLogger(__name__)
         if not QApplication.instance():
             return  # Should not happen, main.py creates it
         self.popup = PopupWidget()
         self.panel = PanelWidget()
         self.text_input = TextInputWidget()
         self.subtitle = SubtitleWidget()
+        logger.info(f"Subtitle widget created: {self.subtitle is not None}")
+        logger.info(f"Subtitle widget initial visible state: {self.subtitle.isVisible()}")
 
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)
@@ -579,8 +598,12 @@ class UIManager(QObject):
         self.text_input.set_processing_state(is_processing)
 
     def _on_show_subtitle(self, text: str):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"_on_show_subtitle called with text: {text}")
         assert self.subtitle is not None
         self.subtitle.add_subtitle(text)
+        logger.info("_on_show_subtitle completed")
 
     def _on_clear_subtitles(self):
         assert self.subtitle is not None
@@ -638,7 +661,11 @@ def close_popup():
 
 def show_subtitle(text: str):
     """Show a subtitle line with real-time transcription."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"show_subtitle called with text: {text}")
     ui_signals.show_subtitle.emit(text)
+    logger.info("show_subtitle signal emitted")
 
 
 def clear_subtitles():

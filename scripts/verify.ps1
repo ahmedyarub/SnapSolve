@@ -8,7 +8,15 @@ try
     # 1. Python: Ruff
     Write-Host "Running Python Checks (Ruff)..." -ForegroundColor Yellow
     ruff check .
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Ruff check failed."
+    }
     ruff format --check .
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Ruff format check failed."
+    }
 
     # 2. JetBrains Qodana
     Write-Host "Running IDE Inspections (Qodana via WSL)..." -ForegroundColor Yellow
