@@ -136,7 +136,7 @@ def test_text_source():
     print(f"Clicking specific position ({PROMPT_X}, {PROMPT_Y})...")
     pyautogui.click(x=PROMPT_X, y=PROMPT_Y)
 
-    print(f"Pasting the question...")
+    print("Pasting the question...")
     pyperclip.copy(BASIC_QUESTION + " Answer with one word only.")
     time.sleep(0.1)
     pyautogui.hotkey('ctrl', 'v')

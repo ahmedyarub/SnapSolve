@@ -7,7 +7,7 @@ from typing import Callable, Optional
 import pyaudio
 import speech_recognition as sr
 
-from core.output import clear_subtitles
+from core.output import clear_subtitles, show_subtitle
 from .base import Source
 
 logger = logging.getLogger(__name__)
@@ -141,26 +141,17 @@ class SoundSource(Source):
 
         while not self._transcription_stop_event.is_set():
             try:
-                # Wait for audio data with timeout
+                # Wait for audio data. If we get it, just loop again to gather more.
                 try:
                     data, timestamp = self._audio_queue.get(timeout=0.1)
                     transcription_buffer.append(data)
+                    continue  # Got audio, loop to gather more
                 except queue.Empty:
-                    # Check if we have a pause
-                    current_time = time.time()
-                    time_since_last_audio = current_time - self._last_audio_time
+                    # Queue is empty, which means we're in a potential pause.
+                    pass  # Proceed to check for pause logic below.
 
-                    # If pause detected and we have audio, transcribe
-                    if time_since_last_audio >= self.pause_threshold and transcription_buffer:
-                        self._transcribe_buffer(transcription_buffer)
-                        transcription_buffer = []
-
-                    continue
-
-                # Check for pause periodically
-                current_time = time.time()
-                time_since_last_audio = current_time - self._last_audio_time
-
+                # Check for a pause only when the queue is empty.
+                time_since_last_audio = time.time() - self._last_audio_time
                 if time_since_last_audio >= self.pause_threshold and transcription_buffer:
                     self._transcribe_buffer(transcription_buffer)
                     transcription_buffer = []
@@ -206,10 +197,7 @@ class SoundSource(Source):
     def _display_subtitle(text: str):
         """Display transcription as subtitle."""
         try:
-            from core.output import show_subtitle
             show_subtitle(text)
-        except ImportError:
-            logger.warning("Could not import show_subtitle function")
         except Exception as e:
             logger.error(f"Error displaying subtitle: {e}")
 

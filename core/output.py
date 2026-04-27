@@ -1,7 +1,7 @@
 import json
 import threading
 
-from PyQt6.QtCore import Qt, QObject, pyqtSignal
+from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit, QLabel
 
@@ -184,9 +184,6 @@ class PopupWidget(QWidget):
         self.show()
 
 
-from PyQt6.QtCore import QTimer, pyqtSignal
-
-
 class RecordButton(QPushButton):
     # Signals for different actions
     start_recording = pyqtSignal()
@@ -257,7 +254,7 @@ class SubtitleWidget(QWidget):
         # Store subtitle labels with their creation time
         self.subtitle_labels = []
         self.max_subtitles = 5  # Maximum number of subtitle lines to show
-        self.fade_duration = 3000  # Duration for fade effect in milliseconds
+        self.fade_duration = 15000  # Duration for fade effect in milliseconds (15 seconds)
 
         # Timer for updating fade effects
         self.fade_timer = QTimer(self)
@@ -272,7 +269,9 @@ class SubtitleWidget(QWidget):
         """Position widget at bottom center of screen."""
         screen = QApplication.primaryScreen().size()
         w = int(screen.width() * 0.6)
-        h = 150  # Initial height
+        self.setFixedWidth(w)
+        self.adjustSize()
+        h = self.height()
         x = (screen.width() - w) // 2
         y = screen.height() - h - 50
         self.setGeometry(x, y, w, h)
@@ -286,7 +285,7 @@ class SubtitleWidget(QWidget):
         label.setStyleSheet("""
             QLabel {
                 background-color: rgba(0, 0, 0, 0.7);
-                color: white;
+                color: rgba(255, 255, 255, 1.0);
                 padding: 8px 12px;
                 border-radius: 4px;
                 font-size: 16px;
@@ -337,17 +336,24 @@ class SubtitleWidget(QWidget):
 
             # Calculate opacity based on position and age
             # Newer subtitles (higher index) are more opaque
-            # Older subtitles fade out over time
+            # Older subtitles fade out more gradually
             position_factor = (i + 1) / len(self.subtitle_labels) if self.subtitle_labels else 1
-            age_factor = max(0, 1 - (age / (self.fade_duration / 1000)))
 
-            opacity = min(0.9, position_factor * age_factor)
+            # More gradual fading - start fading after 5 seconds, complete fade by fade_duration
+            fade_start = 5.0  # Start fading after 5 seconds
+            if age < fade_start:
+                age_factor = 1.0  # Full opacity for first 5 seconds
+            else:
+                age_factor = max(0.3, 1.0 - ((age - fade_start) / ((self.fade_duration / 1000) - fade_start)))
+
+            # Combine factors, but ensure minimum visibility
+            opacity = min(0.95, max(0.4, position_factor * age_factor))
 
             # Update label style with new opacity
             label.setStyleSheet(f"""
                 QLabel {{
-                    background-color: rgba(0, 0, 0, {opacity * 0.7});
-                    color: white;
+                    background-color: rgba(0, 0, 0, {opacity * 0.7:.3f});
+                    color: rgba(255, 255, 255, {opacity:.3f});
                     padding: 8px 12px;
                     border-radius: 4px;
                     font-size: 16px;

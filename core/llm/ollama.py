@@ -1,5 +1,4 @@
 import json
-import time
 import urllib.request
 import urllib.error
 import base64
@@ -53,7 +52,7 @@ class OllamaEngine(LLMEngine):
             if cancel_event and cancel_event.is_set():
                 return "Cancelled"
                 
-            print(f"[OllamaEngine] Sending request...")
+            print("[OllamaEngine] Sending request...")
             req = urllib.request.Request(
                 f"{self.ollama_url.rstrip('/')}/api/generate",
                 data=json.dumps(payload).encode('utf-8'),
@@ -68,7 +67,7 @@ class OllamaEngine(LLMEngine):
 
             if sink and not (cancel_event and cancel_event.is_set()):
                 sink.process_chunk(ans, is_main=is_main)
-            print(f"Request finished successfully")
+            print("Request finished successfully")
             return ans
         except Exception as e:
             print(f"[OllamaEngine] Error calling Ollama API: {str(e)}")

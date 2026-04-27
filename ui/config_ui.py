@@ -278,13 +278,16 @@ class ConfigUI(QDialog):
             fallback_id = self._current_profile_data.get('fallback_model')
 
             idx = self.prof_model.findData(model_id)
-            if idx >= 0: self.prof_model.setCurrentIndex(idx)
+            if idx >= 0:
+                self.prof_model.setCurrentIndex(idx)
 
             idx2 = self.prof_fallback_model.findData(fallback_id)
-            if idx2 >= 0: self.prof_fallback_model.setCurrentIndex(idx2)
+            if idx2 >= 0:
+                self.prof_fallback_model.setCurrentIndex(idx2)
 
     def on_profile_changed(self, index):
-        if index < 0 or index >= len(self.profiles): return
+        if index < 0 or index >= len(self.profiles):
+            return
         profile = self.profiles[index]
         self._current_profile_data = profile
 
@@ -298,11 +301,13 @@ class ConfigUI(QDialog):
 
         prompt_id = profile.get('prompt_id', 'default')
         idx = self.prof_prompt.findData(prompt_id)
-        if idx >= 0: self.prof_prompt.setCurrentIndex(idx)
+        if idx >= 0:
+            self.prof_prompt.setCurrentIndex(idx)
 
     def save_current_profile(self):
         index = self.profile_combo.currentIndex()
-        if index < 0 or index >= len(self.profiles): return
+        if index < 0 or index >= len(self.profiles):
+            return
 
         profile = self.profiles[index]
         profile['name'] = self.prof_name.text()
@@ -359,8 +364,10 @@ class ConfigUI(QDialog):
         self.config['default_source'] = self.default_source_combo.currentData()
 
         modes = []
-        if self.output_mode_popup.isChecked(): modes.append('popup')
-        if self.output_mode_audio.isChecked(): modes.append('audio')
+        if self.output_mode_popup.isChecked():
+            modes.append('popup')
+        if self.output_mode_audio.isChecked():
+            modes.append('audio')
         self.config['output_mode'] = modes
 
         self.config['piper_model'] = self.piper_model.text() or 'en_US-lessac-medium.onnx'

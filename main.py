@@ -19,7 +19,8 @@ from core.output import output_result, show_popup, close_popup, toggle_control_p
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
 from core.sinks import PopupSink, AudioSink, CompositeSink
-from core.sources import ScreenshotSource, TextSource, SoundSource
+from core.sources import ScreenshotSource, TextSource, SoundSource, get_active_source_instance, \
+    set_active_source_instance
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
 from ui.selector import get_coordinates
 
@@ -28,8 +29,6 @@ is_running = True
 is_processing = False
 ocr_engine_instance = None
 cancel_event = threading.Event()
-
-from core.sources import get_active_source_instance, set_active_source_instance
 
 llm_engine_instance: LLMEngine | None = None
 fallback_llm_engine_instance: LLMEngine | None = None
@@ -517,6 +516,8 @@ def handle_stop_record(config, active_profile, _active_prompt_text):
     status_update("Processing audio...")
 
     def _process_audio():
+        assert active_source is not None
+        assert isinstance(active_source, SoundSource)
         text = active_source.stop_recording()
         if not text:
             status_update("No speech recognized.")
@@ -544,7 +545,7 @@ def handle_cycle_source(config, active_profile):
             ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
     elif isinstance(active_source, ScreenshotSource):
-        new_source = SoundSource()
+        new_source = SoundSource(config)
     else:
         new_source = TextSource()
 
@@ -765,10 +766,13 @@ def main():
             fallback_llm_engine_instance = GeminiCLIEngine(fallback_model, session_manager=session_manager)
 
     # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
-    warmup_status_cb = lambda msg: print(f"Init status: {msg}")
+    def warmup_status_cb(msg):
+        print(f"Init status: {msg}")
+
     warmup_success = False
     if config.get('warmup_llm', True):
         if fallback_model and fallback_model != "None" and 'fallback_llm_engine_instance' in globals():
+            assert fallback_llm_engine_instance is not None
             warmup_success = fallback_llm_engine_instance.warmup(status_callback=warmup_status_cb)
 
         if not warmup_success and llm_engine_instance:
@@ -785,6 +789,17 @@ def main():
     if config.get('warmup_speech_recognition', True):
         temp_sr = SoundSource(config)
         threading.Thread(target=temp_sr.warmup, daemon=True).start()
+
+    # Function to test transcription display
+    def handle_test_transcription():
+        import random
+        from core.output import show_subtitle
+        test_text = f"Transcription test with random number: {random.randint(1, 1000)}"
+        print(f"Testing transcription display: {test_text}")
+        show_subtitle(test_text)
+
+    # Register keyboard shortcuts
+    keyboard.add_hotkey('ctrl+alt+shift+t', handle_test_transcription)
 
     hotkeys = config.get('hotkeys', [])
 

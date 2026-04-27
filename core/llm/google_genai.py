@@ -91,7 +91,7 @@ class GoogleGenAIEngine(LLMEngine):
             return "Cancelled"
 
         ans = "".join(ans_chunks)
-        print(f"Request finished successfully")
+        print("Request finished successfully")
         return ans
 
     def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
