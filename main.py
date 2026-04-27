@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
 from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, LLMEngine
-from core.output import output_result, show_popup, close_popup, toggle_control_panel, set_app_callbacks, update_multi_state, \
+from core.output import output_result, show_popup, close_popup, toggle_control_panel, set_app_callbacks, \
+    update_multi_state, \
     set_active_source_ui, set_app_processing_state
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
@@ -139,12 +140,12 @@ def handle_text_submit(config, active_profile, text):
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
             output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
-                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
-                          fallback_language=config.get('fallback_language', 'python'))
+                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8))
         except Exception as text_error:
             print(f"Error during processing text input: {text_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {text_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {text_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8),
+                           is_result=False)
         finally:
             set_processing(False)
 
@@ -238,12 +239,12 @@ def handle_capture(config, active_profile, active_prompt_text):
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
             output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
-                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
-                          fallback_language=config.get('fallback_language', 'python'))
+                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8))
         except Exception as processing_error:
             print(f"Error during processing: {processing_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {processing_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {processing_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8),
+                           is_result=False)
         finally:
             set_processing(False)
 
@@ -325,7 +326,8 @@ def handle_multi_capture(config, active_profile):
         except Exception as multi_capture_error:
             print(f"Error during multi-capture: {multi_capture_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {multi_capture_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {multi_capture_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8),
+                           is_result=False)
         finally:
             set_processing(False)
 
@@ -413,13 +415,13 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                     final_result = f"## Main Model ({main_model})\n\n{result}"
 
             output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
-                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
-                          fallback_language=config.get('fallback_language', 'python'))
+                          auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8))
 
         except Exception as multi_error:
             print(f"Error during processing multi-capture: {multi_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {multi_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {multi_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8),
+                           is_result=False)
         finally:
             set_processing(False)
             is_multi_capturing = False

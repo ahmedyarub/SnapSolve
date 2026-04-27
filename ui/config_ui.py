@@ -61,7 +61,6 @@ class ConfigUI(QDialog):
         self.tabs = QTabWidget()
         self.warmup_tab = QWidget()
         self.default_source_combo = QComboBox()
-        self.fallback_language = QLineEdit(self.config.get('fallback_language', 'python'))
         self.piper_model = QLineEdit(self.config.get('piper_model', 'en_US-lessac-medium.onnx'))
         self.tts_output_device_combo = QComboBox()
         self.audio_input_device_combo = QComboBox()
@@ -153,9 +152,6 @@ class ConfigUI(QDialog):
         mode_layout.addWidget(self.output_mode_popup)
         mode_layout.addWidget(self.output_mode_audio)
         layout.addRow("Output Mode:", mode_layout)
-
-        # Fallback Language
-        layout.addRow("Fallback Lexer Language:", self.fallback_language)
 
         # TTS Piper settings
         piper_model_layout = QHBoxLayout()
@@ -363,7 +359,6 @@ class ConfigUI(QDialog):
         if self.output_mode_audio.isChecked(): modes.append('audio')
         self.config['output_mode'] = modes
 
-        self.config['fallback_language'] = self.fallback_language.text()
         self.config['piper_model'] = self.piper_model.text() or 'en_US-lessac-medium.onnx'
         self.config['background'] = self.background_mode.isChecked()
         self.config['show_control_panel'] = self.show_control_panel.isChecked()

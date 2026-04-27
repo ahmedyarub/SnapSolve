@@ -196,7 +196,6 @@ Create a file named `config.json` in the same directory as the script. Example:
   "google_genai_api_key": "",
   "auto_close_results": false,
   "popup_opacity": 0.9,
-  "fallback_language": "python",
   "show_control_panel": false,
   "default_source": "text",
   "warmup_ocr": false,

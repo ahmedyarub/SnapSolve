@@ -126,7 +126,6 @@ def load_config():
         'google_genai_api_key': '',
         'auto_close_results': False,
         'popup_opacity': 0.8,
-        'fallback_language': 'python',
         'show_control_panel': False,
         'default_source': 'text',
         'warmup_ocr': True,
@@ -268,9 +267,6 @@ def get_config():
 
     if args.popup_opacity is not None:
         config['popup_opacity'] = args.popup_opacity
-
-    if args.fallback_language:
-        config['fallback_language'] = args.fallback_language
 
     if args.show_control_panel:
         config['show_control_panel'] = True

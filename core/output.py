@@ -617,7 +617,7 @@ def set_app_processing_state(is_processing):
     ui_signals.set_processing_state.emit(is_processing)
 
 
-def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, _fallback_language="python"):
+def show_popup(text, auto_close=5000, opacity=0.8, is_result=False):
     ui_signals.show_popup.emit({
         "text": text,
         "auto_close": auto_close,
@@ -640,15 +640,14 @@ def clear_subtitles():
     ui_signals.clear_subtitles.emit()
 
 
-def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
+def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):
     if not output_modes:
         output_modes = ['popup']
 
     # Audio is now handled by the AudioSink in the pipeline
 
     if 'popup' in output_modes:
-        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True,
-                   fallback_language=fallback_language)
+        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True)
 
 
 def get_active_source():
