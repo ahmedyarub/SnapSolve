@@ -65,6 +65,7 @@ class ConfigUI(QDialog):
         self.tts_output_device_combo = QComboBox()
         self.audio_input_device_combo = QComboBox()
         self.background_mode = QCheckBox("Run in system tray")
+        self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
         self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_tts = QCheckBox("Warmup TTS Engine")
@@ -194,6 +195,9 @@ class ConfigUI(QDialog):
                 self.audio_input_device_combo.setCurrentIndex(idx)
 
         layout.addRow("Audio Input Device:", self.audio_input_device_combo)
+
+        self.realtime_transcription.setChecked(self.config.get('realtime_transcription', True))
+        layout.addRow("Real-time Transcription:", self.realtime_transcription)
 
         # Background Mode
         self.background_mode.setChecked(self.config.get('background', False))
@@ -362,6 +366,7 @@ class ConfigUI(QDialog):
         self.config['piper_model'] = self.piper_model.text() or 'en_US-lessac-medium.onnx'
         self.config['background'] = self.background_mode.isChecked()
         self.config['show_control_panel'] = self.show_control_panel.isChecked()
+        self.config['realtime_transcription'] = self.realtime_transcription.isChecked()
         self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
         self.config['warmup_llm'] = self.warmup_llm.isChecked()
         self.config['warmup_tts'] = self.warmup_tts.isChecked()
