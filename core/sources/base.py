@@ -4,7 +4,7 @@ class Source(abc.ABC):
     @property
     @abc.abstractmethod
     def name(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def get_text(self, *args, **kwargs) -> str:

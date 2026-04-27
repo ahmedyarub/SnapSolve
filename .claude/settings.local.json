@@ -4,7 +4,9 @@
       "Bash(git commit *)",
       "Bash(git restore *)",
       "Bash(git reset *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(python *)",
+      "Bash(pwsh *)"
     ]
   }
 }

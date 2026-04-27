@@ -1,9 +1,12 @@
 import logging
 import threading
+import time
+import queue
 from typing import Callable, Optional
 
 import pyaudio
 import speech_recognition as sr
+import numpy as np
 
 from .base import Source
 
@@ -19,6 +22,17 @@ class SoundSource(Source):
         self._stop_event = threading.Event()
         # Ensure we have SpeechRecognition ready
         self.recognizer = sr.Recognizer()
+
+        # Real-time transcription settings
+        self.realtime_transcription = self.config.get('realtime_transcription', True)
+        self.pause_threshold = self.config.get('transcription_pause_threshold', 1.0)
+
+        # Real-time transcription state
+        self._transcription_thread: Optional[threading.Thread] = None
+        self._audio_queue: queue.Queue = queue.Queue()
+        self._last_audio_time = 0
+        self._current_transcription_buffer = []
+        self._transcription_stop_event = threading.Event()
 
     def warmup(self):
         try:
@@ -70,6 +84,9 @@ class SoundSource(Source):
         self.is_recording = True
         self.audio_frames = []
         self._stop_event.clear()
+        self._transcription_stop_event.clear()
+        self._current_transcription_buffer = []
+        self._last_audio_time = time.time()
 
         device_name = self.config.get('audio_input_device_name')
         device_index = None
@@ -97,6 +114,12 @@ class SoundSource(Source):
                     while not self._stop_event.is_set():
                         data = stream.read(source.CHUNK)
                         self.audio_frames.append(data)
+
+                        # Add to transcription queue if enabled
+                        if self.realtime_transcription:
+                            self._audio_queue.put((data, time.time()))
+                            self._last_audio_time = time.time()
+
             except Exception as e:
                 logger.error(f"Recording error: {e}")
             finally:
@@ -105,15 +128,113 @@ class SoundSource(Source):
         self._record_thread = threading.Thread(target=_record, daemon=True)
         self._record_thread.start()
 
+        # Start real-time transcription thread if enabled
+        if self.realtime_transcription:
+            self._transcription_thread = threading.Thread(target=self._realtime_transcription_worker, daemon=True)
+            self._transcription_thread.start()
+
+    def _realtime_transcription_worker(self):
+        """Worker thread for real-time transcription with pause detection."""
+        transcription_buffer = []
+
+        while not self._transcription_stop_event.is_set():
+            try:
+                # Wait for audio data with timeout
+                try:
+                    data, timestamp = self._audio_queue.get(timeout=0.1)
+                    transcription_buffer.append(data)
+                except queue.Empty:
+                    # Check if we have a pause
+                    current_time = time.time()
+                    time_since_last_audio = current_time - self._last_audio_time
+
+                    # If pause detected and we have audio, transcribe
+                    if time_since_last_audio >= self.pause_threshold and transcription_buffer:
+                        self._transcribe_buffer(transcription_buffer)
+                        transcription_buffer = []
+
+                    continue
+
+                # Check for pause periodically
+                current_time = time.time()
+                time_since_last_audio = current_time - self._last_audio_time
+
+                if time_since_last_audio >= self.pause_threshold and transcription_buffer:
+                    self._transcribe_buffer(transcription_buffer)
+                    transcription_buffer = []
+
+            except Exception as e:
+                logger.error(f"Real-time transcription error: {e}")
+                transcription_buffer = []
+
+        # Transcribe any remaining audio
+        if transcription_buffer:
+            self._transcribe_buffer(transcription_buffer)
+
+    def _transcribe_buffer(self, audio_buffer):
+        """Transcribe a buffer of audio data and display as subtitle."""
+        if not audio_buffer:
+            return
+
+        try:
+            # Combine audio chunks
+            audio_data = b''.join(audio_buffer)
+
+            # Create AudioData object
+            if not hasattr(self, '_sample_rate') or not hasattr(self, '_sample_width'):
+                return
+
+            sr_audio = sr.AudioData(audio_data, self._sample_rate, self._sample_width)
+
+            # Transcribe
+            try:
+                text = self.recognizer.recognize_google(sr_audio)
+                if text.strip():
+                    logger.info(f"Real-time transcription: {text}")
+                    self._display_subtitle(text)
+            except sr.UnknownValueError:
+                logger.debug("Real-time transcription could not understand audio")
+            except sr.RequestError as e:
+                logger.error(f"Real-time transcription service error: {e}")
+
+        except Exception as e:
+            logger.error(f"Error transcribing buffer: {e}")
+
+    @staticmethod
+    def _display_subtitle(text: str):
+        """Display transcription as subtitle."""
+        try:
+            from core.output import show_subtitle
+            show_subtitle(text)
+        except ImportError:
+            logger.warning("Could not import show_subtitle function")
+        except Exception as e:
+            logger.error(f"Error displaying subtitle: {e}")
+
     def stop_recording(self) -> str:
         if not self.is_recording:
             return ""
 
         self._stop_event.set()
+        self._transcription_stop_event.set()
+
         if self._record_thread:
             self._record_thread.join(timeout=2.0)
 
+        if self._transcription_thread:
+            self._transcription_thread.join(timeout=2.0)
+
         self.is_recording = False
+
+        # Clear subtitles
+        try:
+            from core.output import clear_subtitles
+            clear_subtitles()
+        except ImportError:
+            clear_subtitles = None
+            logger.warning("Could not import clear_subtitles function")
+        except Exception as e:
+            logger.error(f"Error clearing subtitles: {e}")
 
         if not self.audio_frames:
             return ""

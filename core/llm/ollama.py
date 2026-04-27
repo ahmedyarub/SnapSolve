@@ -11,6 +11,8 @@ class OllamaEngine(LLMEngine):
     def __init__(self, model: str, ollama_url: str, session_manager=None, status_callback=None):
         super().__init__(model, session_manager=session_manager)
         self.ollama_url = ollama_url
+        if status_callback:
+            status_callback("Ollama engine initialized")
 
 
 

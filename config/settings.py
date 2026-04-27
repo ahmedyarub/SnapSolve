@@ -134,7 +134,9 @@ def load_config():
         'warmup_tts': False,
         'warmup_speech_recognition': True,
         'tts_output_device_name': None,
-        'audio_input_device_name': None
+        'audio_input_device_name': None,
+        'realtime_transcription': True,
+        'transcription_pause_threshold': 1.0  # seconds of silence to trigger transcription
     }
 
     # Ensure config directory exists
@@ -148,7 +150,6 @@ def load_config():
 
     if os.path.exists(CONFIG_FILE):
         try:
-            file_config = {}
             with open(CONFIG_FILE, 'r') as f:
                 file_config = json.load(f)
 
@@ -217,6 +218,8 @@ def parse_args():
     parser.add_argument('--disable-warmup-speech-recognition', action='store_true', help='Disable Speech Recognition warmup')
     parser.add_argument('--tts-output-device-name', type=str, help='Name of the audio device for TTS output')
     parser.add_argument('--audio-input-device-name', type=str, help='Name of the audio device for audio input')
+    parser.add_argument('--disable-realtime-transcription', action='store_true', help='Disable real-time transcription during recording')
+    parser.add_argument('--transcription-pause-threshold', type=float, help='Pause threshold in seconds for real-time transcription (default: 1.0)')
 
     return parser.parse_args()
 
@@ -300,5 +303,11 @@ def get_config():
 
     if args.audio_input_device_name is not None:
         config['audio_input_device_name'] = args.audio_input_device_name
+
+    if args.disable_realtime_transcription:
+        config['realtime_transcription'] = False
+
+    if args.transcription_pause_threshold is not None:
+        config['transcription_pause_threshold'] = args.transcription_pause_threshold
 
     return config

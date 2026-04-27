@@ -404,10 +404,10 @@ class ConfigUI(QDialog):
 
 
 def open_config_ui(config_path, models_path, profiles_path, prompts_path):
-    app = QApplication.instance()
+    existing_app = QApplication.instance()
     is_temp_app = False
-    if not app:
-        app = QApplication(sys.argv)
+    if not existing_app:
+        existing_app = QApplication(sys.argv)
         is_temp_app = True
 
     dialog = ConfigUI(config_path, models_path, profiles_path, prompts_path)
@@ -415,7 +415,7 @@ def open_config_ui(config_path, models_path, profiles_path, prompts_path):
     should_run = dialog.should_run
 
     if is_temp_app:
-        app.quit()
+        existing_app.quit()
 
     return should_run
 

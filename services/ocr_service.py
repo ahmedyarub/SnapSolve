@@ -84,13 +84,13 @@ async def extract_text(request: ImageRequest):
     logging.info(f"Received image for OCR: {request.file_path}")
 
     # 2. Read directly from disk into a numpy array via OpenCV
-    img = cv2.imread(request.file_path)
+    image_data = cv2.imread(request.file_path)
 
-    if img is None:
+    if image_data is None:
         raise HTTPException(status_code=400, detail="Could not read the image file.")
 
     # 3. Instant execution
-    result = ocr.ocr(img)
+    result = ocr.ocr(image_data)
 
     # 4. Extract just the text
     extracted_text = parse_ocr_results(result)

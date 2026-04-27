@@ -22,7 +22,7 @@ class GoogleGenAIEngine(LLMEngine):
             client = genai.Client(api_key=self.api_key)
             contents = [types.Content(role="user", parts=[types.Part.from_text(text="Hello")])]
             response_stream = client.models.generate_content_stream(model=self.model, contents=contents)
-            for chunk in response_stream:
+            for _ in response_stream:
                 pass  # Just consume it
             if status_callback:
                 status_callback("Google GenAI warmup complete.")
@@ -36,7 +36,7 @@ class GoogleGenAIEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True
 
-    def _prepare_contents(self, prompt: str, enable_stitching: bool, types):
+    def _prepare_contents(self, _prompt: str, enable_stitching: bool, types):
         contents = []
 
         if self.session_manager and enable_stitching:

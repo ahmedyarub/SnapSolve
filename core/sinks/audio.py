@@ -108,7 +108,7 @@ class AudioSink(Sink):
                 wf = wave.open(wav_file, 'rb')
                 p = pyaudio.PyAudio()
 
-                target_device_index: int | None = None
+                target_device_index = None
                 if self.tts_output_device_name:
                     for i in range(p.get_device_count()):
                         info = p.get_device_info_by_index(i)

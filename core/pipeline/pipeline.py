@@ -103,7 +103,6 @@ def process_pipeline(
             return llm.process_text(prompt, status_callback, enable_stitching, sink, is_main=True)
 
     results = {}
-    threads = []
     lock = threading.Lock()
 
     main_started = [False]
@@ -137,9 +136,9 @@ def process_pipeline(
                         if not main_started[0]:
                             concurrent_sink.target_sink.process_chunk(ans, is_main=True, replace=False)
 
-        except Exception as e:
+        except Exception as main_error:
             with lock:
-                results['main_error'] = str(e)
+                results['main_error'] = str(main_error)
         finally:
             main_finished.set()
 
@@ -157,9 +156,9 @@ def process_pipeline(
                     ans = fallback_llm.process_text(prompt, None, enable_stitching, concurrent_sink, is_main=False)
             with lock:
                 results['fallback'] = ans
-        except Exception as e:
+        except Exception as fallback_error:
             with lock:
-                results['fallback_error'] = str(e)
+                results['fallback_error'] = str(fallback_error)
 
     main_thread = threading.Thread(target=run_main, daemon=True)
     fallback_thread = threading.Thread(target=run_fallback, daemon=True)
@@ -174,8 +173,6 @@ def process_pipeline(
 
     elapsed_ms = (time.time() - pipeline_start_time) * 1000
     print(f"[Pipeline] Main thread finished processing in {elapsed_ms:.2f} ms")
-
-    final_result = None
 
     if main_success[0] and 'main' in results:
         final_result = results['main']

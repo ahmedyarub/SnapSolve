@@ -54,8 +54,8 @@ def create_tray_icon(on_exit):
     # Create a simple tray icon
     img = Image.new('RGB', (64, 64), color=(73, 109, 137))
 
-    def quit_action(icon):
-        icon.stop()
+    def quit_action(_icon):
+        _icon.stop()
         on_exit()
 
     def toggle_panel_action():
@@ -141,10 +141,10 @@ def handle_text_submit(config, active_profile, text):
             output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
-        except Exception as e:
-            print(f"Error during processing text input: {e}")
+        except Exception as text_error:
+            print(f"Error during processing text input: {text_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {text_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
         finally:
             set_processing(False)
 
@@ -240,10 +240,10 @@ def handle_capture(config, active_profile, active_prompt_text):
             output_result(final_result, config.get('output_mode'), None,  # Deprecated voice_id
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
-        except Exception as e:
-            print(f"Error during processing: {e}")
+        except Exception as processing_error:
+            print(f"Error during processing: {processing_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {processing_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
         finally:
             set_processing(False)
 
@@ -307,8 +307,8 @@ def handle_multi_capture(config, active_profile):
             try:
                 extracted_text = temp_source.get_text(coords=coords, status_callback=status_update,
                                                       cancel_event=cancel_event)
-            except Exception as e:
-                status_update(f"Error during OCR: {str(e)}")
+            except Exception as ocr_error:
+                status_update(f"Error during OCR: {str(ocr_error)}")
             finally:
                 temp_source.cleanup_all()
 
@@ -322,10 +322,10 @@ def handle_multi_capture(config, active_profile):
             else:
                 status_update(f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode")
 
-        except Exception as e:
-            print(f"Error during multi-capture: {e}")
+        except Exception as multi_capture_error:
+            print(f"Error during multi-capture: {multi_capture_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {multi_capture_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
         finally:
             set_processing(False)
 
@@ -416,10 +416,10 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                           auto_close=config.get('auto_close_results', False), opacity=config.get('popup_opacity', 0.8),
                           fallback_language=config.get('fallback_language', 'python'))
 
-        except Exception as e:
-            print(f"Error during processing multi-capture: {e}")
+        except Exception as multi_error:
+            print(f"Error during processing multi-capture: {multi_error}")
             if 'popup' in config.get('output_mode', ['popup']):
-                show_popup(f"Error: {e}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
+                show_popup(f"Error: {multi_error}", auto_close=5000, opacity=config.get('popup_opacity', 0.8), is_result=False)
         finally:
             set_processing(False)
             is_multi_capturing = False
@@ -501,7 +501,7 @@ def handle_start_record(config):
     active_source.start_recording(status_callback=status_update)
 
 
-def handle_stop_record(config, active_profile, active_prompt_text):
+def handle_stop_record(config, active_profile, _active_prompt_text):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
@@ -582,8 +582,8 @@ def handle_reselect(config):
 
         threading.Thread(target=_reselect, daemon=True).start()
         return
-    except Exception as e:
-        print(f"Error during reselection: {e}")
+    except Exception as reselect_error:
+        print(f"Error during reselection: {reselect_error}")
         set_processing(False)
 
 
@@ -603,8 +603,8 @@ def load_models_data():
         models_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "llm_models.json")
         with open(models_path, "r") as f:
             return json.load(f)
-    except Exception as e:
-        print(f"Warning: Could not load llm_models.json: {e}")
+    except Exception as models_error:
+        print(f"Warning: Could not load llm_models.json: {models_error}")
         return {}
 
 

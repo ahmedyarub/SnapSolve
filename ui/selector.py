@@ -23,6 +23,7 @@ class CoordinateSelector(QWidget):
         self.is_drawing = False
         self.coordinates = None
 
+    # noinspection PyPep8Naming
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.start_x = int(event.position().x())
@@ -32,12 +33,14 @@ class CoordinateSelector(QWidget):
             self.is_drawing = True
             self.update()
 
+    # noinspection PyPep8Naming
     def mouseMoveEvent(self, event):
         if self.is_drawing:
             self.end_x = int(event.position().x())
             self.end_y = int(event.position().y())
             self.update()
 
+    # noinspection PyPep8Naming
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.end_x = int(event.position().x())
@@ -56,6 +59,7 @@ class CoordinateSelector(QWidget):
 
             self.finish()
 
+    # noinspection PyPep8Naming
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.coordinates = None
@@ -68,7 +72,8 @@ class CoordinateSelector(QWidget):
             self.loop.quit()
         self.close()
 
-    def paintEvent(self, event):
+    # noinspection PyPep8Naming
+    def paintEvent(self, _event):
         painter = QPainter(self)
         # Fill the entire screen with a semi-transparent dark gray mask
         painter.fillRect(self.rect(), QColor(50, 50, 50, 76))
@@ -103,9 +108,9 @@ def _get_coordinates_impl(callback=None):
 
     if callback:
         # Async mode
-        def on_close(coords):
+        def on_close(result_coords):
             global _active_selector
-            callback(coords)
+            callback(result_coords)
             _active_selector = None
             if is_temp_app:
                 app.quit()
@@ -118,6 +123,7 @@ def _get_coordinates_impl(callback=None):
         selector.raise_()
         selector.activateWindow()
         selector.setFocus()
+        return None
     else:
         # Blocking mode for first run
         from PyQt6.QtCore import QEventLoop

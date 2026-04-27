@@ -31,6 +31,15 @@ This application relies on a strictly decoupled architecture:
   elements directly.
 * **UI Updates:** All updates to the UI from background threads (like LLM streaming chunks or hotkey callbacks) must be
   dispatched to the main UI thread using `QTimer.singleShot()` or Qt signals/slots.
+* **Qt Event Handlers:** When implementing Qt event handlers (e.g., `mousePressEvent`, `keyPressEvent`, `paintEvent`, etc.),
+  you must add `# noinspection PyPep8Naming` before the method definition. Qt requires camelCase naming for
+  event handlers, which conflicts with PEP 8 naming conventions. Example:
+  ```python
+  # noinspection PyPep8Naming
+  def mousePressEvent(self, event):
+      # Event handler implementation
+      pass
+  ```
 
 ### Windows DPI & Coordinates
 

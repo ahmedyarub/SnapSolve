@@ -3,7 +3,7 @@ import threading
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit, QLabel
 
 
 # --- Signal Broker ---
@@ -15,6 +15,8 @@ class UISignals(QObject):
     show_popup = pyqtSignal(dict)
     close_popup = pyqtSignal()
     request_active_source = pyqtSignal(object)
+    show_subtitle = pyqtSignal(str)
+    clear_subtitles = pyqtSignal()
 
 
 class SelectorSignals(QObject):
@@ -199,12 +201,14 @@ class RecordButton(QPushButton):
         self.press_timer.setSingleShot(True)
         self.press_timer.timeout.connect(self.on_long_press)
 
+    # noinspection PyPep8Naming
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_long_press = False
             self.press_timer.start(500)  # 500ms for long press
 
+    # noinspection PyPep8Naming
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
@@ -235,6 +239,131 @@ class RecordButton(QPushButton):
         self.setText("🎙️ Record")
         self.setStyleSheet(self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)"))
         self.stop_recording.emit()
+
+
+class SubtitleWidget(QWidget):
+    """Widget for displaying real-time transcription subtitles with fading effects."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 0); border: none;")
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(5)
+
+        # Store subtitle labels with their creation time
+        self.subtitle_labels = []
+        self.max_subtitles = 5  # Maximum number of subtitle lines to show
+        self.fade_duration = 3000  # Duration for fade effect in milliseconds
+
+        # Timer for updating fade effects
+        self.fade_timer = QTimer(self)
+        self.fade_timer.timeout.connect(self.update_fade_effects)
+        self.fade_timer.start(100)  # Update every 100ms
+
+        # Position settings
+        self.target_position = None
+        self.update_position()
+
+    def update_position(self):
+        """Position widget at bottom center of screen."""
+        screen = QApplication.primaryScreen().size()
+        w = int(screen.width() * 0.6)
+        h = 150  # Initial height
+        x = (screen.width() - w) // 2
+        y = screen.height() - h - 50
+        self.setGeometry(x, y, w, h)
+
+    def add_subtitle(self, text: str):
+        """Add a new subtitle line."""
+        import time
+
+        # Create new subtitle label
+        label = QLabel(text)
+        label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+        """)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+
+        # Store with creation time
+        label.creation_time = time.time()
+        self.subtitle_labels.append(label)
+
+        # Add to layout
+        self.layout.addWidget(label)
+
+        # Remove oldest if we have too many
+        if len(self.subtitle_labels) > self.max_subtitles:
+            oldest = self.subtitle_labels.pop(0)
+            self.layout.removeWidget(oldest)
+            oldest.deleteLater()
+
+        # Update widget size
+        self.adjustSize()
+        self.update_position()
+
+        # Show if hidden
+        if not self.isVisible():
+            self.show()
+
+    def clear_subtitles(self):
+        """Clear all subtitles."""
+        for label in self.subtitle_labels:
+            self.layout.removeWidget(label)
+            label.deleteLater()
+        self.subtitle_labels.clear()
+        self.hide()
+
+    def update_fade_effects(self):
+        """Update opacity of subtitle labels based on their age."""
+        import time
+
+        current_time = time.time()
+
+        for i, label in enumerate(self.subtitle_labels):
+            # Calculate age in seconds
+            age = current_time - label.creation_time
+
+            # Calculate opacity based on position and age
+            # Newer subtitles (higher index) are more opaque
+            # Older subtitles fade out over time
+            position_factor = (i + 1) / len(self.subtitle_labels) if self.subtitle_labels else 1
+            age_factor = max(0, 1 - (age / (self.fade_duration / 1000)))
+
+            opacity = min(0.9, position_factor * age_factor)
+
+            # Update label style with new opacity
+            label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: rgba(0, 0, 0, {opacity * 0.7});
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    font-weight: bold;
+                }}
+            """)
+
+        # Remove very old subtitles
+        if self.subtitle_labels:
+            oldest_age = current_time - self.subtitle_labels[0].creation_time
+            if oldest_age > (self.fade_duration / 1000) * 2:  # Remove after 2x fade duration
+                oldest = self.subtitle_labels.pop(0)
+                self.layout.removeWidget(oldest)
+                oldest.deleteLater()
+                self.adjustSize()
+                self.update_position()
 
 
 def call_action(action):
@@ -353,6 +482,7 @@ class TextInputWidget(QWidget):
 
         self.is_processing = False
 
+    # noinspection PyPep8Naming
     def eventFilter(self, obj, event):
         if obj is self.text_edit and event.type() == event.Type.KeyPress:
             if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
@@ -396,6 +526,7 @@ class UIManager(QObject):
         self.popup: PopupWidget | None = None
         self.panel: PanelWidget | None = None
         self.text_input: TextInputWidget | None = None
+        self.subtitle: SubtitleWidget | None = None
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
@@ -405,6 +536,7 @@ class UIManager(QObject):
         self.popup = PopupWidget()
         self.panel = PanelWidget()
         self.text_input = TextInputWidget()
+        self.subtitle = SubtitleWidget()
 
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)
@@ -414,6 +546,8 @@ class UIManager(QObject):
         ui_signals.show_popup.connect(self.popup.show_content)
         ui_signals.close_popup.connect(self.popup.hide)
         ui_signals.request_active_source.connect(_on_request_active_source)
+        ui_signals.show_subtitle.connect(self._on_show_subtitle)
+        ui_signals.clear_subtitles.connect(self._on_clear_subtitles)
 
     def _on_toggle_panel(self, show):
         assert self.panel is not None
@@ -437,6 +571,14 @@ class UIManager(QObject):
     def _on_set_processing_state(self, is_processing):
         self.panel.set_processing_state(is_processing)
         self.text_input.set_processing_state(is_processing)
+
+    def _on_show_subtitle(self, text: str):
+        assert self.subtitle is not None
+        self.subtitle.add_subtitle(text)
+
+    def _on_clear_subtitles(self):
+        assert self.subtitle is not None
+        self.subtitle.clear_subtitles()
 
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
@@ -475,7 +617,7 @@ def set_app_processing_state(is_processing):
     ui_signals.set_processing_state.emit(is_processing)
 
 
-def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, fallback_language="python"):
+def show_popup(text, auto_close=5000, opacity=0.8, is_result=False, _fallback_language="python"):
     ui_signals.show_popup.emit({
         "text": text,
         "auto_close": auto_close,
@@ -488,7 +630,17 @@ def close_popup():
     ui_signals.close_popup.emit()
 
 
-def output_result(text, output_modes, voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
+def show_subtitle(text: str):
+    """Show a subtitle line with real-time transcription."""
+    ui_signals.show_subtitle.emit(text)
+
+
+def clear_subtitles():
+    """Clear all subtitle lines."""
+    ui_signals.clear_subtitles.emit()
+
+
+def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8, fallback_language="python"):
     if not output_modes:
         output_modes = ['popup']
 
@@ -514,6 +666,6 @@ def get_active_source():
 
 
 def _handle_request_coords(q):
-    from ui.selector import _get_coordinates_impl
+    from ui.selector import get_coordinates
     # Pass the queue's put method directly as the callback
-    _get_coordinates_impl(callback=q.put)
+    get_coordinates(callback=q.put)
