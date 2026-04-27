@@ -412,12 +412,12 @@ def open_config_ui(config_path, models_path, profiles_path, prompts_path):
 
     dialog = ConfigUI(config_path, models_path, profiles_path, prompts_path)
     dialog.exec()
-    should_run = dialog.should_run
+    result_should_run = dialog.should_run
 
     if is_temp_app:
         existing_app.quit()
 
-    return should_run
+    return result_should_run
 
 
 if __name__ == "__main__":

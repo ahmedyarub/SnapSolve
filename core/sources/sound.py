@@ -1,13 +1,13 @@
 import logging
+import queue
 import threading
 import time
-import queue
 from typing import Callable, Optional
 
 import pyaudio
 import speech_recognition as sr
-import numpy as np
 
+from core.output import clear_subtitles
 from .base import Source
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 class SoundSource(Source):
     def __init__(self, config=None):
+        self._sample_width = None
+        self._sample_rate = None
         self.config = config or {}
         self.is_recording = False
         self.audio_frames = []
@@ -43,7 +45,7 @@ class SoundSource(Source):
             logger.info(f"Testing recognition with {test_file}...")
             with sr.AudioFile(test_file) as source:
                 audio_data = self.recognizer.record(source)
-                text = self.recognizer.recognize_google(audio_data)
+                text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
 
                 expected_text = "this is a test of the audio system"
                 if text.lower() == expected_text:
@@ -126,11 +128,13 @@ class SoundSource(Source):
                 self.is_recording = False
 
         self._record_thread = threading.Thread(target=_record, daemon=True)
+        assert self._record_thread is not None
         self._record_thread.start()
 
         # Start real-time transcription thread if enabled
         if self.realtime_transcription:
             self._transcription_thread = threading.Thread(target=self._realtime_transcription_worker, daemon=True)
+            assert self._transcription_thread is not None
             self._transcription_thread.start()
 
     def _realtime_transcription_worker(self):
@@ -188,7 +192,7 @@ class SoundSource(Source):
 
             # Transcribe
             try:
-                text = self.recognizer.recognize_google(sr_audio)
+                text = self.recognizer.recognize_google(sr_audio)  # type: ignore[attr-defined]
                 if text.strip():
                     logger.info(f"Real-time transcription: {text}")
                     self._display_subtitle(text)
@@ -228,11 +232,7 @@ class SoundSource(Source):
 
         # Clear subtitles
         try:
-            from core.output import clear_subtitles
             clear_subtitles()
-        except ImportError:
-            clear_subtitles = None
-            logger.warning("Could not import clear_subtitles function")
         except Exception as e:
             logger.error(f"Error clearing subtitles: {e}")
 
@@ -244,7 +244,7 @@ class SoundSource(Source):
             if not hasattr(self, '_sample_rate') or not hasattr(self, '_sample_width'):
                 return ""
             audio_data = sr.AudioData(b''.join(self.audio_frames), self._sample_rate, self._sample_width)
-            text = self.recognizer.recognize_google(audio_data)
+            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
             return text
         except sr.UnknownValueError:
             logger.info("Speech Recognition could not understand audio")

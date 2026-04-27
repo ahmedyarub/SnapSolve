@@ -1,6 +1,8 @@
 import abc
 import threading
+
 from core.sinks.base import Sink
+
 
 class LLMEngine(abc.ABC):
     def __init__(self, model: str, session_manager=None):
@@ -10,7 +12,7 @@ class LLMEngine(abc.ABC):
     @property
     @abc.abstractmethod
     def supports_images(self) -> bool:
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def warmup(self, status_callback=None) -> bool:

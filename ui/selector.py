@@ -1,7 +1,9 @@
-from PyQt6.QtWidgets import QWidget, QApplication
-from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
 import sys
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
+from PyQt6.QtWidgets import QWidget, QApplication
+
 
 class CoordinateSelector(QWidget):
     def __init__(self, callback=None, loop=None):
@@ -84,8 +86,8 @@ class CoordinateSelector(QWidget):
             pen.setWidth(3)
             painter.setPen(pen)
 
-            x1 = min(self.start_x, self.end_x)
-            y1 = min(self.start_y, self.end_y)
+            x1 = int(min(self.start_x, self.end_x))
+            y1 = int(min(self.start_y, self.end_y))
             width = abs(self.end_x - self.start_x)
             height = abs(self.end_y - self.start_y)
 
@@ -96,7 +98,9 @@ class CoordinateSelector(QWidget):
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             painter.drawRect(x1, y1, width, height)
 
+
 _active_selector = None
+
 
 def _get_coordinates_impl(callback=None):
     global _active_selector
@@ -141,6 +145,7 @@ def _get_coordinates_impl(callback=None):
         if is_temp_app:
             app.quit()
         return coords
+
 
 def get_coordinates(callback=None):
     from core.output import selector_signals
