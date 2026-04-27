@@ -153,13 +153,18 @@ def get_coordinates(callback=None):
     import threading
     from PyQt6.QtWidgets import QApplication
 
-    # Check if we are already in the main Qt thread. If so, use blocking loop.
+    # Check if we are already in the main Qt thread.
     app = QApplication.instance()
-    if app and app.thread() == threading.current_thread():
-        coords = _get_coordinates_impl()
+    if app and threading.current_thread() is threading.main_thread():
+        # If a callback is provided, we should use the async implementation
+        # to avoid blocking the main event loop.
         if callback:
-            callback(coords)
-        return coords
+            _get_coordinates_impl(callback=callback)
+            return None
+        else:
+            # Otherwise, use the blocking loop.
+            coords = _get_coordinates_impl()
+            return coords
 
     q = queue.Queue()
 

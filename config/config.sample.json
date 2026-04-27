@@ -1,32 +1,33 @@
 {
-    "output_mode": [
-        "popup",
-        "audio"
-    ],
-    "hotkeys": [
-        {
-            "action": "capture",
-            "key": "ctrl+alt+shift+c"
-        },
-        {
-            "action": "reselect",
-            "key": "ctrl+alt+shift+s"
-        }
-    ],
-    "coordinates": null,
-    "background": false,
-    "piper_model": "en_US-lessac-medium.onnx",
-    "active_profile_id": "programming",
-    "ollama_url": "http://localhost:11434",
-    "google_genai_api_key": "",
-    "auto_close_results": false,
-    "popup_opacity": 0.9,
-    "toggle_panel": true,
-    "warmup_ocr": false,
-    "warmup_llm": false,
-    "warmup_tts": false,
-    "ocr_config": {
-        "remote_ocr_host": "127.0.0.1",
-        "port": 8000
+  "output_mode": [
+    "popup",
+    "audio"
+  ],
+  "hotkeys": [
+    {
+      "action": "capture",
+      "key": "ctrl+alt+shift+c"
+    },
+    {
+      "action": "reselect",
+      "key": "ctrl+alt+shift+s"
     }
+  ],
+  "coordinates": null,
+  "background": false,
+  "piper_model": "en_US-lessac-medium.onnx",
+  "active_profile_id": "programming",
+  "ollama_url": "http://localhost:11434",
+  "google_genai_api_key": "",
+  "auto_close_results": false,
+  "popup_opacity": 0.9,
+  "toggle_panel": true,
+  "warmup_ocr": false,
+  "warmup_llm": false,
+  "warmup_tts": false,
+  "realtime_transcription": true,
+  "ocr_config": {
+    "remote_ocr_host": "127.0.0.1",
+    "port": 8000
+  }
 }

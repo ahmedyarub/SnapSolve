@@ -60,8 +60,6 @@ class SoundSource(Source):
             logger.warning(f"Warmup recognition request failed: {e}")
         except Exception as e:
             logger.error(f"Speech Recognition warmup failed: {e}")
-            # Ensure we fail gracefully
-            pass
 
     @property
     def name(self):
