@@ -233,8 +233,10 @@ class SoundSource(Source):
                                 current_sentence = new_text
                                 logger.info(f"Started sentence: {current_sentence}")
 
-                            # Display the accumulated sentence during intervals (update last one)
-                            self._display_subtitle(current_sentence, update_last=True)
+                            # Display only the new text during intervals (append to last one)
+                            self._display_subtitle(
+                                new_text, update_last=True, append=True
+                            )
 
             except Exception as e:
                 logger.error(f"Real-time transcription error: {e}")
@@ -291,14 +293,14 @@ class SoundSource(Source):
         return ""
 
     @staticmethod
-    def _display_subtitle(text: str, update_last: bool = False):
+    def _display_subtitle(text: str, update_last: bool = False, append: bool = False):
         """Display transcription as subtitle."""
         try:
             logger.info(
-                f"Attempting to display subtitle: {text}, update_last: {update_last}"
+                f"Attempting to display subtitle: {text}, update_last: {update_last}, append: {append}"
             )
             if update_last:
-                update_subtitle(text)
+                update_subtitle(text, append=append)
             else:
                 show_subtitle(text)
             logger.info("Subtitle display signal sent successfully")

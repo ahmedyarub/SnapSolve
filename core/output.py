@@ -24,7 +24,7 @@ class UISignals(QObject):
     close_popup = pyqtSignal()
     request_active_source = pyqtSignal(object)
     show_subtitle = pyqtSignal(str)
-    update_subtitle = pyqtSignal(str)
+    update_subtitle = pyqtSignal(str, bool)
     clear_subtitles = pyqtSignal()
 
 
@@ -375,12 +375,12 @@ class SubtitleWidget(QWidget):
                 f"After show(), widget visible: {self.isVisible()}, size: {self.size()}"
             )
 
-    def update_last_subtitle(self, text: str):
+    def update_last_subtitle(self, text: str, append: bool = False):
         """Update the text of the most recent subtitle instead of creating a new one."""
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.info(f"update_last_subtitle called with text: {text}")
+        logger.info(f"update_last_subtitle called with text: {text}, append: {append}")
 
         if not self.subtitle_labels:
             # No existing subtitles, create a new one
@@ -390,8 +390,16 @@ class SubtitleWidget(QWidget):
 
         # Update the last subtitle's text
         last_label = self.subtitle_labels[-1]
-        last_label.setText(text)
-        logger.info(f"Updated last subtitle to: {text}")
+        if append:
+            # Append to existing text
+            current_text = last_label.text()
+            new_text = current_text + " " + text
+            last_label.setText(new_text)
+            logger.info(f"Appended to last subtitle: {new_text}")
+        else:
+            # Replace existing text
+            last_label.setText(text)
+            logger.info(f"Updated last subtitle to: {text}")
 
         # Force layout update and size adjustment
         self.layout.activate()
@@ -709,13 +717,13 @@ class UIManager(QObject):
         self.subtitle.add_subtitle(text)
         logger.info("_on_show_subtitle completed")
 
-    def _on_update_subtitle(self, text: str):
+    def _on_update_subtitle(self, text: str, append: bool = False):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.info(f"_on_update_subtitle called with text: {text}")
+        logger.info(f"_on_update_subtitle called with text: {text}, append: {append}")
         assert self.subtitle is not None
-        self.subtitle.update_last_subtitle(text)
+        self.subtitle.update_last_subtitle(text, append=append)
         logger.info("_on_update_subtitle completed")
 
     def _on_clear_subtitles(self):
@@ -784,13 +792,13 @@ def show_subtitle(text: str):
     logger.info("show_subtitle signal emitted")
 
 
-def update_subtitle(text: str):
+def update_subtitle(text: str, append: bool = False):
     """Update the most recent subtitle line instead of creating a new one."""
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.info(f"update_subtitle called with text: {text}")
-    ui_signals.update_subtitle.emit(text)
+    logger.info(f"update_subtitle called with text: {text}, append: {append}")
+    ui_signals.update_subtitle.emit(text, append)
     logger.info("update_subtitle signal emitted")
 
 
