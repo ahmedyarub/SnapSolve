@@ -244,8 +244,10 @@ class SubtitleWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 0); border: none;")
+        # Remove WA_TranslucentBackground to ensure proper rendering
+        # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # Use a more visible background for debugging
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 0.8); border: 2px solid red;")
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -275,6 +277,12 @@ class SubtitleWidget(QWidget):
         x = (screen.width() - w) // 2
         y = screen.height() - h - 50
         self.setGeometry(x, y, w, h)
+
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Subtitle widget positioned at ({x}, {y}) with size ({w}, {h})")
+        logger.info(f"Screen size: {screen.width()}x{screen.height()}")
 
     def add_subtitle(self, text: str):
         """Add a new subtitle line."""
@@ -329,7 +337,39 @@ class SubtitleWidget(QWidget):
         if not self.isVisible():
             logger.info("Subtitle widget was hidden, attempting to show it")
             self.show()
+            self.raise_()  # Bring to front
+            self.activateWindow()  # Force window activation
+            self.repaint()  # Force repaint
             logger.info(f"After show(), widget visible: {self.isVisible()}, size: {self.size()}")
+
+    def update_last_subtitle(self, text: str):
+        """Update the text of the most recent subtitle instead of creating a new one."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"update_last_subtitle called with text: {text}")
+
+        if not self.subtitle_labels:
+            # No existing subtitles, create a new one
+            logger.info("No existing subtitles, creating new one")
+            self.add_subtitle(text)
+            return
+
+        # Update the last subtitle's text
+        last_label = self.subtitle_labels[-1]
+        last_label.setText(text)
+        logger.info(f"Updated last subtitle to: {text}")
+
+        # Force layout update and size adjustment
+        self.layout.activate()
+        self.adjustSize()
+        self.update_position()
+
+        # Ensure widget is visible
+        if not self.isVisible():
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            self.repaint()
 
     def clear_subtitles(self):
         """Clear all subtitles."""
@@ -552,16 +592,12 @@ class UIManager(QObject):
         selector_signals.request_coords.connect(_handle_request_coords)
 
     def _init_ui(self):
-        import logging
-        logger = logging.getLogger(__name__)
         if not QApplication.instance():
             return  # Should not happen, main.py creates it
         self.popup = PopupWidget()
         self.panel = PanelWidget()
         self.text_input = TextInputWidget()
         self.subtitle = SubtitleWidget()
-        logger.info(f"Subtitle widget created: {self.subtitle is not None}")
-        logger.info(f"Subtitle widget initial visible state: {self.subtitle.isVisible()}")
 
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)

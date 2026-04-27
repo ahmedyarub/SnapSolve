@@ -7,7 +7,7 @@ from typing import Callable, Optional
 import pyaudio
 import speech_recognition as sr
 
-from core.output import clear_subtitles, show_subtitle
+from core.output import show_subtitle, SubtitleWidget
 from .base import Source
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ class SoundSource(Source):
         # Real-time transcription settings
         self.realtime_transcription = self.config.get('realtime_transcription', True)
         self.pause_threshold = self.config.get('transcription_pause_threshold', 1.0)
+        self.transcription_interval = self.config.get('transcription_interval', 2.0)  # Transcribe every N seconds during speech
 
         # Real-time transcription state
         self._transcription_thread: Optional[threading.Thread] = None
@@ -131,43 +132,108 @@ class SoundSource(Source):
 
         # Start real-time transcription thread if enabled
         if self.realtime_transcription:
+            logger.info("Starting real-time transcription worker thread")
             self._transcription_thread = threading.Thread(target=self._realtime_transcription_worker, daemon=True)
             assert self._transcription_thread is not None
             self._transcription_thread.start()
+            logger.info("Real-time transcription worker thread started")
 
     def _realtime_transcription_worker(self):
         """Worker thread for real-time transcription with pause detection."""
+        logger.info("Real-time transcription worker started")
         transcription_buffer = []
+        current_sentence = ""  # Track the current sentence being built
+        last_transcription_time = 0
+        loop_count = 0
 
         while not self._transcription_stop_event.is_set():
+            loop_count += 1
             try:
-                # Wait for audio data. If we get it, just loop again to gather more.
+                current_time = time.time()
+
+                # Wait for audio data. If we get it, add it and check for transcription triggers
                 try:
                     data, timestamp = self._audio_queue.get(timeout=0.1)
                     transcription_buffer.append(data)
-                    continue  # Got audio, loop to gather more
+                    if loop_count % 10 == 0:  # Log every 10 loops
+                        logger.debug(f"Audio buffer size: {len(transcription_buffer)} chunks")
                 except queue.Empty:
                     # Queue is empty, which means we're in a potential pause.
                     pass  # Proceed to check for pause logic below.
 
-                # Check for a pause only when the queue is empty.
-                time_since_last_audio = time.time() - self._last_audio_time
+                # Check for transcription triggers (both when queue is empty AND when we have audio)
+                time_since_last_audio = current_time - self._last_audio_time
+
+                # Transcribe on pause OR at regular intervals during speech
+                should_transcribe = False
+                is_silence = False
+
                 if time_since_last_audio >= self.pause_threshold and transcription_buffer:
-                    self._transcribe_buffer(transcription_buffer)
+                    # Silence detected - finalize current sentence and start new one
+                    should_transcribe = True
+                    is_silence = True
+                    logger.info(f"Silence detected ({time_since_last_audio:.1f}s), finalizing sentence with {len(transcription_buffer)} chunks")
+                elif (current_time - last_transcription_time >= self.transcription_interval and
+                      transcription_buffer and len(transcription_buffer) > 5):
+                    # Regular interval during speech - transcribe and append to current sentence
+                    should_transcribe = True
+                    logger.info(f"Interval reached ({self.transcription_interval}s), transcribing buffer with {len(transcription_buffer)} chunks")
+
+                if should_transcribe:
+                    new_text = self._transcribe_buffer(transcription_buffer)
                     transcription_buffer = []
+                    last_transcription_time = current_time
+
+                    if new_text:
+                        if is_silence:
+                            # Silence detected - show current sentence and start new one
+                            if current_sentence:
+                                # Show the accumulated sentence
+                                self._display_subtitle(current_sentence)
+                                logger.info(f"Finalized sentence: {current_sentence}")
+                                current_sentence = ""
+                            # Start new sentence with the new text
+                            current_sentence = new_text
+                            logger.info(f"Starting new sentence: {current_sentence}")
+                        else:
+                            # Interval during speech - append to current sentence and display
+                            if current_sentence:
+                                # Append to existing sentence
+                                current_sentence += " " + new_text
+                                logger.info(f"Appended to sentence: {current_sentence}")
+                            else:
+                                # Start new sentence
+                                current_sentence = new_text
+                                logger.info(f"Started sentence: {current_sentence}")
+
+                            # Display the accumulated sentence during intervals
+                            self._display_subtitle(current_sentence)
 
             except Exception as e:
                 logger.error(f"Real-time transcription error: {e}")
                 transcription_buffer = []
 
-        # Transcribe any remaining audio
+        # Transcribe any remaining audio and finalize current sentence
         if transcription_buffer:
-            self._transcribe_buffer(transcription_buffer)
+            logger.info(f"Transcribing remaining audio with {len(transcription_buffer)} chunks")
+            new_text = self._transcribe_buffer(transcription_buffer)
+            if new_text:
+                if current_sentence:
+                    current_sentence += " " + new_text
+                else:
+                    current_sentence = new_text
+
+        # Show the final accumulated sentence
+        if current_sentence:
+            logger.info(f"Final accumulated sentence: {current_sentence}")
+            self._display_subtitle(current_sentence)
+
+        logger.info("Real-time transcription worker stopped")
 
     def _transcribe_buffer(self, audio_buffer):
-        """Transcribe a buffer of audio data and display as subtitle."""
+        """Transcribe a buffer of audio data and return the text."""
         if not audio_buffer:
-            return
+            return ""
 
         try:
             # Combine audio chunks
@@ -175,7 +241,7 @@ class SoundSource(Source):
 
             # Create AudioData object
             if not hasattr(self, '_sample_rate') or not hasattr(self, '_sample_width'):
-                return
+                return ""
 
             sr_audio = sr.AudioData(audio_data, self._sample_rate, self._sample_width)
 
@@ -184,7 +250,7 @@ class SoundSource(Source):
                 text = self.recognizer.recognize_google(sr_audio)  # type: ignore[attr-defined]
                 if text.strip():
                     logger.info(f"Real-time transcription: {text}")
-                    self._display_subtitle(text)
+                    return text
             except sr.UnknownValueError:
                 logger.debug("Real-time transcription could not understand audio")
             except sr.RequestError as e:
@@ -192,6 +258,8 @@ class SoundSource(Source):
 
         except Exception as e:
             logger.error(f"Error transcribing buffer: {e}")
+
+        return ""
 
     @staticmethod
     def _display_subtitle(text: str):
@@ -218,11 +286,11 @@ class SoundSource(Source):
 
         self.is_recording = False
 
-        # Clear subtitles
-        try:
-            clear_subtitles()
-        except Exception as e:
-            logger.error(f"Error clearing subtitles: {e}")
+        # Don't clear subtitles immediately - let them fade naturally
+        # try:
+        #     clear_subtitles()
+        # except Exception as e:
+        #     logger.error(f"Error clearing subtitles: {e}")
 
         if not self.audio_frames:
             return ""
