@@ -19,9 +19,14 @@ class GoogleGenAIEngine(LLMEngine):
         try:
             from google import genai
             from google.genai import types
+
             client = genai.Client(api_key=self.api_key)
-            contents = [types.Content(role="user", parts=[types.Part.from_text(text="Hello")])]
-            response_stream = client.models.generate_content_stream(model=self.model, contents=contents)
+            contents = [
+                types.Content(role="user", parts=[types.Part.from_text(text="Hello")])
+            ]
+            response_stream = client.models.generate_content_stream(
+                model=self.model, contents=contents
+            )
             for _ in response_stream:
                 pass  # Just consume it
             if status_callback:
@@ -42,18 +47,29 @@ class GoogleGenAIEngine(LLMEngine):
         if self.session_manager and enable_stitching:
             history = self.session_manager.get_history()
             for h in history:
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=h.get('prompt', ''))]
-                ))
-                contents.append(types.Content(
-                    role="model",
-                    parts=[types.Part.from_text(text=h.get('response', ''))]
-                ))
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=h.get("prompt", ""))],
+                    )
+                )
+                contents.append(
+                    types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=h.get("response", ""))],
+                    )
+                )
 
         return contents
 
-    def _execute_stream(self, client, contents, sink: Sink, is_main: bool, cancel_event: threading.Event = None) -> str:
+    def _execute_stream(
+        self,
+        client,
+        contents,
+        sink: Sink,
+        is_main: bool,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
@@ -79,8 +95,8 @@ class GoogleGenAIEngine(LLMEngine):
             buffer += chunk.text
             if "\n" in buffer:
                 last_newline_idx = buffer.rindex("\n")
-                complete_lines = buffer[:last_newline_idx + 1]
-                buffer = buffer[last_newline_idx + 1:]
+                complete_lines = buffer[: last_newline_idx + 1]
+                buffer = buffer[last_newline_idx + 1 :]
                 if sink and not (cancel_event and cancel_event.is_set()):
                     sink.process_chunk(complete_lines, is_main=is_main)
 
@@ -94,8 +110,15 @@ class GoogleGenAIEngine(LLMEngine):
         print("Request finished successfully")
         return ans
 
-    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_text(
+        self,
+        prompt: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
@@ -126,8 +149,16 @@ class GoogleGenAIEngine(LLMEngine):
             print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
             return f"Error calling Google GenAI API: {str(e)}"
 
-    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_image(
+        self,
+        prompt: str,
+        image_path: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
@@ -157,7 +188,7 @@ class GoogleGenAIEngine(LLMEngine):
 
             mime_type, _ = mimetypes.guess_type(image_path)
             if not mime_type:
-                mime_type = 'image/png'
+                mime_type = "image/png"
 
             current_parts.append(
                 types.Part.from_bytes(

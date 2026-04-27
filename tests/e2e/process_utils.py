@@ -6,15 +6,21 @@ import threading
 
 def show_test_ui(ui_data):
     import json
+
     json_data = json.dumps(ui_data)
 
     print("Launching the UI script...")
 
-    command = [sys.executable, 'display_ui.py', '--data', json_data]
+    command = [sys.executable, "display_ui.py", "--data", json_data]
     return subprocess.Popen(command)
 
 
-def init_tests(launch_service_func, launch_app_func, minimize_all_windows_func, check_port_in_use_func):
+def init_tests(
+    launch_service_func,
+    launch_app_func,
+    minimize_all_windows_func,
+    check_port_in_use_func,
+):
     minimize_all_windows_func()
 
     if check_port_in_use_func("127.0.0.1", 8000):
@@ -52,7 +58,7 @@ def launch_service(service_script_path, working_dir):
         command_list = [sys.executable, service_script_path]
 
         env = os.environ.copy()
-        env['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+        env["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
         launched_process = subprocess.Popen(
             command_list,
@@ -60,16 +66,16 @@ def launch_service(service_script_path, working_dir):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            encoding='utf-8',
+            encoding="utf-8",
             bufsize=1,
-            env=env
+            env=env,
         )
         print("Service script launched.")
 
         def read_output():
             assert launched_process.stdout is not None
-            for line in iter(launched_process.stdout.readline, ''):
-                print(f"[OCR Service] {line}", end='')
+            for line in iter(launched_process.stdout.readline, ""):
+                print(f"[OCR Service] {line}", end="")
 
         threading.Thread(target=read_output, daemon=True).start()
 
@@ -94,8 +100,8 @@ def launch_app(main_script_path, main_script_args, working_dir):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            encoding='utf-8',
-            bufsize=1
+            encoding="utf-8",
+            bufsize=1,
         )
         print("Second script launched. Waiting for initialization...")
 
@@ -103,8 +109,8 @@ def launch_app(main_script_path, main_script_args, working_dir):
 
         def read_output():
             assert launched_process.stdout is not None
-            for line in iter(launched_process.stdout.readline, ''):
-                print(line, end='')
+            for line in iter(launched_process.stdout.readline, ""):
+                print(line, end="")
                 if "Initialization done." in line:
                     is_initialized.set()
 

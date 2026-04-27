@@ -29,11 +29,20 @@ from config import (
     TARGET_WORD_BASIC,
     TARGET_WORD_PROGRAMMING,
     TTS_INPUT_DEVICE_NAME,
-    WORKING_DIR, RECORD_BUTTON, STOP_RECORD_BUTTON, TTS_OUTPUT_DEVICE_NAME,
+    WORKING_DIR,
+    RECORD_BUTTON,
+    STOP_RECORD_BUTTON,
+    TTS_OUTPUT_DEVICE_NAME,
 )
 from network_utils import check_port_in_use, poll_port
 from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
-from ui_utils import click_button, cycle_until, find_text, minimize_all_windows, poll_button
+from ui_utils import (
+    click_button,
+    cycle_until,
+    find_text,
+    minimize_all_windows,
+    poll_button,
+)
 
 # --- Global variables for background recording ---
 _stop_recording_event = threading.Event()
@@ -46,7 +55,7 @@ test_results = {
     "test_tts": "NOT_RUN",  # TTS test (part of test_text_source)
     "test_capture": "NOT_RUN",  # Single image capture test
     "test_multi_capture": "NOT_RUN",  # Multi-select image capture test
-    "test_audio_source": "NOT_RUN"  # Audio input test
+    "test_audio_source": "NOT_RUN",  # Audio input test
 }
 
 
@@ -57,7 +66,9 @@ def show_test_summary():
     print("=" * 60)
 
     for test_name, result in test_results.items():
-        status_symbol = "❓" if result == "NOT_RUN" else ("✅" if result == "PASSED" else "❌")
+        status_symbol = (
+            "❓" if result == "NOT_RUN" else ("✅" if result == "PASSED" else "❌")
+        )
         print(f"{status_symbol} {test_name}: {result}")
 
     print("=" * 60)
@@ -82,13 +93,13 @@ def run_tests():
         cleanup(app_process, service_process)
         os._exit(0)
 
-    keyboard.add_hotkey('ctrl+shift+alt+q', exit_tests)
+    keyboard.add_hotkey("ctrl+shift+alt+q", exit_tests)
 
     app_process, service_process = init_tests(
         lambda: launch_service(SERVICE_SCRIPT_PATH, WORKING_DIR),
         lambda: launch_app(MAIN_SCRIPT_PATH, MAIN_SCRIPT_ARGS, WORKING_DIR),
         minimize_all_windows,
-        check_port_in_use
+        check_port_in_use,
     )
 
     if not app_process:
@@ -125,8 +136,10 @@ def test_text_source():
 
     mic_index = get_microphone_index(TTS_INPUT_DEVICE_NAME)
 
-    _recording_thread = threading.Thread(target=record_audio_in_background,
-                                         args=(_stop_recording_event, _recorded_audio_queue, mic_index))
+    _recording_thread = threading.Thread(
+        target=record_audio_in_background,
+        args=(_stop_recording_event, _recorded_audio_queue, mic_index),
+    )
     _recording_thread.daemon = True
 
     assert _recording_thread is not None
@@ -139,9 +152,9 @@ def test_text_source():
     print("Pasting the question...")
     pyperclip.copy(BASIC_QUESTION + " Answer with one word only.")
     time.sleep(0.1)
-    pyautogui.hotkey('ctrl', 'v')
+    pyautogui.hotkey("ctrl", "v")
 
-    pyautogui.press('enter')
+    pyautogui.press("enter")
 
     time.sleep(2)
 
@@ -161,7 +174,9 @@ def test_text_source():
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
         test_results["test_text_source"] = "PASSED"
     else:
-        print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
+        print(
+            f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."
+        )
         return
 
     print("\n--- Starting TTS Recognition Test (Processing recorded audio) ---")
@@ -179,19 +194,29 @@ def test_text_source():
             print(f"Recognized text: '{recognized_text}'")
 
             if TARGET_WORD_BASIC.lower() in recognized_text.lower():
-                print(f"\n✅ SUCCESS (TTS): The word '{TARGET_WORD_BASIC}' was found in the spoken audio!")
+                print(
+                    f"\n✅ SUCCESS (TTS): The word '{TARGET_WORD_BASIC}' was found in the spoken audio!"
+                )
                 test_results["test_tts"] = "PASSED"
             else:
-                print(f"\n❌ FAILURE (TTS): The word '{TARGET_WORD_BASIC}' was NOT found in the spoken audio.")
+                print(
+                    f"\n❌ FAILURE (TTS): The word '{TARGET_WORD_BASIC}' was NOT found in the spoken audio."
+                )
         else:
-            print("\n❌ FAILURE (TTS): No audio data was recorded by the background thread.")
+            print(
+                "\n❌ FAILURE (TTS): No audio data was recorded by the background thread."
+            )
 
     except queue.Empty:
-        print("\n❌ FAILURE (TTS): Timed out waiting for recorded audio data from the queue.")
+        print(
+            "\n❌ FAILURE (TTS): Timed out waiting for recorded audio data from the queue."
+        )
     except sr.UnknownValueError:
         print("\n❌ FAILURE (TTS): Speech Recognition could not understand audio.")
     except sr.RequestError as e:
-        print(f"\n❌ FAILURE (TTS): Could not request results from Google Speech Recognition service; {e}")
+        print(
+            f"\n❌ FAILURE (TTS): Could not request results from Google Speech Recognition service; {e}"
+        )
     except Exception as e:
         print(f"\n❌ FAILURE (TTS): An error occurred during speech recognition: {e}")
 
@@ -235,7 +260,9 @@ def test_audio_source():
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the audio!")
         test_results["test_audio_source"] = "PASSED"
     else:
-        print(f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries.")
+        print(
+            f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."
+        )
 
 
 def finalize_image_test(capture_button, target_word, ui_process):
@@ -253,7 +280,9 @@ def finalize_image_test(capture_button, target_word, ui_process):
         print(f"\n✅ SUCCESS: The word '{target_word}' was found in the text!")
         test_results["test_capture_temp"] = "PASSED"
     else:
-        print(f"\n❌ FAILURE: The word '{target_word}' was NOT found after multiple retries.")
+        print(
+            f"\n❌ FAILURE: The word '{target_word}' was NOT found after multiple retries."
+        )
 
     click_button(CANCEL_SOURCE, True)
 
@@ -265,9 +294,7 @@ def finalize_image_test(capture_button, target_word, ui_process):
 def test_capture():
     test_results["test_capture"] = "FAILED"
 
-    ui_process = show_test_ui(ui_data=[
-        {"text": BASIC_QUESTION, "x": 500, "y": 300}
-    ])
+    ui_process = show_test_ui(ui_data=[{"text": BASIC_QUESTION, "x": 500, "y": 300}])
 
     time.sleep(2)
 
@@ -295,10 +322,12 @@ def test_capture():
 def test_multi_capture():
     test_results["test_multi_capture"] = "FAILED"
 
-    ui_process = show_test_ui(ui_data=[
-        {"text": PROGRAMMING_QUESTION1, "x": 500, "y": 100},
-        {"text": PROGRAMMING_QUESTION2, "x": 500, "y": 400}
-    ])
+    ui_process = show_test_ui(
+        ui_data=[
+            {"text": PROGRAMMING_QUESTION1, "x": 500, "y": 100},
+            {"text": PROGRAMMING_QUESTION2, "x": 500, "y": 400},
+        ]
+    )
 
     time.sleep(2)
 

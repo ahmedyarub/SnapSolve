@@ -12,7 +12,11 @@ class CoordinateSelector(QWidget):
         self.loop = loop
 
         # Frameless and Always on Top
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
@@ -56,8 +60,17 @@ class CoordinateSelector(QWidget):
 
             if x2 - x1 > 10 and y2 - y1 > 10:
                 # Apply DPI scaling back to physical pixels for PIL.ImageGrab
-                ratio = self.window().windowHandle().screen().devicePixelRatio() if self.window().windowHandle() else QApplication.primaryScreen().devicePixelRatio()
-                self.coordinates = [int(x1 * ratio), int(y1 * ratio), int(x2 * ratio), int(y2 * ratio)]
+                ratio = (
+                    self.window().windowHandle().screen().devicePixelRatio()
+                    if self.window().windowHandle()
+                    else QApplication.primaryScreen().devicePixelRatio()
+                )
+                self.coordinates = [
+                    int(x1 * ratio),
+                    int(y1 * ratio),
+                    int(x2 * ratio),
+                    int(y2 * ratio),
+                ]
 
             self.finish()
 
@@ -82,7 +95,7 @@ class CoordinateSelector(QWidget):
 
         if self.is_drawing and self.start_x is not None and self.end_x is not None:
             # Draw the red selection rectangle outline
-            pen = QPen(QColor('red'))
+            pen = QPen(QColor("red"))
             pen.setWidth(3)
             painter.setPen(pen)
 
@@ -95,7 +108,9 @@ class CoordinateSelector(QWidget):
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
             painter.fillRect(x1, y1, width, height, Qt.GlobalColor.transparent)
 
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
             painter.drawRect(x1, y1, width, height)
 
 
@@ -131,6 +146,7 @@ def _get_coordinates_impl(callback=None):
     else:
         # Blocking mode for first run
         from PyQt6.QtCore import QEventLoop
+
         loop = QEventLoop()
         selector = CoordinateSelector(loop=loop)
         screen_rect = app.primaryScreen().virtualGeometry()

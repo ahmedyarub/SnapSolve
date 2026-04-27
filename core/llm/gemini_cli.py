@@ -8,7 +8,13 @@ from .base import LLMEngine
 from core.sinks.base import Sink
 
 
-def _execute_request(cmd_args: list, status_callback, sink: Sink, is_main: bool, cancel_event: threading.Event = None) -> str:
+def _execute_request(
+    cmd_args: list,
+    status_callback,
+    sink: Sink,
+    is_main: bool,
+    cancel_event: threading.Event = None,
+) -> str:
     if cancel_event and cancel_event.is_set():
         return "Cancelled"
 
@@ -21,10 +27,7 @@ def _execute_request(cmd_args: list, status_callback, sink: Sink, is_main: bool,
         # We can't really pass a cancel_event to subprocess.run natively without wrapping it in Popen and checking
         # For simplicity, we just check before and after. If we want we could check while it runs.
         process = subprocess.Popen(
-            cmd_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
         # Simple polling loop to support cancellation
@@ -77,17 +80,22 @@ class GeminiCLIEngine(LLMEngine):
                 status_callback(f"Gemini CLI warmup failed: {str(e)}")
             return False
 
-
     @property
     def supports_images(self) -> bool:
         return True
 
-
-    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_text(
+        self,
+        prompt: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
-            
+
         print(f"[GeminiCLIEngine] Text Request started for model: {self.model}")
 
         gemini_cmd = shutil.which("gemini")
@@ -97,20 +105,23 @@ class GeminiCLIEngine(LLMEngine):
         full_prompt = self._prepare_prompt(prompt, enable_stitching)
         combined_prompt = f'"{full_prompt}"'
 
-        cmd_args = [
-            gemini_cmd,
-            "-p", combined_prompt,
-            "-o", "json",
-            "-m", self.model
-        ]
+        cmd_args = [gemini_cmd, "-p", combined_prompt, "-o", "json", "-m", self.model]
 
         return _execute_request(cmd_args, status_callback, sink, is_main, cancel_event)
 
-    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_image(
+        self,
+        prompt: str,
+        image_path: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
-            
+
         print(f"[GeminiCLIEngine] Image Request started for model: {self.model}")
 
         gemini_cmd = shutil.which("gemini")
@@ -123,14 +134,18 @@ class GeminiCLIEngine(LLMEngine):
         temp_dir = os.path.dirname(image_path)
         if not temp_dir.endswith(os.sep):
             temp_dir += os.sep
-        include_dir_arg = f'{temp_dir}'
+        include_dir_arg = f"{temp_dir}"
 
         cmd_args = [
             gemini_cmd,
-            "-p", combined_prompt,
-            "-o", "json",
-            "--include-directories", include_dir_arg,
-            "-m", self.model
+            "-p",
+            combined_prompt,
+            "-o",
+            "json",
+            "--include-directories",
+            include_dir_arg,
+            "-m",
+            self.model,
         ]
 
         return _execute_request(cmd_args, status_callback, sink, is_main, cancel_event)

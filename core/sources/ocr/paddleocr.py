@@ -4,6 +4,7 @@ import time
 import threading
 from .base import OCREngine
 
+
 class LocalPaddleOCREngine(OCREngine):
     def __init__(self, status_callback=None, warmup=True):
         self.ocr = None
@@ -11,13 +12,15 @@ class LocalPaddleOCREngine(OCREngine):
             status_callback("Initializing PaddleOCR...")
         try:
             import warnings
+
             # Silence C++ logs
-            os.environ['GLOG_minloglevel'] = '2'
+            os.environ["GLOG_minloglevel"] = "2"
             from paddleocr import PaddleOCR
+
             warnings.filterwarnings("ignore", category=DeprecationWarning)
 
             self.ocr = PaddleOCR(
-                lang='en',
+                lang="en",
                 use_textline_orientation=False,
                 use_doc_unwarping=False,
             )
@@ -30,22 +33,31 @@ class LocalPaddleOCREngine(OCREngine):
                     self.ocr.ocr("test_image.png")
                 else:
                     from PIL import Image
-                    temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                    img = Image.new('RGB', (100, 100), color='white')
+
+                    temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                    img = Image.new("RGB", (100, 100), color="white")
                     img.save(temp_file.name)
                     self.ocr.ocr(temp_file.name)
 
         except ImportError:
-            raise Exception("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")
+            raise Exception(
+                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
+            )
         except Exception as e:
             import traceback
+
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
             raise Exception(f"Error during OCR initialization: {str(e)}")
 
-    def extract_text(self, image_path: str, status_callback=None, cancel_event: threading.Event = None) -> str:
+    def extract_text(
+        self,
+        image_path: str,
+        status_callback=None,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("OCR cancelled.")
-            
+
         print("Using local PaddleOCR engine.")
         if status_callback:
             status_callback("Running PaddleOCR...")
@@ -54,7 +66,7 @@ class LocalPaddleOCREngine(OCREngine):
             start_time = time.time()
 
             results = self.ocr.ocr(image_path)
-            
+
             if cancel_event and cancel_event.is_set():
                 raise ValueError("OCR cancelled.")
 
@@ -63,11 +75,11 @@ class LocalPaddleOCREngine(OCREngine):
                 for res in results:
                     if not res:
                         continue
-                    if hasattr(res, 'json'):
+                    if hasattr(res, "json"):
                         data = res.json
-                        if 'res' in data and 'rec_texts' in data['res']:
-                            texts = data['res']['rec_texts']
-                            scores = data['res']['rec_scores']
+                        if "res" in data and "rec_texts" in data["res"]:
+                            texts = data["res"]["rec_texts"]
+                            scores = data["res"]["rec_scores"]
 
                             for text, score in zip(texts, scores):
                                 if score >= 0.5:
@@ -93,10 +105,13 @@ class LocalPaddleOCREngine(OCREngine):
             return extracted_text
 
         except ImportError:
-            raise Exception("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")
+            raise Exception(
+                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
+            )
         except Exception as e:
             if "cancelled" in str(e).lower():
                 raise
             import traceback
+
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
             raise Exception(f"Error during OCR execution: {str(e)}")

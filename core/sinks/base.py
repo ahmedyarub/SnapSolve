@@ -1,6 +1,7 @@
 import abc
 import threading
 
+
 class Sink(abc.ABC):
     def __init__(self, cancel_event: threading.Event = None):
         self.cancel_event = cancel_event or threading.Event()

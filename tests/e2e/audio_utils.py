@@ -43,7 +43,9 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
                     break
 
             if frames:
-                audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+                audio_data = sr.AudioData(
+                    b"".join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
+                )
                 audio_queue.put(audio_data)
             print("[Recorder] Background audio recording stopped.")
     except Exception as e:
@@ -51,7 +53,9 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
 
 
 def speak(text: str, output_device: str):
-    voice = PiperVoice.load("../en_US-lessac-high.onnx", config_path="../en_US-lessac-high.onnx.json")
+    voice = PiperVoice.load(
+        "../en_US-lessac-high.onnx", config_path="../en_US-lessac-high.onnx.json"
+    )
 
     print(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
 
@@ -65,30 +69,34 @@ def speak(text: str, output_device: str):
 
     # Play the audio using PyAudio
     if os.path.exists(wav_file):
-        wf = wave.open(wav_file, 'rb')
+        wf = wave.open(wav_file, "rb")
         p = pyaudio.PyAudio()
 
         target_device_index: int | None = None
         for i in range(p.get_device_count()):
             info = p.get_device_info_by_index(i)
-            host_api_name = p.get_host_api_info_by_index(int(info['hostApi']))['name']
+            host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
 
             # Hardcode "MME" for comparison
-            if info['name'] == output_device and host_api_name == "MME":
-                target_device_index = int(info['index'])
+            if info["name"] == output_device and host_api_name == "MME":
+                target_device_index = int(info["index"])
                 print(
-                    f"Found configured audio device: {output_device} (MME) at index {target_device_index}")
+                    f"Found configured audio device: {output_device} (MME) at index {target_device_index}"
+                )
                 break
         if target_device_index is None:
             print(
-                f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device.")
+                f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
+            )
 
         # Attempt to open stream with the target device index
-        stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True,
-                        output_device_index=target_device_index)
+        stream = p.open(
+            format=p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True,
+            output_device_index=target_device_index,
+        )
         print(f"Playing audio on device index: {target_device_index}")
 
         # Playback loop

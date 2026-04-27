@@ -3,7 +3,15 @@ import threading
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit, QLabel
+from PyQt6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QTextEdit,
+    QLabel,
+)
 
 
 # --- Signal Broker ---
@@ -16,6 +24,7 @@ class UISignals(QObject):
     close_popup = pyqtSignal()
     request_active_source = pyqtSignal(object)
     show_subtitle = pyqtSignal(str)
+    update_subtitle = pyqtSignal(str)
     clear_subtitles = pyqtSignal()
 
 
@@ -31,12 +40,19 @@ _app_callbacks = {}
 
 # --- PyQt UI Components ---
 
+
 class PopupWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #555; border-radius: 10px;")
+        self.setStyleSheet(
+            "background-color: #1e1e1e; border: 2px solid #555; border-radius: 10px;"
+        )
 
         self.layout = QVBoxLayout(self)
 
@@ -45,7 +61,8 @@ class PopupWidget(QWidget):
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(24, 24)
         self.close_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: white; border: none; font-weight: bold; } QPushButton:hover { color: red; }")
+            "QPushButton { background-color: transparent; color: white; border: none; font-weight: bold; } QPushButton:hover { color: red; }"
+        )
         self.close_btn.clicked.connect(self.hide)
         self.top_bar.addStretch()
         self.top_bar.addWidget(self.close_btn)
@@ -228,13 +245,17 @@ class RecordButton(QPushButton):
     def start_record_action(self):
         self.is_recording = True
         self.setText("⏹️ Stop / 🔴 Recording...")
-        self.setStyleSheet(self.styleSheet().replace("rgba(45, 45, 45, 180)", "rgba(178, 34, 34, 0.7)"))
+        self.setStyleSheet(
+            self.styleSheet().replace("rgba(45, 45, 45, 180)", "rgba(178, 34, 34, 0.7)")
+        )
         self.start_recording.emit()
 
     def stop_record_action(self):
         self.is_recording = False
         self.setText("🎙️ Record")
-        self.setStyleSheet(self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)"))
+        self.setStyleSheet(
+            self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)")
+        )
         self.stop_recording.emit()
 
 
@@ -243,11 +264,17 @@ class SubtitleWidget(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         # Remove WA_TranslucentBackground to ensure proper rendering
         # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Use a more visible background for debugging
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 0.8); border: 2px solid red;")
+        self.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 0.8); border: 2px solid red;"
+        )
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -256,7 +283,9 @@ class SubtitleWidget(QWidget):
         # Store subtitle labels with their creation time
         self.subtitle_labels = []
         self.max_subtitles = 5  # Maximum number of subtitle lines to show
-        self.fade_duration = 15000  # Duration for fade effect in milliseconds (15 seconds)
+        self.fade_duration = (
+            15000  # Duration for fade effect in milliseconds (15 seconds)
+        )
 
         # Timer for updating fade effects
         self.fade_timer = QTimer(self)
@@ -280,6 +309,7 @@ class SubtitleWidget(QWidget):
 
         # Debug logging
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"Subtitle widget positioned at ({x}, {y}) with size ({w}, {h})")
         logger.info(f"Screen size: {screen.width()}x{screen.height()}")
@@ -288,6 +318,7 @@ class SubtitleWidget(QWidget):
         """Add a new subtitle line."""
         import time
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"add_subtitle called with text: {text}")
         logger.info(f"Subtitle widget visible: {self.isVisible()}")
@@ -340,11 +371,14 @@ class SubtitleWidget(QWidget):
             self.raise_()  # Bring to front
             self.activateWindow()  # Force window activation
             self.repaint()  # Force repaint
-            logger.info(f"After show(), widget visible: {self.isVisible()}, size: {self.size()}")
+            logger.info(
+                f"After show(), widget visible: {self.isVisible()}, size: {self.size()}"
+            )
 
     def update_last_subtitle(self, text: str):
         """Update the text of the most recent subtitle instead of creating a new one."""
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"update_last_subtitle called with text: {text}")
 
@@ -392,14 +426,20 @@ class SubtitleWidget(QWidget):
             # Calculate opacity based on position and age
             # Newer subtitles (higher index) are more opaque
             # Older subtitles fade out more gradually
-            position_factor = (i + 1) / len(self.subtitle_labels) if self.subtitle_labels else 1
+            position_factor = (
+                (i + 1) / len(self.subtitle_labels) if self.subtitle_labels else 1
+            )
 
             # More gradual fading - start fading after 5 seconds, complete fade by fade_duration
             fade_start = 5.0  # Start fading after 5 seconds
             if age < fade_start:
                 age_factor = 1.0  # Full opacity for first 5 seconds
             else:
-                age_factor = max(0.3, 1.0 - ((age - fade_start) / ((self.fade_duration / 1000) - fade_start)))
+                age_factor = max(
+                    0.3,
+                    1.0
+                    - ((age - fade_start) / ((self.fade_duration / 1000) - fade_start)),
+                )
 
             # Combine factors, but ensure minimum visibility
             opacity = min(0.95, max(0.4, position_factor * age_factor))
@@ -419,7 +459,9 @@ class SubtitleWidget(QWidget):
         # Remove very old subtitles
         if self.subtitle_labels:
             oldest_age = current_time - self.subtitle_labels[0].creation_time
-            if oldest_age > (self.fade_duration / 1000) * 2:  # Remove after 2x fade duration
+            if (
+                oldest_age > (self.fade_duration / 1000) * 2
+            ):  # Remove after 2x fade duration
                 oldest = self.subtitle_labels.pop(0)
                 self.layout.removeWidget(oldest)
                 oldest.deleteLater()
@@ -439,9 +481,15 @@ def call_action(action):
 class PanelWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: rgba(30, 30, 30, 230); border: 1px solid #444; border-radius: 8px;")
+        self.setStyleSheet(
+            "background-color: rgba(30, 30, 30, 230); border: 1px solid #444; border-radius: 8px;"
+        )
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
@@ -454,7 +502,8 @@ class PanelWidget(QWidget):
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(20, 20)
         close_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: gray; border: none; } QPushButton:hover { color: white; }")
+            "QPushButton { background-color: transparent; color: gray; border: none; } QPushButton:hover { color: white; }"
+        )
         close_btn.clicked.connect(self.hide)
         top_layout.addWidget(close_btn)
         self.layout.addLayout(top_layout)
@@ -473,18 +522,24 @@ class PanelWidget(QWidget):
             return btn
 
         self.btn_record = RecordButton("🎙️ Record", btn_style)
-        self.btn_record.start_recording.connect(lambda: call_action('start_record'))
-        self.btn_record.stop_recording.connect(lambda: call_action('stop_record'))
+        self.btn_record.start_recording.connect(lambda: call_action("start_record"))
+        self.btn_record.stop_recording.connect(lambda: call_action("stop_record"))
         self.layout.addWidget(self.btn_record)
-        self.buttons['record'] = self.btn_record
+        self.buttons["record"] = self.btn_record
 
-        self.btn_capture = create_btn('capture', "📸 Capture", 'capture')
-        self.btn_reselect = create_btn('reselect', "🎯 Reselect", 'reselect')
-        self.btn_multi = create_btn('multi', "➕ Multi-select", 'multi_capture')
-        self.btn_end_multi = create_btn('end_multi', "✅ End Multi", 'end_multi_capture')
-        self.btn_stitching = create_btn('stitching', "🧵 Toggle Stitching", 'toggle_stitching')
-        self.btn_cycle = create_btn('cycle', "🔄 Cycle Source", 'cycle_source')
-        self.btn_cancel = create_btn('cancel', "❌ Cancel", 'cancel', style=cancel_btn_style)
+        self.btn_capture = create_btn("capture", "📸 Capture", "capture")
+        self.btn_reselect = create_btn("reselect", "🎯 Reselect", "reselect")
+        self.btn_multi = create_btn("multi", "➕ Multi-select", "multi_capture")
+        self.btn_end_multi = create_btn(
+            "end_multi", "✅ End Multi", "end_multi_capture"
+        )
+        self.btn_stitching = create_btn(
+            "stitching", "🧵 Toggle Stitching", "toggle_stitching"
+        )
+        self.btn_cycle = create_btn("cycle", "🔄 Cycle Source", "cycle_source")
+        self.btn_cancel = create_btn(
+            "cancel", "❌ Cancel", "cancel", style=cancel_btn_style
+        )
 
         self.btn_end_multi.hide()
         self.btn_cancel.hide()
@@ -518,7 +573,7 @@ class PanelWidget(QWidget):
         if not self.is_multi_selecting:
             self.btn_cancel.setVisible(is_processing)
         for name, btn in self.buttons.items():
-            if name != 'cancel':
+            if name != "cancel":
                 btn.setEnabled(not is_processing)
         self.adjustSize()
         self.update_position()
@@ -527,16 +582,23 @@ class PanelWidget(QWidget):
 class TextInputWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: rgba(30, 30, 30, 204); border: 2px solid #555; border-radius: 8px;")
+        self.setStyleSheet(
+            "background-color: rgba(30, 30, 30, 204); border: 2px solid #555; border-radius: 8px;"
+        )
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
 
         self.text_edit = QTextEdit()
         self.text_edit.setStyleSheet(
-            "background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;")
+            "background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;"
+        )
         # Handle Enter key to submit, Shift+Enter for new line
         self.text_edit.installEventFilter(self)
         self.layout.addWidget(self.text_edit)
@@ -554,9 +616,12 @@ class TextInputWidget(QWidget):
                         text = self.text_edit.toPlainText().strip()
                         if text:
                             self.text_edit.clear()
-                            if 'text_submit' in _app_callbacks:
-                                threading.Thread(target=_app_callbacks['text_submit'], args=(text,),
-                                                 daemon=True).start()
+                            if "text_submit" in _app_callbacks:
+                                threading.Thread(
+                                    target=_app_callbacks["text_submit"],
+                                    args=(text,),
+                                    daemon=True,
+                                ).start()
                     return True  # Consume event
         return super().eventFilter(obj, event)
 
@@ -578,6 +643,7 @@ class TextInputWidget(QWidget):
 # --- UI Manager ---
 def _on_request_active_source(q):
     from core.sources import get_active_source_instance
+
     q.put(get_active_source_instance())
 
 
@@ -608,6 +674,7 @@ class UIManager(QObject):
         ui_signals.close_popup.connect(self.popup.hide)
         ui_signals.request_active_source.connect(_on_request_active_source)
         ui_signals.show_subtitle.connect(self._on_show_subtitle)
+        ui_signals.update_subtitle.connect(self._on_update_subtitle)
         ui_signals.clear_subtitles.connect(self._on_clear_subtitles)
 
     def _on_toggle_panel(self, show):
@@ -635,11 +702,21 @@ class UIManager(QObject):
 
     def _on_show_subtitle(self, text: str):
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"_on_show_subtitle called with text: {text}")
         assert self.subtitle is not None
         self.subtitle.add_subtitle(text)
         logger.info("_on_show_subtitle completed")
+
+    def _on_update_subtitle(self, text: str):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"_on_update_subtitle called with text: {text}")
+        assert self.subtitle is not None
+        self.subtitle.update_last_subtitle(text)
+        logger.info("_on_update_subtitle completed")
 
     def _on_clear_subtitles(self):
         assert self.subtitle is not None
@@ -683,12 +760,14 @@ def set_app_processing_state(is_processing):
 
 
 def show_popup(text, auto_close=5000, opacity=0.8, is_result=False):
-    ui_signals.show_popup.emit({
-        "text": text,
-        "auto_close": auto_close,
-        "opacity": opacity,
-        "is_result": is_result
-    })
+    ui_signals.show_popup.emit(
+        {
+            "text": text,
+            "auto_close": auto_close,
+            "opacity": opacity,
+            "is_result": is_result,
+        }
+    )
 
 
 def close_popup():
@@ -698,10 +777,21 @@ def close_popup():
 def show_subtitle(text: str):
     """Show a subtitle line with real-time transcription."""
     import logging
+
     logger = logging.getLogger(__name__)
     logger.info(f"show_subtitle called with text: {text}")
     ui_signals.show_subtitle.emit(text)
     logger.info("show_subtitle signal emitted")
+
+
+def update_subtitle(text: str):
+    """Update the most recent subtitle line instead of creating a new one."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"update_subtitle called with text: {text}")
+    ui_signals.update_subtitle.emit(text)
+    logger.info("update_subtitle signal emitted")
 
 
 def clear_subtitles():
@@ -711,12 +801,17 @@ def clear_subtitles():
 
 def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):
     if not output_modes:
-        output_modes = ['popup']
+        output_modes = ["popup"]
 
     # Audio is now handled by the AudioSink in the pipeline
 
-    if 'popup' in output_modes:
-        show_popup(text, auto_close=5000 if auto_close else None, opacity=opacity, is_result=True)
+    if "popup" in output_modes:
+        show_popup(
+            text,
+            auto_close=5000 if auto_close else None,
+            opacity=opacity,
+            is_result=True,
+        )
 
 
 def get_active_source():
@@ -735,5 +830,6 @@ def get_active_source():
 
 def _handle_request_coords(q):
     from ui.selector import get_coordinates
+
     # Pass the queue's put method directly as the callback
     get_coordinates(callback=q.put)

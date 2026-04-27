@@ -3,10 +3,22 @@ import os
 import sys
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
-    QWidget, QLabel, QLineEdit, QComboBox, QMessageBox,
-    QCheckBox, QFormLayout, QScrollArea, QDialogButtonBox, QApplication,
-    QPushButton, QFileDialog
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTabWidget,
+    QWidget,
+    QLabel,
+    QLineEdit,
+    QComboBox,
+    QMessageBox,
+    QCheckBox,
+    QFormLayout,
+    QScrollArea,
+    QDialogButtonBox,
+    QApplication,
+    QPushButton,
+    QFileDialog,
 )
 
 from config.settings import get_audio_devices
@@ -15,7 +27,7 @@ from config.settings import get_audio_devices
 def load_json(path, default):
     try:
         if os.path.exists(path):
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 return json.load(f)
     except Exception as e:
         print(f"Error loading {path}: {e}")
@@ -39,8 +51,12 @@ class ConfigUI(QDialog):
         self.shortcut_inputs = {}
         self.shortcuts_layout = None
         self.show_control_panel = QCheckBox("Show control panel on startup")
-        self.ollama_url = QLineEdit(self.config.get('ollama_url', 'http://localhost:11434'))
-        self.google_genai_api_key = QLineEdit(self.config.get('google_genai_api_key', ''))
+        self.ollama_url = QLineEdit(
+            self.config.get("ollama_url", "http://localhost:11434")
+        )
+        self.google_genai_api_key = QLineEdit(
+            self.config.get("google_genai_api_key", "")
+        )
         self.profile_combo = QComboBox()
         self.profile_form = QWidget()
         self.prof_name = QLineEdit()
@@ -61,7 +77,9 @@ class ConfigUI(QDialog):
         self.tabs = QTabWidget()
         self.warmup_tab = QWidget()
         self.default_source_combo = QComboBox()
-        self.piper_model = QLineEdit(self.config.get('piper_model', 'en_US-lessac-medium.onnx'))
+        self.piper_model = QLineEdit(
+            self.config.get("piper_model", "en_US-lessac-medium.onnx")
+        )
         self.tts_output_device_combo = QComboBox()
         self.audio_input_device_combo = QComboBox()
         self.background_mode = QCheckBox("Run in system tray")
@@ -79,7 +97,7 @@ class ConfigUI(QDialog):
 
     def save_json(self, path, data):
         try:
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump(data, f, indent=4)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save {path}:\n{e}")
@@ -108,7 +126,9 @@ class ConfigUI(QDialog):
         self.button_box.addButton(QDialogButtonBox.StandardButton.Save)
         self.button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
 
-        self.btn_save_run = self.button_box.addButton("Save and Run", QDialogButtonBox.ButtonRole.ActionRole)
+        self.btn_save_run = self.button_box.addButton(
+            "Save and Run", QDialogButtonBox.ButtonRole.ActionRole
+        )
         self.button_box.accepted.connect(self.save_all)
         self.button_box.rejected.connect(self.reject)
         assert self.btn_save_run is not None
@@ -122,7 +142,9 @@ class ConfigUI(QDialog):
         self.save_all()
 
     def browse_piper_model(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Piper Model", "", "ONNX Files (*.onnx);;All Files (*)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Piper Model", "", "ONNX Files (*.onnx);;All Files (*)"
+        )
         if file_path:
             self.piper_model.setText(file_path)
 
@@ -134,7 +156,7 @@ class ConfigUI(QDialog):
         self.default_source_combo.addItem("Image", "image")
         self.default_source_combo.addItem("Audio", "audio")
 
-        current_source = self.config.get('default_source', 'text')
+        current_source = self.config.get("default_source", "text")
         idx = self.default_source_combo.findData(current_source)
         if idx >= 0:
             self.default_source_combo.setCurrentIndex(idx)
@@ -145,9 +167,9 @@ class ConfigUI(QDialog):
         self.output_mode_popup = QCheckBox("Popup Notification")
         self.output_mode_audio = QCheckBox("Text-to-Speech (Audio)")
 
-        current_modes = self.config.get('output_mode', ['popup'])
-        self.output_mode_popup.setChecked('popup' in current_modes)
-        self.output_mode_audio.setChecked('audio' in current_modes)
+        current_modes = self.config.get("output_mode", ["popup"])
+        self.output_mode_popup.setChecked("popup" in current_modes)
+        self.output_mode_audio.setChecked("audio" in current_modes)
 
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(self.output_mode_popup)
@@ -166,9 +188,9 @@ class ConfigUI(QDialog):
 
         audio_devices = get_audio_devices()
         for device in audio_devices:
-            self.tts_output_device_combo.addItem(device['name'], device['name'])
+            self.tts_output_device_combo.addItem(device["name"], device["name"])
 
-        current_device_name = self.config.get('tts_output_device_name', None)
+        current_device_name = self.config.get("tts_output_device_name", None)
 
         if current_device_name is not None:
             idx = self.tts_output_device_combo.findData(current_device_name)
@@ -182,13 +204,14 @@ class ConfigUI(QDialog):
 
         try:
             from config.settings import get_audio_input_devices
+
             input_audio_devices = get_audio_input_devices()
             for device in input_audio_devices:
-                self.audio_input_device_combo.addItem(device['name'], device['name'])
+                self.audio_input_device_combo.addItem(device["name"], device["name"])
         except Exception as e:
             print(f"Failed to load audio input devices: {e}")
 
-        current_input_device_name = self.config.get('audio_input_device_name', None)
+        current_input_device_name = self.config.get("audio_input_device_name", None)
         if current_input_device_name is not None:
             idx = self.audio_input_device_combo.findData(current_input_device_name)
             if idx >= 0:
@@ -196,15 +219,17 @@ class ConfigUI(QDialog):
 
         layout.addRow("Audio Input Device:", self.audio_input_device_combo)
 
-        self.realtime_transcription.setChecked(self.config.get('realtime_transcription', True))
+        self.realtime_transcription.setChecked(
+            self.config.get("realtime_transcription", True)
+        )
         layout.addRow("Real-time Transcription:", self.realtime_transcription)
 
         # Background Mode
-        self.background_mode.setChecked(self.config.get('background', False))
+        self.background_mode.setChecked(self.config.get("background", False))
         layout.addRow("Background Mode:", self.background_mode)
 
         # Show Control Panel
-        self.show_control_panel.setChecked(self.config.get('show_control_panel', False))
+        self.show_control_panel.setChecked(self.config.get("show_control_panel", False))
         layout.addRow("Control Panel:", self.show_control_panel)
 
         # API Keys & URLs
@@ -247,20 +272,24 @@ class ConfigUI(QDialog):
         layout.addStretch()
 
         if self.profiles:
-            active_id = self.config.get('active_profile_id', self.profiles[0]['id'])
-            index = next((i for i, p in enumerate(self.profiles) if p['id'] == active_id), 0)
+            active_id = self.config.get("active_profile_id", self.profiles[0]["id"])
+            index = next(
+                (i for i, p in enumerate(self.profiles) if p["id"] == active_id), 0
+            )
             self.profile_combo.setCurrentIndex(index)
             self.on_profile_changed(index)
 
     def populate_profiles(self):
         self.profile_combo.clear()
         for p in self.profiles:
-            self.profile_combo.addItem(p['name'], p['id'])
+            self.profile_combo.addItem(p["name"], p["id"])
 
     def populate_prompts(self):
         self.prof_prompt.clear()
         for p in self.prompts:
-            self.prof_prompt.addItem(p.get('description', p.get('id', 'Unknown')), p['id'])
+            self.prof_prompt.addItem(
+                p.get("description", p.get("id", "Unknown")), p["id"]
+            )
 
     def update_model_dropdowns(self, engine):
         self.prof_model.clear()
@@ -269,13 +298,13 @@ class ConfigUI(QDialog):
 
         models = self.models_data.get(engine, [])
         for m in models:
-            self.prof_model.addItem(m['name'], m['id'])
-            self.prof_fallback_model.addItem(m['name'], m['id'])
+            self.prof_model.addItem(m["name"], m["id"])
+            self.prof_fallback_model.addItem(m["name"], m["id"])
 
         # Try to restore previous selection if valid
-        if hasattr(self, '_current_profile_data'):
-            model_id = self._current_profile_data.get('model')
-            fallback_id = self._current_profile_data.get('fallback_model')
+        if hasattr(self, "_current_profile_data"):
+            model_id = self._current_profile_data.get("model")
+            fallback_id = self._current_profile_data.get("fallback_model")
 
             idx = self.prof_model.findData(model_id)
             if idx >= 0:
@@ -291,15 +320,15 @@ class ConfigUI(QDialog):
         profile = self.profiles[index]
         self._current_profile_data = profile
 
-        self.prof_name.setText(profile.get('name', ''))
+        self.prof_name.setText(profile.get("name", ""))
 
-        engine = profile.get('llm_engine', 'gemini')
+        engine = profile.get("llm_engine", "gemini")
         self.prof_llm_engine.setCurrentText(engine)
         self.update_model_dropdowns(engine)
 
-        self.prof_ocr_engine.setCurrentText(profile.get('ocr_engine', 'none'))
+        self.prof_ocr_engine.setCurrentText(profile.get("ocr_engine", "none"))
 
-        prompt_id = profile.get('prompt_id', 'default')
+        prompt_id = profile.get("prompt_id", "default")
         idx = self.prof_prompt.findData(prompt_id)
         if idx >= 0:
             self.prof_prompt.setCurrentIndex(idx)
@@ -310,23 +339,23 @@ class ConfigUI(QDialog):
             return
 
         profile = self.profiles[index]
-        profile['name'] = self.prof_name.text()
-        profile['llm_engine'] = self.prof_llm_engine.currentText()
-        profile['model'] = self.prof_model.currentData()
-        profile['fallback_model'] = self.prof_fallback_model.currentData()
-        profile['ocr_engine'] = self.prof_ocr_engine.currentText()
-        profile['prompt_id'] = self.prof_prompt.currentData()
+        profile["name"] = self.prof_name.text()
+        profile["llm_engine"] = self.prof_llm_engine.currentText()
+        profile["model"] = self.prof_model.currentData()
+        profile["fallback_model"] = self.prof_fallback_model.currentData()
+        profile["ocr_engine"] = self.prof_ocr_engine.currentText()
+        profile["prompt_id"] = self.prof_prompt.currentData()
 
         # Update combo box text
-        self.profile_combo.setItemText(index, profile['name'])
+        self.profile_combo.setItemText(index, profile["name"])
 
     def setup_warmup_tab(self):
         layout = QFormLayout(self.warmup_tab)
 
-        self.warmup_ocr.setChecked(self.config.get('warmup_ocr', True))
-        self.warmup_llm.setChecked(self.config.get('warmup_llm', True))
-        self.warmup_tts.setChecked(self.config.get('warmup_tts', False))
-        self.warmup_sr.setChecked(self.config.get('warmup_speech_recognition', True))
+        self.warmup_ocr.setChecked(self.config.get("warmup_ocr", True))
+        self.warmup_llm.setChecked(self.config.get("warmup_llm", True))
+        self.warmup_tts.setChecked(self.config.get("warmup_tts", False))
+        self.warmup_sr.setChecked(self.config.get("warmup_speech_recognition", True))
 
         layout.addRow("OCR:", self.warmup_ocr)
         layout.addRow("LLM:", self.warmup_llm)
@@ -341,16 +370,22 @@ class ConfigUI(QDialog):
 
         # Default actions
         default_actions = [
-            'capture', 'reselect', 'multi_capture', 'end_multi_capture',
-            'cancel_multi_capture', 'toggle_panel', 'new_chat_session',
-            'toggle_stitching', 'cycle_source'
+            "capture",
+            "reselect",
+            "multi_capture",
+            "end_multi_capture",
+            "cancel_multi_capture",
+            "toggle_panel",
+            "new_chat_session",
+            "toggle_stitching",
+            "cycle_source",
         ]
 
-        hotkeys_config = self.config.get('hotkeys', [])
-        hotkey_dict = {hk['action']: hk['key'] for hk in hotkeys_config}
+        hotkeys_config = self.config.get("hotkeys", [])
+        hotkey_dict = {hk["action"]: hk["key"] for hk in hotkeys_config}
 
         for action in default_actions:
-            inp = QLineEdit(hotkey_dict.get(action, ''))
+            inp = QLineEdit(hotkey_dict.get(action, ""))
             self.shortcuts_layout.addRow(f"{action.replace('_', ' ').title()}:", inp)
             self.shortcut_inputs[action] = inp
 
@@ -361,38 +396,44 @@ class ConfigUI(QDialog):
 
     def save_all(self):
         # Save App Settings
-        self.config['default_source'] = self.default_source_combo.currentData()
+        self.config["default_source"] = self.default_source_combo.currentData()
 
         modes = []
         if self.output_mode_popup.isChecked():
-            modes.append('popup')
+            modes.append("popup")
         if self.output_mode_audio.isChecked():
-            modes.append('audio')
-        self.config['output_mode'] = modes
+            modes.append("audio")
+        self.config["output_mode"] = modes
 
-        self.config['piper_model'] = self.piper_model.text() or 'en_US-lessac-medium.onnx'
-        self.config['background'] = self.background_mode.isChecked()
-        self.config['show_control_panel'] = self.show_control_panel.isChecked()
-        self.config['realtime_transcription'] = self.realtime_transcription.isChecked()
-        self.config['warmup_ocr'] = self.warmup_ocr.isChecked()
-        self.config['warmup_llm'] = self.warmup_llm.isChecked()
-        self.config['warmup_tts'] = self.warmup_tts.isChecked()
-        self.config['warmup_speech_recognition'] = self.warmup_sr.isChecked()
-        self.config['ollama_url'] = self.ollama_url.text()
-        self.config['google_genai_api_key'] = self.google_genai_api_key.text()
+        self.config["piper_model"] = (
+            self.piper_model.text() or "en_US-lessac-medium.onnx"
+        )
+        self.config["background"] = self.background_mode.isChecked()
+        self.config["show_control_panel"] = self.show_control_panel.isChecked()
+        self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
+        self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
+        self.config["warmup_llm"] = self.warmup_llm.isChecked()
+        self.config["warmup_tts"] = self.warmup_tts.isChecked()
+        self.config["warmup_speech_recognition"] = self.warmup_sr.isChecked()
+        self.config["ollama_url"] = self.ollama_url.text()
+        self.config["google_genai_api_key"] = self.google_genai_api_key.text()
 
-        self.config['tts_output_device_name'] = self.tts_output_device_combo.currentData()
-        self.config['audio_input_device_name'] = self.audio_input_device_combo.currentData()
+        self.config["tts_output_device_name"] = (
+            self.tts_output_device_combo.currentData()
+        )
+        self.config["audio_input_device_name"] = (
+            self.audio_input_device_combo.currentData()
+        )
 
         # Clean up legacy piper path if it exists
-        if 'piper_path' in self.config:
-            del self.config['piper_path']
+        if "piper_path" in self.config:
+            del self.config["piper_path"]
 
         # Save Profile Settings
         self.save_current_profile()
         index = self.profile_combo.currentIndex()
         if index >= 0:
-            self.config['active_profile_id'] = self.profiles[index]['id']
+            self.config["active_profile_id"] = self.profiles[index]["id"]
 
         # Save Shortcuts
         hotkeys = []
@@ -400,13 +441,16 @@ class ConfigUI(QDialog):
             key = inp.text().strip()
             if key:
                 hotkeys.append({"action": action, "key": key})
-        self.config['hotkeys'] = hotkeys
+        self.config["hotkeys"] = hotkeys
 
         self.save_json(self.config_path, self.config)
         self.save_json(self.profiles_path, self.profiles)
 
-        QMessageBox.information(self, "Success",
-                                "Configuration saved successfully!\nPlease restart the application for some changes to take effect.")
+        QMessageBox.information(
+            self,
+            "Success",
+            "Configuration saved successfully!\nPlease restart the application for some changes to take effect.",
+        )
         self.accept()
 
 
@@ -433,8 +477,12 @@ if __name__ == "__main__":
     if not QApplication.instance():
         app = QApplication(sys.argv)
 
-    should_run = open_config_ui("config/config.json", "config/llm_models.json", "config/profiles.json",
-                                "config/prompts.json")
+    should_run = open_config_ui(
+        "config/config.json",
+        "config/llm_models.json",
+        "config/profiles.json",
+        "config/prompts.json",
+    )
 
     if should_run:
         print("Launching application...")

@@ -1,10 +1,12 @@
 import threading
 from .base import Sink
 
+
 class CompositeSink(Sink):
     """
     A Sink that forwards chunks to multiple underlying sinks.
     """
+
     def __init__(self, sinks: list[Sink], cancel_event: threading.Event = None):
         super().__init__(cancel_event)
         self.sinks = sinks
@@ -19,5 +21,5 @@ class CompositeSink(Sink):
         if self.cancel_event.is_set():
             return
         for sink in self.sinks:
-            if hasattr(sink, 'finish'):
+            if hasattr(sink, "finish"):
                 sink.finish()

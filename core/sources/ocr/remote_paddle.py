@@ -15,17 +15,17 @@ class RemotePaddleOCREngine(OCREngine):
         self.url = f"http://{config.get('remote_ocr_host', '127.0.0.1')}:{config.get('port', 8000)}/ocr"
         if status_callback:
             status_callback("Remote PaddleOCR Engine Initialized")
-            
+
         if warmup:
             self.warmup(status_callback)
 
     def warmup(self, status_callback=None):
         if status_callback:
             status_callback("Warming up Remote PaddleOCR...")
-            
-        temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+
+        temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         try:
-            img = Image.new('RGB', (100, 100), color='white')
+            img = Image.new("RGB", (100, 100), color="white")
             d = ImageDraw.Draw(img)
             d.text((10, 10), "Warmup Text", fill=(0, 0, 0))
             img.save(temp_file.name)
@@ -36,10 +36,15 @@ class RemotePaddleOCREngine(OCREngine):
             temp_file.close()
             # Intentionally not deleting the file
 
-    def extract_text(self, image_path: str, status_callback=None, cancel_event: threading.Event = None) -> str:
+    def extract_text(
+        self,
+        image_path: str,
+        status_callback=None,
+        cancel_event: threading.Event = None,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("OCR cancelled.")
-            
+
         print("Using remote PaddleOCR engine.")
         if status_callback:
             status_callback("Sending to Remote PaddleOCR...")

@@ -12,9 +12,18 @@ import speech_recognition as sr
 # Configure basic logging
 # logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QComboBox, QTextEdit,
-                             QPushButton, QProgressBar)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QTextEdit,
+    QPushButton,
+    QProgressBar,
+)
 from PyQt6.QtCore import pyqtSignal, QObject
 
 
@@ -40,8 +49,8 @@ class SoundTestApp(QMainWindow):
         self.signals.log_message.connect(self.log)
 
         # Hardcoded model
-        self.piper_model = 'en_US-lessac-high.onnx'
-        self.settings_file = 'sound_test_settings.json'
+        self.piper_model = "en_US-lessac-high.onnx"
+        self.settings_file = "sound_test_settings.json"
 
         self.is_recording = False
         self.playback_done = False
@@ -51,10 +60,10 @@ class SoundTestApp(QMainWindow):
         self.out_combo = QComboBox()
         self.in_combo = QComboBox()
         self.speak_text = QTextEdit()
-        self.heard_text= QTextEdit()
-        self.volume_bar= QProgressBar()
-        self.log_text= QTextEdit()
-        self.action_btn= QPushButton()
+        self.heard_text = QTextEdit()
+        self.volume_bar = QProgressBar()
+        self.log_text = QTextEdit()
+        self.action_btn = QPushButton()
 
         self.init_ui()
 
@@ -112,13 +121,15 @@ class SoundTestApp(QMainWindow):
         for i in range(count):
             try:
                 info = self.p.get_device_info_by_index(i)
-                host_api = self.p.get_host_api_info_by_index(int(info['hostApi']))['name']
-                name = info['name']
+                host_api = self.p.get_host_api_info_by_index(int(info["hostApi"]))[
+                    "name"
+                ]
+                name = info["name"]
                 desc = f"[{host_api}] {name} (Index: {i})"
 
-                if info['maxOutputChannels'] > 0:
+                if info["maxOutputChannels"] > 0:
                     self.out_combo.addItem(desc, i)
-                if info['maxInputChannels'] > 0:
+                if info["maxInputChannels"] > 0:
                     self.in_combo.addItem(desc, i)
             except Exception as e:
                 logging.warning(f"Failed to load device index {i}: {e}")
@@ -127,10 +138,10 @@ class SoundTestApp(QMainWindow):
         logging.debug("Attempting to load last selected devices...")
         if os.path.exists(self.settings_file):
             try:
-                with open(self.settings_file, 'r') as f:
+                with open(self.settings_file, "r") as f:
                     settings = json.load(f)
-                    last_out = settings.get('last_out_index')
-                    last_in = settings.get('last_in_index')
+                    last_out = settings.get("last_out_index")
+                    last_in = settings.get("last_in_index")
 
                     if last_out is not None:
                         idx = self.out_combo.findData(last_out)
@@ -148,8 +159,8 @@ class SoundTestApp(QMainWindow):
     def save_settings(self, out_idx, in_idx):
         logging.debug("Saving last selected devices...")
         try:
-            with open(self.settings_file, 'w') as f:
-                json.dump({'last_out_index': out_idx, 'last_in_index': in_idx}, f)
+            with open(self.settings_file, "w") as f:
+                json.dump({"last_out_index": out_idx, "last_in_index": in_idx}, f)
             logging.debug("Settings saved successfully.")
         except Exception as e:
             logging.error(f"Failed to save settings: {e}")
@@ -190,7 +201,9 @@ class SoundTestApp(QMainWindow):
         self.audio_frames = []
 
         # Run playback and record in separate background threads
-        threading.Thread(target=self.play_audio, args=(text, out_idx), daemon=True).start()
+        threading.Thread(
+            target=self.play_audio, args=(text, out_idx), daemon=True
+        ).start()
         threading.Thread(target=self.record_audio, args=(in_idx,), daemon=True).start()
 
     def play_audio(self, text, device_index):
@@ -198,13 +211,17 @@ class SoundTestApp(QMainWindow):
             from piper import PiperVoice
 
             if not os.path.exists(self.piper_model):
-                self.signals.log_message.emit(f"Piper model not found at {self.piper_model}")
+                self.signals.log_message.emit(
+                    f"Piper model not found at {self.piper_model}"
+                )
                 self.signals.playback_finished.emit()
                 return
 
             piper_config_path = self.piper_model + ".json"
             if not os.path.exists(piper_config_path):
-                self.signals.log_message.emit(f"Piper config not found at {piper_config_path}")
+                self.signals.log_message.emit(
+                    f"Piper config not found at {piper_config_path}"
+                )
                 self.signals.playback_finished.emit()
                 return
 
@@ -217,12 +234,14 @@ class SoundTestApp(QMainWindow):
 
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
 
-            wf = wave.open(wav_file, 'rb')
-            stream = self.p.open(format=self.p.get_format_from_width(wf.getsampwidth()),
-                                 channels=wf.getnchannels(),
-                                 rate=wf.getframerate(),
-                                 output=True,
-                                 output_device_index=device_index)
+            wf = wave.open(wav_file, "rb")
+            stream = self.p.open(
+                format=self.p.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                output_device_index=device_index,
+            )
 
             data = wf.readframes(1024)
             while data and not self.playback_done:
@@ -241,7 +260,9 @@ class SoundTestApp(QMainWindow):
     def record_audio(self, device_index):
         try:
             r = sr.Recognizer()
-            self.signals.log_message.emit(f"Starting recording on device {device_index}...")
+            self.signals.log_message.emit(
+                f"Starting recording on device {device_index}..."
+            )
 
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
@@ -263,11 +284,15 @@ class SoundTestApp(QMainWindow):
                         self.signals.log_message.emit(f"Recording error: {e}")
                         break
 
-            self.signals.log_message.emit("Recording stopped. Processing speech recognition...")
+            self.signals.log_message.emit(
+                "Recording stopped. Processing speech recognition..."
+            )
             self.signals.update_volume.emit(0)
 
             if self.audio_frames:
-                audio_data = sr.AudioData(b''.join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+                audio_data = sr.AudioData(
+                    b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
+                )
                 try:
                     recognized_text = r.recognize_google(audio_data)  # type: ignore[attr-defined]
                     self.signals.update_heard.emit(recognized_text)
@@ -275,13 +300,22 @@ class SoundTestApp(QMainWindow):
 
                     original_text = self.speak_text.toPlainText().lower()
                     # Perform a simple check if the recognized text resembles the original
-                    if recognized_text.lower() in original_text or original_text in recognized_text.lower():
-                        self.signals.log_message.emit("Result: SUCCESS - Recognized text matches original.")
+                    if (
+                        recognized_text.lower() in original_text
+                        or original_text in recognized_text.lower()
+                    ):
+                        self.signals.log_message.emit(
+                            "Result: SUCCESS - Recognized text matches original."
+                        )
                     else:
-                        self.signals.log_message.emit("Result: FAILURE - Texts do not match closely.")
+                        self.signals.log_message.emit(
+                            "Result: FAILURE - Texts do not match closely."
+                        )
 
                 except sr.UnknownValueError:
-                    self.signals.log_message.emit("Speech Recognition could not understand audio.")
+                    self.signals.log_message.emit(
+                        "Speech Recognition could not understand audio."
+                    )
                 except sr.RequestError as e:
                     self.signals.log_message.emit(f"Could not request results; {e}")
 
@@ -290,8 +324,13 @@ class SoundTestApp(QMainWindow):
         finally:
             self.is_recording = False
             import PyQt6.QtCore as QtCore
-            QtCore.QMetaObject.invokeMethod(self.action_btn, "setEnabled", QtCore.Qt.ConnectionType.QueuedConnection,
-                                            QtCore.Q_ARG(bool, True))
+
+            QtCore.QMetaObject.invokeMethod(
+                self.action_btn,
+                "setEnabled",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(bool, True),
+            )
 
     def closeEvent(self, event):
         self.p.terminate()

@@ -1,5 +1,6 @@
 import abc
 
+
 class Source(abc.ABC):
     @property
     @abc.abstractmethod
@@ -15,6 +16,7 @@ class Source(abc.ABC):
     def get_image(self, *args, **kwargs) -> str:
         """Retrieves image path from the source. Raises ValueError if unsupported."""
         pass
+
 
 class ImageSource(Source):
     @property

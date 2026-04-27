@@ -17,7 +17,9 @@ class ScreenshotSource(ImageSource):
             raise ValueError("Capture cancelled.")
 
         if not coords or len(coords) != 4:
-            raise ValueError("Invalid coordinates. Please run coordinate selection again.")
+            raise ValueError(
+                "Invalid coordinates. Please run coordinate selection again."
+            )
 
         bbox = tuple(coords)
         try:
@@ -28,7 +30,7 @@ class ScreenshotSource(ImageSource):
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
 
-        temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         temp_file_path = temp_file.name
         temp_file.close()
 
@@ -37,12 +39,21 @@ class ScreenshotSource(ImageSource):
 
         return temp_file_path
 
-    def get_text(self, coords=None, status_callback=None, cancel_event: threading.Event = None, *args, **kwargs) -> str:
+    def get_text(
+        self,
+        coords=None,
+        status_callback=None,
+        cancel_event: threading.Event = None,
+        *args,
+        **kwargs,
+    ) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
 
         if not self.ocr_engine or self.ocr_engine.__class__.__name__ == "NoOCREngine":
-            raise ValueError("ScreenshotSource cannot provide text without an active OCR engine.")
+            raise ValueError(
+                "ScreenshotSource cannot provide text without an active OCR engine."
+            )
 
         image_path = self._capture(coords, cancel_event)
 
@@ -50,9 +61,13 @@ class ScreenshotSource(ImageSource):
             raise ValueError("Capture cancelled.")
 
         try:
-            if hasattr(self.ocr_engine,
-                       'extract_text') and 'cancel_event' in self.ocr_engine.extract_text.__code__.co_varnames:
-                text = self.ocr_engine.extract_text(image_path, status_callback, cancel_event)
+            if (
+                hasattr(self.ocr_engine, "extract_text")
+                and "cancel_event" in self.ocr_engine.extract_text.__code__.co_varnames
+            ):
+                text = self.ocr_engine.extract_text(
+                    image_path, status_callback, cancel_event
+                )
             else:
                 text = self.ocr_engine.extract_text(image_path, status_callback)
             if not text:
@@ -61,7 +76,9 @@ class ScreenshotSource(ImageSource):
         finally:
             pass
 
-    def get_image(self, coords=None, cancel_event: threading.Event = None, *args, **kwargs) -> str:
+    def get_image(
+        self, coords=None, cancel_event: threading.Event = None, *args, **kwargs
+    ) -> str:
         return self._capture(coords, cancel_event)
 
     def cleanup_file(self, filepath):

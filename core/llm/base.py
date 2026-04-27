@@ -20,14 +20,29 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def process_text(self, prompt: str, status_callback=None, enable_stitching=True,
-                     sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_text(
+        self,
+        prompt: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         """Processes a text prompt and returns the generated answer."""
         return "Error: process_text is not implemented for this engine."
 
     @abc.abstractmethod
-    def process_image(self, prompt: str, image_path: str, status_callback=None, enable_stitching=True,
-                      sink: Sink = None, is_main: bool = True, cancel_event: threading.Event = None) -> str:
+    def process_image(
+        self,
+        prompt: str,
+        image_path: str,
+        status_callback=None,
+        enable_stitching=True,
+        sink: Sink = None,
+        is_main: bool = True,
+        cancel_event: threading.Event = None,
+    ) -> str:
         """Processes an image with a text prompt and returns the generated answer."""
         return "Error: process_image is not implemented for this engine."
 

@@ -10,7 +10,10 @@ from paddleocr import PaddleOCR
 from pydantic import BaseModel
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 # Helper function to parse OCR results consistently, based on local_paddleocr_engine.py
 def parse_ocr_results(results):
@@ -20,11 +23,11 @@ def parse_ocr_results(results):
             if not res:
                 continue
             # This handles a specific output format that might be used by some PaddleOCR versions
-            if hasattr(res, 'json'):
+            if hasattr(res, "json"):
                 data = res.json
-                if 'res' in data and 'rec_texts' in data['res']:
-                    texts = data['res']['rec_texts']
-                    scores = data['res']['rec_scores']
+                if "res" in data and "rec_texts" in data["res"]:
+                    texts = data["res"]["rec_texts"]
+                    scores = data["res"]["rec_scores"]
                     for text, score in zip(texts, scores):
                         if score >= 0.5:
                             text_lines.append(text)
@@ -35,23 +38,24 @@ def parse_ocr_results(results):
                     confidence = line[1][1]
                     if confidence >= 0.5:
                         text_lines.append(text)
-    
+
     return " ".join(text_lines)
+
 
 # Initialize ONCE on boot
 logging.info("Loading OCR weights...")
-os.environ['GLOG_minloglevel'] = '2'
+os.environ["GLOG_minloglevel"] = "2"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 ocr = PaddleOCR(
-    lang='en',
+    lang="en",
     use_textline_orientation=False,
     use_doc_unwarping=False,
 )
 logging.info("OCR Engine Ready.")
 
 # Create a dummy image with text for warmup
-img = Image.new('RGB', (200, 50), color=(255, 255, 255))
+img = Image.new("RGB", (200, 50), color=(255, 255, 255))
 d = ImageDraw.Draw(img)
 warmup_text_input = "Warmup Text"
 d.text((10, 10), warmup_text_input, fill=(0, 0, 0))
@@ -60,11 +64,13 @@ open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB to BGR
 warmup_result = ocr.ocr(open_cv_image)
 
 warmup_extracted_text = parse_ocr_results(warmup_result)
-    
+
 if warmup_text_input in warmup_extracted_text:
     logging.info(f"OCR Engine Warmed Up. Recognized text: '{warmup_extracted_text}'")
 else:
-    logging.info(f"OCR Engine Warmed Up. Warning: Recognized text '{warmup_extracted_text}' did not match expected '{warmup_text_input}'")
+    logging.info(
+        f"OCR Engine Warmed Up. Warning: Recognized text '{warmup_extracted_text}' did not match expected '{warmup_text_input}'"
+    )
 
 
 class ImageRequest(BaseModel):
@@ -94,11 +100,13 @@ async def extract_text(request: ImageRequest):
 
     # 4. Extract just the text
     extracted_text = parse_ocr_results(result)
-    
+
     logging.info(f"Recognized text: {extracted_text}")
 
     return {"text": extracted_text}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8000)

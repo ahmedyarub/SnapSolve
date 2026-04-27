@@ -8,10 +8,11 @@ from typing import List, Dict, Any, Optional
 SESSIONS_DIR = "sessions"
 IMAGES_DIR = os.path.join(SESSIONS_DIR, "images")
 
+
 class SessionManager:
     def __init__(self, config: dict):
         self.config = config
-        self.save_images = config.get('save_images', False)
+        self.save_images = config.get("save_images", False)
         self.current_session_id = None
         self.title = None
 
@@ -23,10 +24,10 @@ class SessionManager:
 
     def _init_session(self):
         """Initializes a session based on config or starts a new one."""
-        if self.config.get('continue_last'):
+        if self.config.get("continue_last"):
             self._load_last_session()
-        elif self.config.get('continue_session'):
-            self._load_session(self.config['continue_session'])
+        elif self.config.get("continue_session"):
+            self._load_session(self.config["continue_session"])
 
         if not self.current_session_id:
             self.start_new_session()
@@ -45,18 +46,22 @@ class SessionManager:
             self.current_session_id = session_id
             print(f"[SessionManager] Resumed session: {session_id}")
         else:
-            print(f"[SessionManager] Session {session_id} not found. Starting new session.")
+            print(
+                f"[SessionManager] Session {session_id} not found. Starting new session."
+            )
 
     def _load_last_session(self):
-        files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith('.json')]
+        files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith(".json")]
         if not files:
             return
 
         # Sort by modification time, newest first
-        files.sort(key=lambda x: os.path.getmtime(os.path.join(SESSIONS_DIR, x)), reverse=True)
+        files.sort(
+            key=lambda x: os.path.getmtime(os.path.join(SESSIONS_DIR, x)), reverse=True
+        )
 
         last_file = files[0]
-        self.current_session_id = last_file.replace('.json', '')
+        self.current_session_id = last_file.replace(".json", "")
         print(f"[SessionManager] Resumed last session: {self.current_session_id}")
 
     def get_history(self) -> List[Dict[str, Any]]:
@@ -69,32 +74,38 @@ class SessionManager:
             return []
 
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                self.title = data.get('title')
-                return data.get('history', [])
+                self.title = data.get("title")
+                return data.get("history", [])
         except (json.JSONDecodeError, IOError):
             return []
 
-    def append_interaction(self, prompt: str, image_path: Optional[str], response: str, extracted_text: Optional[str]):
+    def append_interaction(
+        self,
+        prompt: str,
+        image_path: Optional[str],
+        response: str,
+        extracted_text: Optional[str],
+    ):
         """Appends a new interaction to the current session."""
         history = self.get_history()
 
         # Set title if it's the first interaction
         if not history and prompt:
             # Simple title generation: take the first 50 chars of the prompt
-            self.title = prompt.strip().split('\n')[0][:50]
+            self.title = prompt.strip().split("\n")[0][:50]
 
         interaction = {
             "timestamp": time.time(),
             "prompt": prompt,
             "response": response,
-            "extracted_text": extracted_text
+            "extracted_text": extracted_text,
         }
 
         if image_path and self.save_images and os.path.exists(image_path):
             # Copy image to sessions/images
-            ext = os.path.splitext(image_path)[1] or '.png'
+            ext = os.path.splitext(image_path)[1] or ".png"
             image_filename = f"{uuid.uuid4()}{ext}"
             new_image_path = os.path.join(IMAGES_DIR, image_filename)
             try:
@@ -115,11 +126,11 @@ class SessionManager:
             "id": self.current_session_id,
             "title": self.title,
             "updated_at": time.time(),
-            "history": history
+            "history": history,
         }
 
         try:
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
         except IOError as e:
             print(f"[SessionManager] Failed to save session data: {e}")

@@ -7,7 +7,7 @@ from typing import Callable, Optional
 import pyaudio
 import speech_recognition as sr
 
-from core.output import show_subtitle, SubtitleWidget
+from core.output import show_subtitle, update_subtitle
 from .base import Source
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,11 @@ class SoundSource(Source):
         self.recognizer = sr.Recognizer()
 
         # Real-time transcription settings
-        self.realtime_transcription = self.config.get('realtime_transcription', True)
-        self.pause_threshold = self.config.get('transcription_pause_threshold', 1.0)
-        self.transcription_interval = self.config.get('transcription_interval', 2.0)  # Transcribe every N seconds during speech
+        self.realtime_transcription = self.config.get("realtime_transcription", True)
+        self.pause_threshold = self.config.get("transcription_pause_threshold", 1.0)
+        self.transcription_interval = self.config.get(
+            "transcription_interval", 2.0
+        )  # Transcribe every N seconds during speech
 
         # Real-time transcription state
         self._transcription_thread: Optional[threading.Thread] = None
@@ -42,7 +44,7 @@ class SoundSource(Source):
             p = pyaudio.PyAudio()
             p.terminate()
 
-            test_file = 'test_sound.wav'
+            test_file = "test_sound.wav"
             logger.info(f"Testing recognition with {test_file}...")
             with sr.AudioFile(test_file) as source:
                 audio_data = self.recognizer.record(source)
@@ -52,7 +54,9 @@ class SoundSource(Source):
                 if text.lower() == expected_text:
                     logger.info(f"Warmup recognition success: {text}")
                 else:
-                    logger.error(f"Warmup recognition failed: expected '{expected_text}', got '{text}'")
+                    logger.error(
+                        f"Warmup recognition failed: expected '{expected_text}', got '{text}'"
+                    )
 
             logger.info("Speech Recognition / PyAudio warmup complete.")
         except sr.UnknownValueError:
@@ -66,14 +70,18 @@ class SoundSource(Source):
     def name(self):
         return "audio"
 
-    def get_text(self, status_callback: Callable[[str], None] = None, *args, **kwargs) -> str:
+    def get_text(
+        self, status_callback: Callable[[str], None] = None, *args, **kwargs
+    ) -> str:
         """This returns the text synchronously if we already have it.
         For interactive capture, we use start_recording/stop_recording manually,
         and the text is returned via a callback or handled in main."""
         # This function might not be used directly like screenshot, since audio is over time
         # The architecture typically calls `process_pipeline` with the extracted text for TextSource,
         # or the image for ImageSource. For Audio, we'll probably extract the text and pass it.
-        raise ValueError("SoundSource does not support synchronous get_text without a pre-recorded buffer.")
+        raise ValueError(
+            "SoundSource does not support synchronous get_text without a pre-recorded buffer."
+        )
 
     def get_image(self, *args, **kwargs) -> str:
         raise ValueError("SoundSource does not support image retrieval.")
@@ -89,7 +97,7 @@ class SoundSource(Source):
         self._current_transcription_buffer = []
         self._last_audio_time = time.time()
 
-        device_name = self.config.get('audio_input_device_name')
+        device_name = self.config.get("audio_input_device_name")
         device_index = None
 
         # Find device index
@@ -97,7 +105,7 @@ class SoundSource(Source):
             p = pyaudio.PyAudio()
             for i in range(p.get_device_count()):
                 info = p.get_device_info_by_index(i)
-                if info['name'] == device_name and info['maxInputChannels'] > 0:
+                if info["name"] == device_name and info["maxInputChannels"] > 0:
                     device_index = i
                     break
             p.terminate()
@@ -133,7 +141,9 @@ class SoundSource(Source):
         # Start real-time transcription thread if enabled
         if self.realtime_transcription:
             logger.info("Starting real-time transcription worker thread")
-            self._transcription_thread = threading.Thread(target=self._realtime_transcription_worker, daemon=True)
+            self._transcription_thread = threading.Thread(
+                target=self._realtime_transcription_worker, daemon=True
+            )
             assert self._transcription_thread is not None
             self._transcription_thread.start()
             logger.info("Real-time transcription worker thread started")
@@ -156,7 +166,9 @@ class SoundSource(Source):
                     data, timestamp = self._audio_queue.get(timeout=0.1)
                     transcription_buffer.append(data)
                     if loop_count % 10 == 0:  # Log every 10 loops
-                        logger.debug(f"Audio buffer size: {len(transcription_buffer)} chunks")
+                        logger.debug(
+                            f"Audio buffer size: {len(transcription_buffer)} chunks"
+                        )
                 except queue.Empty:
                     # Queue is empty, which means we're in a potential pause.
                     pass  # Proceed to check for pause logic below.
@@ -168,16 +180,27 @@ class SoundSource(Source):
                 should_transcribe = False
                 is_silence = False
 
-                if time_since_last_audio >= self.pause_threshold and transcription_buffer:
+                if (
+                    time_since_last_audio >= self.pause_threshold
+                    and transcription_buffer
+                ):
                     # Silence detected - finalize current sentence and start new one
                     should_transcribe = True
                     is_silence = True
-                    logger.info(f"Silence detected ({time_since_last_audio:.1f}s), finalizing sentence with {len(transcription_buffer)} chunks")
-                elif (current_time - last_transcription_time >= self.transcription_interval and
-                      transcription_buffer and len(transcription_buffer) > 5):
+                    logger.info(
+                        f"Silence detected ({time_since_last_audio:.1f}s), finalizing sentence with {len(transcription_buffer)} chunks"
+                    )
+                elif (
+                    current_time - last_transcription_time
+                    >= self.transcription_interval
+                    and transcription_buffer
+                    and len(transcription_buffer) > 5
+                ):
                     # Regular interval during speech - transcribe and append to current sentence
                     should_transcribe = True
-                    logger.info(f"Interval reached ({self.transcription_interval}s), transcribing buffer with {len(transcription_buffer)} chunks")
+                    logger.info(
+                        f"Interval reached ({self.transcription_interval}s), transcribing buffer with {len(transcription_buffer)} chunks"
+                    )
 
                 if should_transcribe:
                     new_text = self._transcribe_buffer(transcription_buffer)
@@ -188,13 +211,17 @@ class SoundSource(Source):
                         if is_silence:
                             # Silence detected - show current sentence and start new one
                             if current_sentence:
-                                # Show the accumulated sentence
-                                self._display_subtitle(current_sentence)
+                                # Show the accumulated sentence (update last one)
+                                self._display_subtitle(
+                                    current_sentence, update_last=True
+                                )
                                 logger.info(f"Finalized sentence: {current_sentence}")
                                 current_sentence = ""
                             # Start new sentence with the new text
                             current_sentence = new_text
                             logger.info(f"Starting new sentence: {current_sentence}")
+                            # Display the new sentence as a new subtitle
+                            self._display_subtitle(current_sentence, update_last=False)
                         else:
                             # Interval during speech - append to current sentence and display
                             if current_sentence:
@@ -206,8 +233,8 @@ class SoundSource(Source):
                                 current_sentence = new_text
                                 logger.info(f"Started sentence: {current_sentence}")
 
-                            # Display the accumulated sentence during intervals
-                            self._display_subtitle(current_sentence)
+                            # Display the accumulated sentence during intervals (update last one)
+                            self._display_subtitle(current_sentence, update_last=True)
 
             except Exception as e:
                 logger.error(f"Real-time transcription error: {e}")
@@ -215,7 +242,9 @@ class SoundSource(Source):
 
         # Transcribe any remaining audio and finalize current sentence
         if transcription_buffer:
-            logger.info(f"Transcribing remaining audio with {len(transcription_buffer)} chunks")
+            logger.info(
+                f"Transcribing remaining audio with {len(transcription_buffer)} chunks"
+            )
             new_text = self._transcribe_buffer(transcription_buffer)
             if new_text:
                 if current_sentence:
@@ -223,10 +252,10 @@ class SoundSource(Source):
                 else:
                     current_sentence = new_text
 
-        # Show the final accumulated sentence
+        # Show the final accumulated sentence (update last one instead of creating new)
         if current_sentence:
             logger.info(f"Final accumulated sentence: {current_sentence}")
-            self._display_subtitle(current_sentence)
+            self._display_subtitle(current_sentence, update_last=True)
 
         logger.info("Real-time transcription worker stopped")
 
@@ -237,10 +266,10 @@ class SoundSource(Source):
 
         try:
             # Combine audio chunks
-            audio_data = b''.join(audio_buffer)
+            audio_data = b"".join(audio_buffer)
 
             # Create AudioData object
-            if not hasattr(self, '_sample_rate') or not hasattr(self, '_sample_width'):
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
                 return ""
 
             sr_audio = sr.AudioData(audio_data, self._sample_rate, self._sample_width)
@@ -262,11 +291,16 @@ class SoundSource(Source):
         return ""
 
     @staticmethod
-    def _display_subtitle(text: str):
+    def _display_subtitle(text: str, update_last: bool = False):
         """Display transcription as subtitle."""
         try:
-            logger.info(f"Attempting to display subtitle: {text}")
-            show_subtitle(text)
+            logger.info(
+                f"Attempting to display subtitle: {text}, update_last: {update_last}"
+            )
+            if update_last:
+                update_subtitle(text)
+            else:
+                show_subtitle(text)
             logger.info("Subtitle display signal sent successfully")
         except Exception as e:
             logger.error(f"Error displaying subtitle: {e}")
@@ -297,16 +331,20 @@ class SoundSource(Source):
 
         try:
             # We saved these when we started the microphone
-            if not hasattr(self, '_sample_rate') or not hasattr(self, '_sample_width'):
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
                 return ""
-            audio_data = sr.AudioData(b''.join(self.audio_frames), self._sample_rate, self._sample_width)
+            audio_data = sr.AudioData(
+                b"".join(self.audio_frames), self._sample_rate, self._sample_width
+            )
             text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
             return text
         except sr.UnknownValueError:
             logger.info("Speech Recognition could not understand audio")
             return ""
         except sr.RequestError as e:
-            logger.error(f"Could not request results from Speech Recognition service; {e}")
+            logger.error(
+                f"Could not request results from Speech Recognition service; {e}"
+            )
             return ""
         except Exception as e:
             logger.error(f"Error during audio processing: {e}")
