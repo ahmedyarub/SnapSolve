@@ -10,8 +10,8 @@ def cycle_until(target_button):
     while True:
         try:
             if (
-                pyautogui.locateCenterOnScreen(target_button, confidence=0.8)
-                is not None
+                    pyautogui.locateCenterOnScreen(target_button, confidence=0.8)
+                    is not None
             ):
                 return
         except pyautogui.ImageNotFoundException:
@@ -86,7 +86,18 @@ def find_text(text, popup_x, popup_y):
     return False
 
 
-def click_button(image, timeout=10, check_once=False):
+def find_button(image, timeout=10, check_once=False):
+    """
+    Finds a button on screen using image recognition with optional polling.
+
+    Args:
+        image: Path to the button image to search for.
+        timeout: Maximum time to wait in seconds (only used if check_once=False).
+        check_once: If True, only checks once without polling.
+
+    Returns:
+        The (x,y) coordinates of the button if found, None otherwise.
+    """
     if check_once:
         try:
             button_location = pyautogui.locateCenterOnScreen(image, confidence=0.8)
@@ -94,21 +105,62 @@ def click_button(image, timeout=10, check_once=False):
                 print(
                     f"Could not find the button '{image}' on the screen (checked once)."
                 )
-                return True
+                return None
         except pyautogui.ImageNotFoundException:
             print(f"Could not find the button '{image}' on the screen (checked once).")
-            return True
+            return None
     else:
         button_location = poll_button(image, visible=True, timeout=timeout)
 
         if button_location is None:
             print(f"Could not find the button '{image}' on the screen.")
-            return False
+            return None
+
+    return button_location
+
+
+def click_button(image, timeout=10, check_once=False):
+    button_location = find_button(image, timeout=timeout, check_once=check_once)
+
+    if button_location is None:
+        return False
 
     print("Button found! Clicking...")
     pyautogui.click(button_location)
 
     return True
+
+
+def mouse_down_button(image, timeout=10, check_once=False):
+    """
+    Performs a mouse down action on a button (press and hold).
+
+    Args:
+        image: Path to the button image to search for.
+        timeout: Maximum time to wait in seconds (only used if check_once=False).
+        check_once: If True, only checks once without polling.
+
+    Returns:
+        True if the button was found and mouse down was performed, False otherwise.
+    """
+    button_location = find_button(image, timeout=timeout, check_once=check_once)
+
+    if button_location is None:
+        return False
+
+    print("Button found! Performing mouse down...")
+    pyautogui.mouseDown(button_location)
+
+    return True
+
+
+def mouse_up_button():
+    """
+    Performs a mouse up action (release).
+    """
+
+    print("Button found! Performing mouse up...")
+    pyautogui.mouseUp()
 
 
 def minimize_all_windows():

@@ -31,7 +31,6 @@ from config import (
     TTS_INPUT_DEVICE_NAME,
     WORKING_DIR,
     RECORD_BUTTON,
-    STOP_RECORD_BUTTON,
     TTS_OUTPUT_DEVICE_NAME,
 )
 from network_utils import check_port_in_use, poll_port
@@ -41,7 +40,7 @@ from ui_utils import (
     cycle_until,
     find_text,
     minimize_all_windows,
-    poll_button,
+    poll_button, mouse_down_button, mouse_up_button,
 )
 
 # --- Global variables for background recording ---
@@ -249,13 +248,15 @@ def test_audio_source():
 
     cycle_until(RECORD_BUTTON)
 
-    click_button(RECORD_BUTTON)
+    mouse_down_button(RECORD_BUTTON)
 
     time.sleep(1)
 
     speak(BASIC_QUESTION, TTS_OUTPUT_DEVICE_NAME)
 
-    click_button(STOP_RECORD_BUTTON)
+    time.sleep(1)
+
+    mouse_up_button()
 
     time.sleep(1)
 
