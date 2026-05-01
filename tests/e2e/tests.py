@@ -66,9 +66,12 @@ def show_test_summary():
     print("=" * 60)
 
     for test_name, result in test_results.items():
-        status_symbol = (
-            "❓" if result == "NOT_RUN" else ("✅" if result == "PASSED" else "❌")
-        )
+        if result == "NOT_RUN":
+            status_symbol = "❓"
+        elif result == "PASSED":
+            status_symbol = "✅"
+        else:
+            status_symbol = "❌"
         print(f"{status_symbol} {test_name}: {result}")
 
     print("=" * 60)

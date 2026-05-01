@@ -5,3 +5,5 @@ config.json
 sessions/
 *.onnx
 *.onnx.json
+tests/sound_test_settings.json
+/.scannerwork/

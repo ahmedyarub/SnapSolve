@@ -36,13 +36,16 @@ fi
 # 3. SonarQube Scanner
 echo "Running SonarQube Quality Gate..."
 
-# 1. Run the scanner
+# 1. Run the container
+docker start sonarqube
+
+# 2. Run the scanner
 sonar-scanner -Dsonar.qualitygate.wait=true -Dsonar.python.version=3
 SONAR_EXIT_CODE=$?
 
-# 2. Fetch the issues directly from the SonarQube API
+# 3. Fetch the issues directly from the SonarQube API
 SONAR_URL="http://localhost:9000"
-PROJECT_KEY="SnapSolve"          # Update this to your exact sonar.projectKey
+PROJECT_KEY="SnapSolve" # Update this to your exact sonar.projectKey
 
 echo -e "\n\e[36m--- SonarQube Issues Report ---\e[0m"
 

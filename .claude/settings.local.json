@@ -9,7 +9,14 @@
       "Bash(pwsh *)",
       "Bash(./scripts/verify.ps1 *)",
       "Bash(ruff format *)",
-      "Bash(ruff check *)"
+      "Bash(ruff check *)",
+      "PowerShell(New-BurntToastNotification *)",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Bash(Select-String -Pattern \"Verification|Failed|Success|Error\" -Context 0,2)",
+      "PowerShell(pwsh -File scripts/verify.ps1)",
+      "PowerShell(ruff format *)",
+      "Bash(Select-String -Pattern \"Verification|FAILED|PASSED|quality gate\" -Context 0,2)"
     ]
   }
 }

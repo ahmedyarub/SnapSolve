@@ -11,3 +11,4 @@ outputs success.
 
 When done with any task, run the following PowerShell commannd to notify me that the task is done:
 `New-BurntToastNotification -Text 'Claude Code', 'I am done with the loop!'`
+Don't run it in bash.

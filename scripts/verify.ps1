@@ -34,11 +34,17 @@ try
     # 3. SonarQube Scanner
     Write-Host "Running SonarQube Scanner..." -ForegroundColor Yellow
 
-    # 1. Run the scanner
+    # Populate SonarToken from environment variable
+    $SonarToken = $env:SONAR_TOKEN
+
+    # 1. Run the container
+    wsl bash -c "docker start sonarqube"
+
+    # 2. Run the scanner
     sonar-scanner.bat "-Dsonar.qualitygate.wait=true" "-Dsonar.python.version=3"
     $sonarExitCode = $LASTEXITCODE
 
-    # 2. Fetch the issues directly from the SonarQube API
+    # 3. Fetch the issues directly from the SonarQube API
     $SonarUrl = "http://localhost:9000"
     $ProjectKey = "SnapSolve"  # Update this to your exact sonar.projectKey
 
