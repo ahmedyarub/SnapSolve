@@ -203,7 +203,9 @@ class PopupWidget(QWidget):
 
 class RecordButton(QPushButton):
     # Signals for different actions
-    start_recording = pyqtSignal(object)  # Pass enable_transcription flag (can be None or bool)
+    start_recording = pyqtSignal(
+        object
+    )  # Pass enable_transcription flag (can be None or bool)
     stop_recording = pyqtSignal()
 
     def __init__(self, text, style):
