@@ -626,7 +626,7 @@ def handle_cancel():
     # set_processing(False)
 
 
-def handle_start_record(config):
+def handle_start_record(config, enable_transcription):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
@@ -644,7 +644,9 @@ def handle_start_record(config):
                 }
             )
 
-    active_source.start_recording(status_callback=status_update)
+    active_source.start_recording(
+        status_callback=status_update, enable_transcription=enable_transcription
+    )
 
 
 def handle_stop_record(config, active_profile, _active_prompt_text):
@@ -875,7 +877,9 @@ def main():
         "toggle_stitching": lambda: handle_toggle_stitching(config, active_profile),
         "cycle_source": lambda: handle_cycle_source(config, active_profile),
         "text_submit": lambda text: handle_text_submit(config, active_profile, text),
-        "start_record": lambda: handle_start_record(config),
+        "start_record": lambda enable_transcription: handle_start_record(
+            config, enable_transcription
+        ),
         "stop_record": lambda: handle_stop_record(
             config, active_profile, active_prompt_text
         ),

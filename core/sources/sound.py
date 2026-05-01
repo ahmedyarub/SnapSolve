@@ -86,7 +86,11 @@ class SoundSource(Source):
     def get_image(self, *args, **kwargs) -> str:
         raise ValueError("SoundSource does not support image retrieval.")
 
-    def start_recording(self, status_callback: Callable[[str], None] = None):
+    def start_recording(
+        self,
+        status_callback: Callable[[str], None] = None,
+        enable_transcription: bool = None,
+    ):
         if self.is_recording:
             return
 
@@ -96,6 +100,10 @@ class SoundSource(Source):
         self._transcription_stop_event.clear()
         self._current_transcription_buffer = []
         self._last_audio_time = time.time()
+
+        # Override transcription setting if explicitly provided
+        if enable_transcription is not None:
+            self.realtime_transcription = enable_transcription
 
         device_name = self.config.get("audio_input_device_name")
         device_index = None

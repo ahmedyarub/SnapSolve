@@ -203,7 +203,7 @@ class PopupWidget(QWidget):
 
 class RecordButton(QPushButton):
     # Signals for different actions
-    start_recording = pyqtSignal()
+    start_recording = pyqtSignal(object)  # Pass enable_transcription flag (can be None or bool)
     stop_recording = pyqtSignal()
 
     def __init__(self, text, style):
@@ -248,7 +248,9 @@ class RecordButton(QPushButton):
         self.setStyleSheet(
             self.styleSheet().replace("rgba(45, 45, 45, 180)", "rgba(178, 34, 34, 0.7)")
         )
-        self.start_recording.emit()
+        # Disable transcription for long press, use config for click
+        enable_transcription = None if not self.is_long_press else False
+        self.start_recording.emit(enable_transcription)
 
     def stop_record_action(self):
         self.is_recording = False
@@ -477,11 +479,13 @@ class SubtitleWidget(QWidget):
                 self.update_position()
 
 
-def call_action(action):
+def call_action(action, *args):
     if action in _app_callbacks:
         try:
             # Run callback in background thread so it doesn't block UI
-            threading.Thread(target=_app_callbacks[action], daemon=True).start()
+            threading.Thread(
+                target=_app_callbacks[action], args=args, daemon=True
+            ).start()
         except Exception as e:
             print(f"Error calling {action}: {e}")
 
@@ -530,7 +534,11 @@ class PanelWidget(QWidget):
             return btn
 
         self.btn_record = RecordButton("🎙️ Record", btn_style)
-        self.btn_record.start_recording.connect(lambda: call_action("start_record"))
+        self.btn_record.start_recording.connect(
+            lambda enable_transcription: call_action(
+                "start_record", enable_transcription
+            )
+        )
         self.btn_record.stop_recording.connect(lambda: call_action("stop_record"))
         self.layout.addWidget(self.btn_record)
         self.buttons["record"] = self.btn_record
