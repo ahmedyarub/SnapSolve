@@ -40,7 +40,9 @@ from ui_utils import (
     cycle_until,
     find_text,
     minimize_all_windows,
-    poll_button, mouse_down_button, mouse_up_button,
+    poll_button,
+    mouse_down_button,
+    mouse_up_button,
 )
 
 # --- Global variables for background recording ---
