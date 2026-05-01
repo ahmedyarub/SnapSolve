@@ -1,0 +1,3 @@
+[submodule "services/whisperlive"]
+	path = services/whisperlive
+	url = https://github.com/collabora/WhisperLive.git

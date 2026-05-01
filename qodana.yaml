@@ -6,3 +6,7 @@ version: "1.0"
 linter: qodana-python-community
 profile:
   name: qodana.recommended
+exclude:
+  - name: All
+    paths:
+      - services/whisperlive
