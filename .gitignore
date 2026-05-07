@@ -7,3 +7,5 @@ sessions/
 *.onnx.json
 tests/sound_test_settings.json
 /.scannerwork/
+temp_transcription.wav
+temp_hls_stream/

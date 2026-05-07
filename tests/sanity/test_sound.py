@@ -10,6 +10,10 @@ import wave
 import numpy as np
 import pyaudio
 import speech_recognition as sr
+import http.server
+import socketserver
+import av
+import shutil
 
 # Configure basic logging
 logging.basicConfig(
@@ -166,6 +170,10 @@ class SoundTestApp(QMainWindow):
         self.transcription_client = None
         self.transcription_text = ""
         self.whisperlive_process = None
+
+        self.hls_server = None
+        self.hls_port = 8080
+        self.hls_directory = "temp_hls_stream"
 
         # UI components (initialized in init_ui)
         self.out_combo = QComboBox()
@@ -400,17 +408,18 @@ class SoundTestApp(QMainWindow):
         self.audio_frames = []
         self.transcription_text = ""
 
+        self.start_hls_server()
+
         # Run playback and record in separate background threads
         threading.Thread(
             target=self.play_audio, args=(text, out_idx), daemon=True
         ).start()
         
-        # We need to record and save it to a file, then pass it to run_transcription
-        def record_and_transcribe():
-            self.record_audio_to_file(in_idx)
-            self.run_transcription()
+        def record_and_stream():
+            self.record_audio_to_hls_stream(in_idx)
 
-        threading.Thread(target=record_and_transcribe, daemon=True).start()
+        threading.Thread(target=record_and_stream, daemon=True).start()
+        threading.Thread(target=self.run_transcription, daemon=True).start()
 
     def play_audio(self, text, device_index):
         try:
@@ -497,15 +506,56 @@ class SoundTestApp(QMainWindow):
         finally:
             self.signals.playback_finished.emit()
 
-    def record_audio_to_file(self, device_index):
-        """Records audio from microphone until playback is done and saves to a file."""
+    def start_hls_server(self):
+        """Start a local HTTP server to host the HLS stream."""
+        if os.path.exists(self.hls_directory):
+            shutil.rmtree(self.hls_directory)
+        os.makedirs(self.hls_directory)
+
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=self.hls_directory, **kwargs)
+            def log_message(self, format, *args):
+                pass
+
+        self.httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+        self.hls_port = self.httpd.server_address[1]
+        self.hls_server = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.hls_server.start()
+        self.signals.log_message.emit(f"HLS server started on port {self.hls_port}")
+
+    def stop_hls_server(self):
+        if self.hls_server and self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+            self.hls_server.join()
+            self.hls_server = None
+            self.httpd = None
+
+    def record_audio_to_hls_stream(self, device_index):
+        """Records audio from microphone and streams it to local HLS container."""
         try:
-            r = sr.Recognizer()
+            m3u8_path = os.path.join(self.hls_directory, 'stream.m3u8')
+
+            container = av.open(
+                m3u8_path,
+                mode='w',
+                format='hls',
+                options={
+                    'hls_time': '1',
+                    'hls_list_size': '5',
+                    'hls_flags': 'delete_segments'
+                }
+            )
+            stream_out = container.add_stream('aac', rate=16000)
+            resampler = av.AudioResampler(format='fltp', layout='mono', rate=16000)
+
             self.signals.log_message.emit(
-                f"Starting recording on device {device_index} for transcription..."
+                f"Starting recording and streaming on device {device_index}..."
             )
 
             audio_data = None
+            pts = 0
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
 
@@ -515,16 +565,31 @@ class SoundTestApp(QMainWindow):
                         self.audio_frames.append(data)
                         self._update_volume_from_audio(data)
 
+                        # Convert PCM to ndarray for AV
+                        samples = np.frombuffer(data, dtype=np.int16)
+                        frame = av.AudioFrame.from_ndarray(samples.reshape(1, -1), format='s16', layout='mono')
+                        frame.sample_rate = source.SAMPLE_RATE
+                        frame.pts = pts
+                        pts += frame.samples
+
+                        # Resample to fltp for AAC encoding
+                        for resampled_frame in resampler.resample(frame):
+                            for packet in stream_out.encode(resampled_frame):
+                                container.mux(packet)
                     except Exception as e:
-                        self.signals.log_message.emit(f"Recording error: {e}")
+                        self.signals.log_message.emit(f"Recording/streaming error: {e}")
                         break
+
+                for packet in stream_out.encode():
+                    container.mux(packet)
+                container.close()
                 
                 audio_data = sr.AudioData(
                     b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
                 )
 
             self.signals.log_message.emit(
-                "Recording stopped. Saving intermediate file..."
+                "Recording and streaming stopped. Saving intermediate file for debugging..."
             )
             self.signals.update_volume.emit(0)
 
@@ -539,11 +604,18 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit(f"Recording thread error: {e}")
 
     def run_transcription(self):
-        """Run transcription test using a pre-recorded audio file."""
+        """Run transcription test by pulling the HLS stream."""
         try:
             self.signals.log_message.emit("Initializing transcription client...")
 
             # Create WhisperLive client
+            # Wait for HLS stream file to be created before connecting
+            m3u8_path = os.path.join(self.hls_directory, 'stream.m3u8')
+            for _ in range(20):
+                if os.path.exists(m3u8_path):
+                    break
+                time.sleep(0.5)
+
             self.transcription_client = WhisperLiveTranscriptionClient(
                 host="localhost",
                 port=9090,
@@ -557,14 +629,9 @@ class SoundTestApp(QMainWindow):
                 transcription_callback=self.on_transcription_result,
             )
 
-            audio_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav")
-            
-            if not os.path.exists(audio_file):
-                self.signals.log_message.emit(f"Could not find test audio file at {audio_file}")
-                return
-
-            self.signals.log_message.emit(f"Starting transcription of {audio_file}...")
-            self.transcription_client(audio_file)
+            hls_url = f"http://localhost:{self.hls_port}/stream.m3u8"
+            self.signals.log_message.emit(f"Starting transcription from HLS stream: {hls_url}...")
+            self.transcription_client(hls_url=hls_url)
             
             self._compare_transcription_results()
 
@@ -618,6 +685,7 @@ class SoundTestApp(QMainWindow):
 
     def _cleanup_transcription(self):
         """Clean up transcription resources."""
+        self.stop_hls_server()
         self.signals.update_volume.emit(0)
         self.is_transcribing = False
         import PyQt6.QtCore as QtCore
@@ -744,6 +812,8 @@ class SoundTestApp(QMainWindow):
 
     def closeEvent(self, event):
         self.p.terminate()
+
+        self.stop_hls_server()
 
         # Clean up WhisperLive process if it was started by this app
         if self.whisperlive_process is not None:
