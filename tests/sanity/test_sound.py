@@ -1,21 +1,22 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 import threading
-import wave
 import time
-import subprocess
-import requests
+import wave
 
 import numpy as np
 import pyaudio
 import speech_recognition as sr
 
 # Configure basic logging
-# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (  # noqa: E402
     QApplication,
     QMainWindow,
     QWidget,
@@ -27,11 +28,11 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QProgressBar,
 )
-from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject  # noqa: E402
 
 # Add WhisperLive to path
 whisperlive_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    str(os.path.dirname(os.path.dirname(str(os.path.dirname(__file__))))),
     "services",
     "whisperlive",
 )
@@ -42,18 +43,31 @@ from whisper_live.client import TranscriptionClient as WhisperLiveTranscriptionC
 
 
 def is_whisperlive_service_online(host="localhost", port=9090):
-    """Check if WhisperLive service is online."""
+    """Check if WhisperLive service is online by checking if port is open."""
     try:
-        response = requests.get(f"http://{host}:{port}/health", timeout=2)
-        return response.status_code == 200
-    except Exception:
+        import socket
+
+        # Simply check if the port is open - don't make a full WebSocket connection
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        sock.close()
+
+        if result == 0:
+            logging.debug(f"Port {port} is open - service appears to be running")
+            return True
+        else:
+            logging.debug(f"Port {port} is not open")
+            return False
+    except Exception as e:
+        logging.debug(f"Service health check failed: {e}")
         return False
 
 
 def start_whisperlive_service():
     """Start WhisperLive service if not already running."""
     whisperlive_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        str(os.path.dirname(str(os.path.dirname(str(os.path.dirname(__file__)))))),
         "services",
         "whisperlive",
     )
@@ -65,6 +79,18 @@ def start_whisperlive_service():
         return None
 
     try:
+        # Check if the service is already running by checking the port
+        import socket
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(("localhost", 9090))
+        sock.close()
+
+        if result == 0:
+            print("WhisperLive service is already running on port 9090")
+            return None  # Service is already running, don't start a new one
+
         # Start the server in a subprocess with extended connection time
         process = subprocess.Popen(
             [
@@ -212,10 +238,27 @@ class SoundTestApp(QMainWindow):
         button_layout.addWidget(self.recording_btn)
 
         self.transcription_btn = QPushButton("Transcription Test")
-        self.transcription_btn.clicked.connect(self.start_transcription_test)
+        # self.transcription_btn.clicked.connect(self.start_transcription_test)
+        self.transcription_btn.clicked.connect(self.start_transcription_test2)
         button_layout.addWidget(self.transcription_btn)
 
         layout.addLayout(button_layout)
+
+    def start_transcription_test2(self):
+        client = WhisperLiveTranscriptionClient(
+            "localhost",
+            9090,
+            lang="en",
+            model="large-v3",
+            use_vad=True,
+            mute_audio_playback=True,
+            enable_translation=False,
+            display_segments=1,
+            send_last_n_segments=3,
+            transcription_callback=self.on_transcription_result
+        )
+
+        client("E:/Python/SnapSolve/temp_output2.wav")
 
     def populate_devices(self):
         count = self.p.get_device_count()
@@ -278,11 +321,11 @@ class SoundTestApp(QMainWindow):
         self.heard_text.setText(text)
 
     def append_heard_text(self, text):
-        current_text = self.heard_text.toPlainText()
-        if current_text:
-            self.heard_text.setText(current_text + " " + text)
-        else:
-            self.heard_text.setText(text)
+        # current_text = self.heard_text.toPlainText()
+        # if current_text:
+        #     self.heard_text.setText(current_text + " " + text)
+        # else:
+        self.heard_text.setText(text)
 
     def on_playback_finished(self):
         self.playback_done = True
@@ -346,25 +389,29 @@ class SoundTestApp(QMainWindow):
             self.log("WhisperLive service is not running. Starting it...")
             self.whisperlive_process = start_whisperlive_service()
             if self.whisperlive_process is None:
-                self.log("Failed to start WhisperLive service. Aborting test.")
-                self.recording_btn.setEnabled(True)
-                self.transcription_btn.setEnabled(True)
-                return
+                self.log("WhisperLive service is already running or failed to start.")
+                # Check again to see if it's actually running
+                if is_whisperlive_service_online():
+                    self.log("WhisperLive service is running. Proceeding with test.")
+                else:
+                    self.log("Failed to start WhisperLive service. Aborting test.")
+                    self.recording_btn.setEnabled(True)
+                    self.transcription_btn.setEnabled(True)
+                    return
 
             # Wait a bit more for the service to be fully ready
             self.log("Waiting for WhisperLive service to be ready...")
             time.sleep(2)
+        else:
+            self.log("WhisperLive service is running. Proceeding with test.")
 
         self.is_transcribing = True
         self.transcription_text = ""
         self.playback_done = False
 
-        # Run playback, recording, and transcription in separate background threads
+        # Run transcription first to get the client ready, then start playback
         threading.Thread(
-            target=self.play_audio, args=(text, out_idx), daemon=True
-        ).start()
-        threading.Thread(
-            target=self.run_transcription, args=(in_idx,), daemon=True
+            target=self.run_transcription, args=(in_idx, text, out_idx), daemon=True
         ).start()
 
     def play_audio(self, text, device_index):
@@ -418,7 +465,7 @@ class SoundTestApp(QMainWindow):
         finally:
             self.signals.playback_finished.emit()
 
-    def run_transcription(self, device_index):
+    def run_transcription(self, device_index, text, out_device_index):
         """Run real-time transcription test."""
         try:
             self.signals.log_message.emit("Initializing transcription client...")
@@ -437,8 +484,19 @@ class SoundTestApp(QMainWindow):
             if not self._wait_for_transcription_server():
                 return
 
-            # Start audio recording immediately
-            self._record_and_stream_audio(device_index)
+            # Start recording BEFORE playback to ensure we capture the audio
+            self.signals.log_message.emit("Starting recording...")
+            threading.Thread(
+                target=self._record_and_stream_audio, args=(device_index,), daemon=True
+            ).start()
+
+            # Start playback after recording has started
+            self.signals.log_message.emit("Starting audio playback...")
+            self.play_audio(text, out_device_index)
+
+            # Wait for recording to complete
+            while self.is_transcribing:
+                time.sleep(0.1)
 
             # Compare transcription with original text
             self._compare_transcription_results()
@@ -456,8 +514,8 @@ class SoundTestApp(QMainWindow):
 
         while not self.transcription_client.client.recording:
             if (
-                self.transcription_client.client.waiting
-                or self.transcription_client.client.server_error
+                    self.transcription_client.client.waiting
+                    or self.transcription_client.client.server_error
             ):
                 self.signals.log_message.emit(
                     "Failed to connect to transcription server."
@@ -512,7 +570,7 @@ class SoundTestApp(QMainWindow):
 
                 # Convert to float and send to server
                 audio_array = (
-                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                        np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
                 )
                 self.transcription_client.client.send_packet_to_server(
                     audio_array.tobytes()
@@ -526,16 +584,25 @@ class SoundTestApp(QMainWindow):
         stream.close()
 
         # Send end of audio signal
-        self.transcription_client.client.send_packet_to_server(
-            WhisperLiveTranscriptionClient.END_OF_AUDIO.encode("utf-8")
-        )
+        try:
+            self.transcription_client.client.send_packet_to_server(
+                self.transcription_client.client.END_OF_AUDIO.encode("utf-8")
+            )
+        except Exception as e:
+            self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
 
-        # Wait for final transcription
+        # Wait for final transcription - increased time for processing
         self.signals.log_message.emit("Processing final transcription...")
-        time.sleep(2)
+        time.sleep(5)  # Increased from 2 to 5 seconds
 
         # Close client
-        self.transcription_client.client.close_websocket()
+        try:
+            self.transcription_client.client.close_websocket()
+        except Exception as e:
+            self.signals.log_message.emit(f"Error closing websocket: {e}")
+
+        # Signal that recording is complete
+        self.is_transcribing = False
 
     def _compare_transcription_results(self):
         """Compare transcription results with original text."""
@@ -593,12 +660,20 @@ class SoundTestApp(QMainWindow):
         )
         self.signals.transcription_finished.emit()
 
-    def on_transcription_result(self, text, segments):
+    def on_transcription_result(self, _, segments):
         """Handle real-time transcription results."""
-        if text and text != self.transcription_text:
-            self.transcription_text = text
-            self.signals.append_heard.emit(text)
-            self.signals.log_message.emit(f"Transcribed: '{text}'")
+        logging.debug(
+            f"Transcription callback received: segments={segments}"
+        )
+        new_text = ""
+        for segment in segments:
+            if new_text:
+                new_text += '\n'
+            new_text += segment['text']
+
+        self.transcription_text = new_text
+        self.signals.append_heard.emit(new_text)
+        self.signals.log_message.emit(f"Transcribed: '{new_text}'")
 
     def record_audio(self, device_index):
         try:
