@@ -17,7 +17,9 @@
       "PowerShell(pwsh -File scripts/verify.ps1)",
       "PowerShell(ruff format *)",
       "Bash(Select-String -Pattern \"Verification|FAILED|PASSED|quality gate\" -Context 0,2)",
-      "Bash(git submodule *)"
+      "Bash(git submodule *)",
+      "Edit",
+      "Bash(New-BurntToastNotification *)"
     ]
   }
 }
