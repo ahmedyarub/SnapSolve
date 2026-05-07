@@ -98,8 +98,13 @@ def start_whisperlive_service():
                 server_script,
                 "--port",
                 "9090",
+                "--backend",
+                "faster_whisper",
+                "--max_clients",
+                "4",
                 "--max_connection_time",
-                "600",  # 10 minutes
+                "60",  # 1 minute
+                "--no_single_model"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -240,27 +245,10 @@ class SoundTestApp(QMainWindow):
         button_layout.addWidget(self.recording_btn)
 
         self.transcription_btn = QPushButton("Transcription Test")
-        # self.transcription_btn.clicked.connect(self.start_transcription_test)
-        self.transcription_btn.clicked.connect(self.start_transcription_test2)
+        self.transcription_btn.clicked.connect(self.start_transcription_test)
         button_layout.addWidget(self.transcription_btn)
 
         layout.addLayout(button_layout)
-
-    def start_transcription_test2(self):
-        client = WhisperLiveTranscriptionClient(
-            "localhost",
-            9090,
-            lang="en",
-            model="large-v3",
-            use_vad=True,
-            mute_audio_playback=True,
-            enable_translation=False,
-            display_segments=1,
-            send_last_n_segments=3,
-            transcription_callback=self.on_transcription_result,
-        )
-
-        client("E:/Python/SnapSolve/temp_output2.wav")
 
     def populate_devices(self):
         count = self.p.get_device_count()
@@ -375,7 +363,6 @@ class SoundTestApp(QMainWindow):
 
         out_idx = self.out_combo.currentData()
         in_idx = self.in_combo.currentData()
-        text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
             self.log("Please select both input and output devices.")
@@ -409,12 +396,8 @@ class SoundTestApp(QMainWindow):
 
         self.is_transcribing = True
         self.transcription_text = ""
-        self.playback_done = False
 
-        # Run transcription first to get the client ready, then start playback
-        threading.Thread(
-            target=self.run_transcription, args=(in_idx, text, out_idx), daemon=True
-        ).start()
+        threading.Thread(target=self.run_transcription, daemon=True).start()
 
     def play_audio(self, text, device_index):
         try:
@@ -501,8 +484,8 @@ class SoundTestApp(QMainWindow):
         finally:
             self.signals.playback_finished.emit()
 
-    def run_transcription(self, device_index, text, out_device_index):
-        """Run real-time transcription test."""
+    def run_transcription(self):
+        """Run transcription test using a pre-recorded audio file."""
         try:
             self.signals.log_message.emit("Initializing transcription client...")
 
@@ -513,175 +496,26 @@ class SoundTestApp(QMainWindow):
                 lang="en",
                 model="large-v3",
                 use_vad=True,
+                mute_audio_playback=True,
+                enable_translation=False,
+                display_segments=1,
+                send_last_n_segments=3,
                 transcription_callback=self.on_transcription_result,
             )
 
-            # Wait for server to be ready
-            if not self._wait_for_transcription_server():
+            audio_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_output2.wav")
+            
+            if not os.path.exists(audio_file):
+                self.signals.log_message.emit(f"Could not find test audio file at {audio_file}")
                 return
 
-            # Start recording BEFORE playback to ensure we capture the audio
-            self.signals.log_message.emit("Starting recording...")
-            threading.Thread(
-                target=self._record_and_stream_audio, args=(device_index,), daemon=True
-            ).start()
-
-            # Start playback after recording has started
-            self.signals.log_message.emit("Starting audio playback...")
-            self.play_audio(text, out_device_index)
-
-            # Wait for recording to complete
-            while self.is_transcribing:
-                time.sleep(0.1)
-
-            # Compare transcription with original text
-            self._compare_transcription_results()
+            self.signals.log_message.emit(f"Starting transcription of {audio_file}...")
+            self.transcription_client(audio_file)
 
         except Exception as e:
             self.signals.log_message.emit(f"Transcription error: {e}")
         finally:
             self._cleanup_transcription()
-
-    def _wait_for_transcription_server(self):
-        """Wait for transcription server to be ready."""
-        self.signals.log_message.emit("Waiting for transcription server...")
-        timeout = 30
-        start_time = time.time()
-
-        while not self.transcription_client.client.recording:
-            if (
-                self.transcription_client.client.waiting
-                or self.transcription_client.client.server_error
-            ):
-                self.signals.log_message.emit(
-                    "Failed to connect to transcription server."
-                )
-                self.signals.transcription_finished.emit()
-                return False
-
-            if time.time() - start_time > timeout:
-                self.signals.log_message.emit(
-                    "Timeout waiting for transcription server."
-                )
-                self.signals.transcription_finished.emit()
-                return False
-
-            time.sleep(0.1)
-
-        self.signals.log_message.emit(
-            "Transcription server ready. Starting recording..."
-        )
-        return True
-
-    def _record_and_stream_audio(self, device_index):
-        """Record audio and stream to transcription server."""
-        chunk = 4096
-        audio_format = pyaudio.paInt16
-        channels = 1
-        rate = 16000
-
-        stream = self.p.open(
-            format=audio_format,
-            channels=channels,
-            rate=rate,
-            input=True,
-            input_device_index=device_index,
-            frames_per_buffer=chunk,
-        )
-
-        self.signals.log_message.emit("Recording audio playback...")
-
-        # Record until playback is done
-        while self.is_transcribing and not self.playback_done:
-            try:
-                data = stream.read(chunk, exception_on_overflow=False)
-                self.audio_frames.append(data)
-
-                # Calculate volume
-                audio_data = np.frombuffer(data, dtype=np.int16)
-                if len(audio_data) > 0:
-                    vol = np.abs(audio_data).mean()
-                    scaled_vol = min(100, int((vol / 32768.0) * 500))
-                    self.signals.update_volume.emit(scaled_vol)
-
-                # Convert to float and send to server
-                audio_array = (
-                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                )
-                self.transcription_client.client.send_packet_to_server(
-                    audio_array.tobytes()
-                )
-
-            except Exception as e:
-                self.signals.log_message.emit(f"Recording error: {e}")
-                break
-
-        stream.stop_stream()
-        stream.close()
-
-        # Send end of audio signal
-        try:
-            self.transcription_client.client.send_packet_to_server(
-                self.transcription_client.client.END_OF_AUDIO.encode("utf-8")
-            )
-        except Exception as e:
-            self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
-
-        # Wait for final transcription - increased time for processing
-        self.signals.log_message.emit("Processing final transcription...")
-        time.sleep(5)  # Increased from 2 to 5 seconds
-
-        # Close client
-        try:
-            self.transcription_client.client.close_websocket()
-        except Exception as e:
-            self.signals.log_message.emit(f"Error closing websocket: {e}")
-
-        # Signal that recording is complete
-        self.is_transcribing = False
-
-    def _compare_transcription_results(self):
-        """Compare transcription results with original text."""
-        original_text = self.speak_text.toPlainText().lower()
-        transcribed_text = self.transcription_text.lower()
-
-        # Normalize line breaks for comparison
-        original_normalized = " ".join(original_text.split())
-        transcribed_normalized = " ".join(transcribed_text.split())
-
-        self.signals.log_message.emit(f"Original text: '{original_text}'")
-        self.signals.log_message.emit(f"Transcribed text: '{transcribed_text}'")
-
-        # Check for empty transcription first
-        if not transcribed_text.strip():
-            self.signals.log_message.emit(
-                "Result: FAILURE - No transcription received."
-            )
-            return
-
-        # Check for exact match (normalized)
-        if (
-            transcribed_normalized in original_normalized
-            or original_normalized in transcribed_normalized
-        ):
-            self.signals.log_message.emit(
-                "Result: SUCCESS - Transcribed text matches original."
-            )
-        else:
-            # Check for partial match
-            words_original = set(original_normalized.split())
-            words_transcribed = set(transcribed_normalized.split())
-            common_words = words_original & words_transcribed
-
-            if len(common_words) > 0:
-                match_ratio = len(common_words) / max(
-                    len(words_original), len(words_transcribed)
-                )
-                self.signals.log_message.emit(
-                    f"Result: PARTIAL MATCH - {match_ratio:.1%} of words match."
-                )
-            else:
-                self.signals.log_message.emit("Result: FAILURE - Texts do not match.")
 
     def _cleanup_transcription(self):
         """Clean up transcription resources."""
