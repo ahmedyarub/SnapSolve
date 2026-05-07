@@ -104,7 +104,7 @@ def start_whisperlive_service():
                 "4",
                 "--max_connection_time",
                 "60",  # 1 minute
-                "--no_single_model"
+                "--no_single_model",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -404,7 +404,7 @@ class SoundTestApp(QMainWindow):
         threading.Thread(
             target=self.play_audio, args=(text, out_idx), daemon=True
         ).start()
-        
+
         # We need to record and save it to a file, then pass it to run_transcription
         def record_and_transcribe():
             self.record_audio_to_file(in_idx)
@@ -500,7 +500,6 @@ class SoundTestApp(QMainWindow):
     def record_audio_to_file(self, device_index):
         """Records audio from microphone until playback is done and saves to a file."""
         try:
-            r = sr.Recognizer()
             self.signals.log_message.emit(
                 f"Starting recording on device {device_index} for transcription..."
             )
@@ -518,7 +517,7 @@ class SoundTestApp(QMainWindow):
                     except Exception as e:
                         self.signals.log_message.emit(f"Recording error: {e}")
                         break
-                
+
                 audio_data = sr.AudioData(
                     b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
                 )
@@ -530,11 +529,13 @@ class SoundTestApp(QMainWindow):
 
             if audio_data:
                 wav_data = audio_data.get_wav_data()
-                temp_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav")
+                temp_file = os.path.join(
+                    str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav"
+                )
                 with open(temp_file, "wb") as f:
                     f.write(wav_data)
                 self.signals.log_message.emit(f"Saved audio to {temp_file}")
-                
+
         except Exception as e:
             self.signals.log_message.emit(f"Recording thread error: {e}")
 
@@ -557,15 +558,19 @@ class SoundTestApp(QMainWindow):
                 transcription_callback=self.on_transcription_result,
             )
 
-            audio_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav")
-            
+            audio_file = os.path.join(
+                str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav"
+            )
+
             if not os.path.exists(audio_file):
-                self.signals.log_message.emit(f"Could not find test audio file at {audio_file}")
+                self.signals.log_message.emit(
+                    f"Could not find test audio file at {audio_file}"
+                )
                 return
 
             self.signals.log_message.emit(f"Starting transcription of {audio_file}...")
             self.transcription_client(audio_file)
-            
+
             self._compare_transcription_results()
 
         except Exception as e:

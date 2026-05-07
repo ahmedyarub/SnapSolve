@@ -1,6 +1,4 @@
-import os
-import wave
-
+import numpy as np
 import pyaudio
 import speech_recognition as sr
 from piper import PiperVoice
@@ -59,57 +57,55 @@ def speak(text: str, output_device: str):
 
     print(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
 
-    wav_file = "temp_output.wav"
+    # Stream audio directly without creating a .wav file
+    p = pyaudio.PyAudio()
 
-    # Synthesize directly to a WAV file
-    with wave.open(wav_file, "wb") as wav:
-        voice.synthesize_wav(text, wav)
+    target_device_index: int | None = None
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
 
-    print(f"Audio synthesized to {wav_file}. Attempting playback.")
-
-    # Play the audio using PyAudio
-    if os.path.exists(wav_file):
-        wf = wave.open(wav_file, "rb")
-        p = pyaudio.PyAudio()
-
-        target_device_index: int | None = None
-        for i in range(p.get_device_count()):
-            info = p.get_device_info_by_index(i)
-            host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
-
-            # Hardcode "MME" for comparison
-            if info["name"] == output_device and host_api_name == "MME":
-                target_device_index = int(info["index"])
-                print(
-                    f"Found configured audio device: {output_device} (MME) at index {target_device_index}"
-                )
-                break
-        if target_device_index is None:
+        # Hardcode "MME" for comparison
+        if info["name"] == output_device and host_api_name == "MME":
+            target_device_index = int(info["index"])
             print(
-                f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
+                f"Found configured audio device: {output_device} (MME) at index {target_device_index}"
             )
-
-        # Attempt to open stream with the target device index
-        stream = p.open(
-            format=p.get_format_from_width(wf.getsampwidth()),
-            channels=wf.getnchannels(),
-            rate=wf.getframerate(),
-            output=True,
-            output_device_index=target_device_index,
+            break
+    if target_device_index is None:
+        print(
+            f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
         )
-        print(f"Playing audio on device index: {target_device_index}")
 
-        # Playback loop
-        data = wf.readframes(1024)
-        while data:
-            stream.write(data)
-            data = wf.readframes(1024)
+    # Get the first chunk to determine audio format
+    first_chunk = None
+    for chunk in voice.synthesize(text):
+        first_chunk = chunk
+        break
 
-        stream.stop_stream()
-        stream.close()
-        wf.close()
+    if first_chunk is None:
+        print("No audio chunks generated.")
         p.terminate()
+        return
 
-        print(f"Playback of {wav_file} completed.")
+    # Open stream with the audio format from the first chunk
+    stream = p.open(
+        format=p.get_format_from_width(first_chunk.sample_width),
+        channels=first_chunk.sample_channels,
+        rate=first_chunk.sample_rate,
+        output=True,
+        output_device_index=target_device_index,
+    )
+    print(f"Playing audio on device index: {target_device_index}")
 
-        os.remove(wav_file)
+    # Stream all audio chunks
+    for chunk in voice.synthesize(text):
+        # Convert float array to bytes for PyAudio
+        audio_bytes = chunk.audio_float_array.astype(np.int16).tobytes()
+        stream.write(audio_bytes)
+
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+
+    print("Audio playback completed.")
