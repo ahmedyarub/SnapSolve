@@ -196,7 +196,9 @@ class SoundTestApp(QMainWindow):
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
-        self.speak_text.setText("this is a test of the audio system")
+        self.speak_text.setText(
+            "this is a test of the audio system\nand this is a second line"
+        )
         self.speak_text.setMaximumHeight(80)
         layout.addWidget(self.speak_text)
 
@@ -255,7 +257,7 @@ class SoundTestApp(QMainWindow):
             enable_translation=False,
             display_segments=1,
             send_last_n_segments=3,
-            transcription_callback=self.on_transcription_result
+            transcription_callback=self.on_transcription_result,
         )
 
         client("E:/Python/SnapSolve/temp_output2.wav")
@@ -417,6 +419,7 @@ class SoundTestApp(QMainWindow):
     def play_audio(self, text, device_index):
         try:
             from piper import PiperVoice
+            import io
 
             if not os.path.exists(self.piper_model):
                 self.signals.log_message.emit(
@@ -436,9 +439,42 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit("Loading Piper voice model...")
             voice = PiperVoice.load(self.piper_model, config_path=piper_config_path)
 
+            # Split text by newlines and synthesize each line separately
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
+            if not lines:
+                self.signals.playback_finished.emit()
+                return
+
+            # Synthesize each line to a buffer and combine with silence
+            audio_buffers = []
+            sample_rate = voice.config.sample_rate
+
+            for i, line in enumerate(lines):
+                # Synthesize line to a buffer
+                line_buffer = io.BytesIO()
+                with wave.open(line_buffer, "wb") as wav:
+                    voice.synthesize_wav(line, wav)
+                line_buffer.seek(0)
+
+                # Read the WAV data
+                with wave.open(line_buffer, "rb") as wav:
+                    frames = wav.readframes(wav.getnframes())
+                    audio_buffers.append(frames)
+
+                # Add 2 seconds of silence between lines (except after last line)
+                if i < len(lines) - 1:
+                    silence_samples = int(2 * sample_rate)
+                    silence = np.zeros(silence_samples, dtype=np.int16)
+                    audio_buffers.append(silence.tobytes())
+
+            # Write combined audio to file
             wav_file = "test_output.wav"
             with wave.open(wav_file, "wb") as wav:
-                voice.synthesize_wav(text, wav)
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(sample_rate)
+                for buffer in audio_buffers:
+                    wav.writeframes(buffer)
 
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
 
@@ -514,8 +550,8 @@ class SoundTestApp(QMainWindow):
 
         while not self.transcription_client.client.recording:
             if (
-                    self.transcription_client.client.waiting
-                    or self.transcription_client.client.server_error
+                self.transcription_client.client.waiting
+                or self.transcription_client.client.server_error
             ):
                 self.signals.log_message.emit(
                     "Failed to connect to transcription server."
@@ -570,7 +606,7 @@ class SoundTestApp(QMainWindow):
 
                 # Convert to float and send to server
                 audio_array = (
-                        np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
                 )
                 self.transcription_client.client.send_packet_to_server(
                     audio_array.tobytes()
@@ -609,6 +645,10 @@ class SoundTestApp(QMainWindow):
         original_text = self.speak_text.toPlainText().lower()
         transcribed_text = self.transcription_text.lower()
 
+        # Normalize line breaks for comparison
+        original_normalized = " ".join(original_text.split())
+        transcribed_normalized = " ".join(transcribed_text.split())
+
         self.signals.log_message.emit(f"Original text: '{original_text}'")
         self.signals.log_message.emit(f"Transcribed text: '{transcribed_text}'")
 
@@ -619,15 +659,18 @@ class SoundTestApp(QMainWindow):
             )
             return
 
-        # Check for exact match
-        if transcribed_text in original_text or original_text in transcribed_text:
+        # Check for exact match (normalized)
+        if (
+            transcribed_normalized in original_normalized
+            or original_normalized in transcribed_normalized
+        ):
             self.signals.log_message.emit(
                 "Result: SUCCESS - Transcribed text matches original."
             )
         else:
             # Check for partial match
-            words_original = set(original_text.split())
-            words_transcribed = set(transcribed_text.split())
+            words_original = set(original_normalized.split())
+            words_transcribed = set(transcribed_normalized.split())
             common_words = words_original & words_transcribed
 
             if len(common_words) > 0:
@@ -662,14 +705,12 @@ class SoundTestApp(QMainWindow):
 
     def on_transcription_result(self, _, segments):
         """Handle real-time transcription results."""
-        logging.debug(
-            f"Transcription callback received: segments={segments}"
-        )
+        logging.debug(f"Transcription callback received: segments={segments}")
         new_text = ""
         for segment in segments:
             if new_text:
-                new_text += '\n'
-            new_text += segment['text']
+                new_text += "\n"
+            new_text += segment["text"]
 
         self.transcription_text = new_text
         self.signals.append_heard.emit(new_text)
@@ -726,7 +767,7 @@ class SoundTestApp(QMainWindow):
             self.signals.update_heard.emit(recognized_text)
             self.signals.log_message.emit("Recognition successful.")
 
-            original_text = self.speak_text.toPlainText().lower()
+            original_text = self.speak_text.toPlainText().lower().replace("\n", " ")
             recognized_lower = recognized_text.lower()
 
             # Check for empty recognition first
