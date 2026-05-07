@@ -363,6 +363,7 @@ class SoundTestApp(QMainWindow):
 
         out_idx = self.out_combo.currentData()
         in_idx = self.in_combo.currentData()
+        text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
             self.log("Please select both input and output devices.")
@@ -394,10 +395,22 @@ class SoundTestApp(QMainWindow):
         else:
             self.log("WhisperLive service is running. Proceeding with test.")
 
+        self.playback_done = False
         self.is_transcribing = True
+        self.audio_frames = []
         self.transcription_text = ""
 
-        threading.Thread(target=self.run_transcription, daemon=True).start()
+        # Run playback and record in separate background threads
+        threading.Thread(
+            target=self.play_audio, args=(text, out_idx), daemon=True
+        ).start()
+        
+        # We need to record and save it to a file, then pass it to run_transcription
+        def record_and_transcribe():
+            self.record_audio_to_file(in_idx)
+            self.run_transcription()
+
+        threading.Thread(target=record_and_transcribe, daemon=True).start()
 
     def play_audio(self, text, device_index):
         try:
@@ -484,6 +497,47 @@ class SoundTestApp(QMainWindow):
         finally:
             self.signals.playback_finished.emit()
 
+    def record_audio_to_file(self, device_index):
+        """Records audio from microphone until playback is done and saves to a file."""
+        try:
+            r = sr.Recognizer()
+            self.signals.log_message.emit(
+                f"Starting recording on device {device_index} for transcription..."
+            )
+
+            audio_data = None
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+
+                while not self.playback_done:
+                    try:
+                        data = stream.read(source.CHUNK)
+                        self.audio_frames.append(data)
+                        self._update_volume_from_audio(data)
+
+                    except Exception as e:
+                        self.signals.log_message.emit(f"Recording error: {e}")
+                        break
+                
+                audio_data = sr.AudioData(
+                    b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
+                )
+
+            self.signals.log_message.emit(
+                "Recording stopped. Saving intermediate file..."
+            )
+            self.signals.update_volume.emit(0)
+
+            if audio_data:
+                wav_data = audio_data.get_wav_data()
+                temp_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav")
+                with open(temp_file, "wb") as f:
+                    f.write(wav_data)
+                self.signals.log_message.emit(f"Saved audio to {temp_file}")
+                
+        except Exception as e:
+            self.signals.log_message.emit(f"Recording thread error: {e}")
+
     def run_transcription(self):
         """Run transcription test using a pre-recorded audio file."""
         try:
@@ -503,7 +557,7 @@ class SoundTestApp(QMainWindow):
                 transcription_callback=self.on_transcription_result,
             )
 
-            audio_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_output2.wav")
+            audio_file = os.path.join(str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav")
             
             if not os.path.exists(audio_file):
                 self.signals.log_message.emit(f"Could not find test audio file at {audio_file}")
@@ -511,11 +565,56 @@ class SoundTestApp(QMainWindow):
 
             self.signals.log_message.emit(f"Starting transcription of {audio_file}...")
             self.transcription_client(audio_file)
+            
+            self._compare_transcription_results()
 
         except Exception as e:
             self.signals.log_message.emit(f"Transcription error: {e}")
         finally:
             self._cleanup_transcription()
+
+    def _compare_transcription_results(self):
+        """Compare transcription results with original text."""
+        original_text = self.speak_text.toPlainText().lower()
+        transcribed_text = self.transcription_text.lower().replace(".", "").strip()
+
+        # Normalize line breaks for comparison
+        original_normalized = " ".join(original_text.split())
+        transcribed_normalized = " ".join(transcribed_text.split())
+
+        self.signals.log_message.emit(f"Original text: '{original_text}'")
+        self.signals.log_message.emit(f"Transcribed text: '{transcribed_text}'")
+
+        # Check for empty transcription first
+        if not transcribed_text.strip():
+            self.signals.log_message.emit(
+                "Result: FAILURE - No transcription received."
+            )
+            return
+
+        # Check for exact match (normalized)
+        if (
+            transcribed_normalized in original_normalized
+            or original_normalized in transcribed_normalized
+        ):
+            self.signals.log_message.emit(
+                "Result: SUCCESS - Transcribed text matches original."
+            )
+        else:
+            # Check for partial match
+            words_original = set(original_normalized.split())
+            words_transcribed = set(transcribed_normalized.split())
+            common_words = words_original & words_transcribed
+
+            if len(common_words) > 0:
+                match_ratio = len(common_words) / max(
+                    len(words_original), len(words_transcribed)
+                )
+                self.signals.log_message.emit(
+                    f"Result: PARTIAL MATCH - {match_ratio:.1%} of words match."
+                )
+            else:
+                self.signals.log_message.emit("Result: FAILURE - Texts do not match.")
 
     def _cleanup_transcription(self):
         """Clean up transcription resources."""
