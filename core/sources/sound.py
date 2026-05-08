@@ -96,6 +96,7 @@ class SoundSource(Source):
         self._last_transcription_text = ""
         self._current_utterance_text = ""
         self.realtime_transcription = True
+        self._current_segment_is_completed = False
 
     def warmup(self):
         if WhisperLiveTranscriptionClient is None:
@@ -140,6 +141,7 @@ class SoundSource(Source):
         self.audio_frames = []
         self._last_transcription_text = ""
         self._current_utterance_text = ""
+        self._current_segment_is_completed = False
         
         # Override transcription setting if explicitly provided
         if enable_transcription is not None:
@@ -287,18 +289,35 @@ class SoundSource(Source):
             if self._current_utterance_text:
                 self._last_transcription_text += self._current_utterance_text + " "
                 self._current_utterance_text = ""
+                self._current_segment_is_completed = False
             return
 
-        full_text = " ".join(s['text'].strip() for s in segments).strip()
+        latest_segment = segments[-1]
+        full_text = latest_segment['text'].strip()
+        is_completed = latest_segment.get('completed', False)
 
-        if full_text and full_text != self._current_utterance_text:
+        if not full_text:
+            return
+
+        # If the segment we were working on is now marked as completed
+        # or if the previous segment was completed and we are now on a new one
+        if self._current_segment_is_completed:
+            # We are starting a brand new segment because the last one finished
+            show_subtitle(full_text)
+            self._current_utterance_text = full_text
+            self._current_segment_is_completed = is_completed
+        elif full_text != self._current_utterance_text:
+            # We are updating the current segment
             if not self._current_utterance_text:
-                # This is the first piece of a new utterance
                 show_subtitle(full_text)
             else:
-                # This is an update to the current utterance
                 update_subtitle(full_text, append=False)
             self._current_utterance_text = full_text
+            self._current_segment_is_completed = is_completed
+
+        # If this segment just completed, add it to the final text
+        if is_completed and full_text:
+            self._last_transcription_text += full_text + " "
 
     def stop_recording(self) -> str:
         if not self.is_recording:
@@ -314,8 +333,8 @@ class SoundSource(Source):
         logger.info("Recording stopped.")
 
         if self.realtime_transcription:
-            # Finalize last utterance
-            if self._current_utterance_text:
+            # Finalize last utterance if it wasn't already marked completed
+            if self._current_utterance_text and not self._current_segment_is_completed:
                 self._last_transcription_text += self._current_utterance_text
             
             # Let subtitles fade out naturally, but clear any empty ones
