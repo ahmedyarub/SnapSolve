@@ -9,6 +9,7 @@ import wave
 
 import numpy as np
 import pyaudio
+import resampy
 import speech_recognition as sr
 
 # Configure basic logging
@@ -134,6 +135,7 @@ class WorkerSignals(QObject):
     update_volume = pyqtSignal(int)
     update_heard = pyqtSignal(str)
     append_heard = pyqtSignal(str)
+    playback_started = pyqtSignal()
     playback_finished = pyqtSignal()
     record_finished = pyqtSignal()
     transcription_finished = pyqtSignal()
@@ -151,6 +153,7 @@ class SoundTestApp(QMainWindow):
         self.signals.update_volume.connect(self.update_volume_bar)
         self.signals.update_heard.connect(self.set_heard_text)
         self.signals.append_heard.connect(self.append_heard_text)
+        self.signals.playback_started.connect(self.on_playback_started)
         self.signals.playback_finished.connect(self.on_playback_finished)
         self.signals.transcription_finished.connect(self.on_transcription_finished)
         self.signals.log_message.connect(self.log)
@@ -162,6 +165,7 @@ class SoundTestApp(QMainWindow):
         self.is_recording = False
         self.is_transcribing = False
         self.playback_done = False
+        self.playback_started = False
         self.audio_frames = []
         self.transcription_client = None
         self.transcription_text = ""
@@ -317,6 +321,10 @@ class SoundTestApp(QMainWindow):
         # else:
         self.heard_text.setText(text)
 
+    def on_playback_started(self):
+        self.playback_started = True
+        self.log("Playback started. Beginning recording...")
+
     def on_playback_finished(self):
         self.playback_done = True
         self.log("Playback finished. Stopping recording...")
@@ -389,9 +397,9 @@ class SoundTestApp(QMainWindow):
                     self.transcription_btn.setEnabled(True)
                     return
 
-            # Wait a bit more for the service to be fully ready
+            # Wait longer for the service to be fully ready
             self.log("Waiting for WhisperLive service to be ready...")
-            time.sleep(2)
+            time.sleep(5)
         else:
             self.log("WhisperLive service is running. Proceeding with test.")
 
@@ -400,19 +408,21 @@ class SoundTestApp(QMainWindow):
         self.audio_frames = []
         self.transcription_text = ""
 
+        server_ready_event = threading.Event()
+
         # Run playback and record in separate background threads
         threading.Thread(
-            target=self.play_audio, args=(text, out_idx), daemon=True
+            target=self.play_audio, args=(text, out_idx, server_ready_event), daemon=True
         ).start()
 
-        # We need to record and save it to a file, then pass it to run_transcription
+        # Record and transcribe in a separate thread
         def record_and_transcribe():
-            self.record_audio_to_file(in_idx)
+            self.record_audio_to_file(in_idx, server_ready_event)
             self.run_transcription()
 
         threading.Thread(target=record_and_transcribe, daemon=True).start()
 
-    def play_audio(self, text, device_index):
+    def play_audio(self, text, device_index, server_ready_event=None):
         try:
             from piper import PiperVoice
             import io
@@ -422,6 +432,8 @@ class SoundTestApp(QMainWindow):
                     f"Piper model not found at {self.piper_model}"
                 )
                 self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
                 return
 
             piper_config_path = self.piper_model + ".json"
@@ -430,6 +442,8 @@ class SoundTestApp(QMainWindow):
                     f"Piper config not found at {piper_config_path}"
                 )
                 self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
                 return
 
             self.signals.log_message.emit("Loading Piper voice model...")
@@ -439,6 +453,8 @@ class SoundTestApp(QMainWindow):
             lines = [line.strip() for line in text.split("\n") if line.strip()]
             if not lines:
                 self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
                 return
 
             # Synthesize each line to a buffer and combine with silence
@@ -472,6 +488,10 @@ class SoundTestApp(QMainWindow):
                 for buffer in audio_buffers:
                     wav.writeframes(buffer)
 
+            if server_ready_event is not None:
+                self.signals.log_message.emit("Waiting for transcription server to be ready before playback...")
+                server_ready_event.wait()
+
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
 
             wf = wave.open(wav_file, "rb")
@@ -483,6 +503,9 @@ class SoundTestApp(QMainWindow):
                 output_device_index=device_index,
             )
 
+            # Add a slight delay before playing audio
+            time.sleep(1.0)
+            
             data = wf.readframes(1024)
             while data and not self.playback_done:
                 stream.write(data)
@@ -491,22 +514,140 @@ class SoundTestApp(QMainWindow):
             stream.stop_stream()
             stream.close()
             wf.close()
+            
+            # Add a slight delay after playing audio to allow the transcriber to catch up
+            time.sleep(2.0)
 
         except Exception as e:
             self.signals.log_message.emit(f"Playback error: {e}")
         finally:
             self.signals.playback_finished.emit()
 
-    def record_audio_to_file(self, device_index):
-        """Records audio from microphone until playback is done and saves to a file."""
+    def record_audio_to_file(self, device_index, server_ready_event=None):
+        """Records audio from microphone and streams it directly to WhisperLive."""
         try:
             self.signals.log_message.emit(
                 f"Starting recording on device {device_index} for transcription..."
             )
 
-            audio_data = None
+            # Initialize WhisperLive client for streaming with retry logic
+            self.signals.log_message.emit("Initializing WhisperLive client...")
+            max_retries = 3
+            retry_delay = 2
+
+            for attempt in range(max_retries):
+                try:
+                    self.transcription_client = WhisperLiveTranscriptionClient(
+                        host="localhost",
+                        port=9090,
+                        lang="en",
+                        model="large-v3",
+                        use_vad=True,
+                        mute_audio_playback=True,
+                        enable_translation=False,
+                        display_segments=1,
+                        send_last_n_segments=3,
+                        transcription_callback=self.on_transcription_result,
+                        no_speech_thresh=0.9,  # Higher threshold to be less aggressive
+                        clip_audio=False,  # Don't clip audio
+                        same_output_threshold=5,  # Lower threshold for valid segments
+                    )
+
+                    # Wait for client to be ready
+                    self.signals.log_message.emit(
+                        "Waiting for WhisperLive server to be ready..."
+                    )
+                    timeout = 15
+                    start_time = time.time()
+                    client = self.transcription_client.client
+
+                    while not client.recording:
+                        # Check for errors or waiting state
+                        if client.server_error:
+                            error_msg = getattr(
+                                client, "error_message", "Unknown error"
+                            )
+                            self.signals.log_message.emit(
+                                f"WhisperLive server error: {error_msg}"
+                            )
+                            # Close the client and retry
+                            try:
+                                client.close_websocket()
+                            except Exception:
+                                pass
+                            break
+                        if client.waiting:
+                            self.signals.log_message.emit(
+                                "WhisperLive server is full. Waiting for slot..."
+                            )
+                            # Continue waiting
+                        if time.time() - start_time > timeout:
+                            self.signals.log_message.emit(
+                                "Timeout waiting for WhisperLive server to be ready."
+                            )
+                            # Close the client and retry
+                            try:
+                                client.close_websocket()
+                            except Exception:
+                                pass
+                            break
+                        time.sleep(0.1)
+
+                    if client.recording:
+                        # Connection successful, break out of retry loop
+                        self.signals.log_message.emit(
+                            "WhisperLive server ready. Starting streaming..."
+                        )
+                        if server_ready_event is not None:
+                            server_ready_event.set()
+                        break
+                    else:
+                        # Connection failed, retry
+                        if attempt < max_retries - 1:
+                            self.signals.log_message.emit(
+                                f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds..."
+                            )
+                            time.sleep(retry_delay)
+                        else:
+                            self.signals.log_message.emit(
+                                "Failed to connect to WhisperLive server after multiple attempts."
+                            )
+                            if server_ready_event is not None:
+                                server_ready_event.set()
+                            return
+
+                except Exception as e:
+                    self.signals.log_message.emit(
+                        f"Error initializing WhisperLive client (attempt {attempt + 1}): {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                    else:
+                        self.signals.log_message.emit(
+                            "Failed to initialize WhisperLive client after multiple attempts."
+                        )
+                        if server_ready_event is not None:
+                            server_ready_event.set()
+                        return
+
+            # Stream audio directly to WhisperLive
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+
+                self.signals.log_message.emit(
+                    f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+                )
+
+                # Create resampler if needed
+                if source_sample_rate != target_sample_rate:
+                    resampler = resampy.resample
+                    self.signals.log_message.emit(
+                        f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
+                    )
+                else:
+                    resampler = None
 
                 while not self.playback_done:
                     try:
@@ -514,62 +655,47 @@ class SoundTestApp(QMainWindow):
                         self.audio_frames.append(data)
                         self._update_volume_from_audio(data)
 
+                        # Convert audio data to float array
+                        audio_array = (
+                            np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                            / 32768.0
+                        )
+
+                        # Resample if needed
+                        if resampler is not None:
+                            audio_array = resampler(
+                                audio_array, source_sample_rate, target_sample_rate
+                            )
+
+                        # Stream to WhisperLive
+                        client.send_packet_to_server(audio_array.tobytes())
+
                     except Exception as e:
                         self.signals.log_message.emit(f"Recording error: {e}")
                         break
 
-                audio_data = sr.AudioData(
-                    b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
-                )
+            # Send END_OF_AUDIO signal to WhisperLive
+            self.signals.log_message.emit("Recording stopped. Sending END_OF_AUDIO...")
+            try:
+                client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+            except Exception as e:
+                self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
 
-            self.signals.log_message.emit(
-                "Recording stopped. Saving intermediate file..."
-            )
+            # Wait for final transcription results
+            self.signals.log_message.emit("Waiting for final transcription results...")
+            time.sleep(2)
+
             self.signals.update_volume.emit(0)
-
-            if audio_data:
-                wav_data = audio_data.get_wav_data()
-                temp_file = os.path.join(
-                    str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav"
-                )
-                with open(temp_file, "wb") as f:
-                    f.write(wav_data)
-                self.signals.log_message.emit(f"Saved audio to {temp_file}")
 
         except Exception as e:
             self.signals.log_message.emit(f"Recording thread error: {e}")
 
     def run_transcription(self):
-        """Run transcription test using a pre-recorded audio file."""
+        """Run transcription test using streaming audio (no file needed)."""
         try:
-            self.signals.log_message.emit("Initializing transcription client...")
-
-            # Create WhisperLive client
-            self.transcription_client = WhisperLiveTranscriptionClient(
-                host="localhost",
-                port=9090,
-                lang="en",
-                model="large-v3",
-                use_vad=True,
-                mute_audio_playback=True,
-                enable_translation=False,
-                display_segments=1,
-                send_last_n_segments=3,
-                transcription_callback=self.on_transcription_result,
-            )
-
-            audio_file = os.path.join(
-                str(os.path.dirname(__file__)), "..", "..", "temp_transcription.wav"
-            )
-
-            if not os.path.exists(audio_file):
-                self.signals.log_message.emit(
-                    f"Could not find test audio file at {audio_file}"
-                )
-                return
-
-            self.signals.log_message.emit(f"Starting transcription of {audio_file}...")
-            self.transcription_client(audio_file)
+            # Transcription is now done during recording via streaming
+            # This method is called after recording is complete
+            self.signals.log_message.emit("Transcription streaming complete.")
 
             self._compare_transcription_results()
 
@@ -625,6 +751,17 @@ class SoundTestApp(QMainWindow):
         """Clean up transcription resources."""
         self.signals.update_volume.emit(0)
         self.is_transcribing = False
+
+        # Close WhisperLive client if it exists
+        if self.transcription_client is not None:
+            try:
+                self.transcription_client.client.close_websocket()
+                self.signals.log_message.emit("WhisperLive client closed.")
+            except Exception as e:
+                self.signals.log_message.emit(f"Error closing WhisperLive client: {e}")
+            finally:
+                self.transcription_client = None
+
         import PyQt6.QtCore as QtCore
 
         QtCore.QMetaObject.invokeMethod(
