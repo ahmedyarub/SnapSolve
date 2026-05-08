@@ -22,6 +22,7 @@ from core.output import (
     update_multi_state,
     set_active_source_ui,
     set_app_processing_state,
+    get_subtitle_text,
 )
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
@@ -1026,9 +1027,20 @@ def main():
         test_text = f"Transcription test with random number: {random.randint(1, 1000)}"
         print(f"Testing transcription display: {test_text}")
         show_subtitle(test_text)
+        
+    def handle_select_subtitle(index):
+        text = get_subtitle_text(index)
+        if text:
+            print(f"Selected subtitle {index}: {text}")
+            handle_text_submit(config, active_profile, text)
+        else:
+            print(f"No subtitle found at index {index}")
 
     # Register keyboard shortcuts
     keyboard.add_hotkey("ctrl+alt+shift+t", handle_test_transcription)
+    
+    for i in range(1, 6):
+        keyboard.add_hotkey(f"ctrl+alt+shift+{i}", handle_select_subtitle, args=(i,))
 
     hotkeys = config.get("hotkeys", [])
 

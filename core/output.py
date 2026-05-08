@@ -338,6 +338,13 @@ class SubtitleWidget(QWidget):
         logger.info(f"Subtitle widget positioned at ({x}, {y}) with size ({w}, {h})")
         logger.info(f"Screen size: {screen.width()}x{screen.height()}")
 
+    def get_subtitle_text(self, index: int) -> str:
+        """Get text of a subtitle by index (1-based from bottom/newest)."""
+        if not self.subtitle_labels or index < 1 or index > len(self.subtitle_labels):
+            return ""
+        # 1 means youngest, which is at the end of the list (-1)
+        return self.subtitle_labels[-index].text()
+
     def add_subtitle(self, text: str):
         """Add a new subtitle line."""
         import time
@@ -762,6 +769,11 @@ class UIManager(QObject):
         assert self.subtitle is not None
         self.subtitle.clear_subtitles()
 
+    def get_subtitle_text(self, index: int) -> str:
+        if self.subtitle is not None:
+            return self.subtitle.get_subtitle_text(index)
+        return ""
+
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
 ui_manager: UIManager | None = None
@@ -837,6 +849,14 @@ def update_subtitle(text: str, append: bool = False):
 def clear_subtitles():
     """Clear all subtitle lines."""
     ui_signals.clear_subtitles.emit()
+
+
+def get_subtitle_text(index: int) -> str:
+    """Get the text of a subtitle by index (1 is newest)."""
+    global ui_manager
+    if ui_manager is not None:
+        return ui_manager.get_subtitle_text(index)
+    return ""
 
 
 def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):
