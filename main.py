@@ -649,7 +649,7 @@ def handle_start_record(config, enable_transcription):
     )
 
 
-def handle_stop_record(config, active_profile, _active_prompt_text):
+def handle_stop_record(config, active_profile, active_prompt_text, is_long_press):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
@@ -673,6 +673,13 @@ def handle_stop_record(config, active_profile, _active_prompt_text):
         assert active_source is not None
         assert isinstance(active_source, SoundSource)
         text = active_source.stop_recording()
+        
+        if not is_long_press:
+            status_update("Transcription stopped.")
+            from core.output import clear_subtitles
+            clear_subtitles()
+            return
+            
         if not text:
             status_update("No speech recognized.")
             return
@@ -880,8 +887,8 @@ def main():
         "start_record": lambda enable_transcription: handle_start_record(
             config, enable_transcription
         ),
-        "stop_record": lambda: handle_stop_record(
-            config, active_profile, active_prompt_text
+        "stop_record": lambda is_long_press: handle_stop_record(
+            config, active_profile, active_prompt_text, is_long_press
         ),
     }
     # Initialize the UI Manager and set callbacks

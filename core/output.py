@@ -206,7 +206,7 @@ class RecordButton(QPushButton):
     start_recording = pyqtSignal(
         object
     )  # Pass enable_transcription flag (can be None or bool)
-    stop_recording = pyqtSignal()
+    stop_recording = pyqtSignal(bool) # Pass boolean flag indicating if it was a long press
 
     def __init__(self, text, style):
         super().__init__(text)
@@ -260,7 +260,7 @@ class RecordButton(QPushButton):
         self.setStyleSheet(
             self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)")
         )
-        self.stop_recording.emit()
+        self.stop_recording.emit(self.is_long_press)
 
 
 class SubtitleWidget(QWidget):
@@ -541,7 +541,9 @@ class PanelWidget(QWidget):
                 "start_record", enable_transcription
             )
         )
-        self.btn_record.stop_recording.connect(lambda: call_action("stop_record"))
+        self.btn_record.stop_recording.connect(
+            lambda is_long_press: call_action("stop_record", is_long_press)
+        )
         self.layout.addWidget(self.btn_record)
         self.buttons["record"] = self.btn_record
 
