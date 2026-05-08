@@ -263,6 +263,26 @@ class RecordButton(QPushButton):
         self.stop_recording.emit(self.is_long_press)
 
 
+class SubtitleLabel(QLabel):
+    def __init__(self, text):
+        super().__init__(text)
+        self.creation_time = 0
+
+    # noinspection PyPep8Naming
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            text = self.text()
+            if "text_submit" in _app_callbacks:
+                try:
+                    threading.Thread(
+                        target=_app_callbacks["text_submit"],
+                        args=(text,),
+                        daemon=True,
+                    ).start()
+                except Exception as e:
+                    print(f"Error submitting subtitle text: {e}")
+
+
 class SubtitleWidget(QWidget):
     """Widget for displaying real-time transcription subtitles with fading effects."""
 
@@ -329,7 +349,7 @@ class SubtitleWidget(QWidget):
         logger.info(f"Subtitle widget position: {self.pos()}, size: {self.size()}")
 
         # Create new subtitle label
-        label = QLabel(text)
+        label = SubtitleLabel(text)
         label.setStyleSheet("""
             QLabel {
                 background-color: rgba(0, 0, 0, 0.7);
