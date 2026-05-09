@@ -823,6 +823,60 @@ def validate_config(active_profile):
             sys.exit(1)
 
 
+def warmup_whisperlive_process(config):
+    """Executes the test_whisperlive_warmup script from main thread as a warmup."""
+    try:
+        import subprocess
+        # Get path to test_whisperlive_warmup.py
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "sanity", "test_whisperlive_warmup.py")
+        if os.path.exists(script_path):
+            print("Running Real-time transcription warmup (test_whisperlive_warmup.py)...")
+            
+            # Start process asynchronously
+            def _run_warmup():
+                try:
+                    process = subprocess.Popen(
+                        [sys.executable, script_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1,  # Line buffered
+                        universal_newlines=True
+                    )
+                    
+                    # Read stdout in a background thread to print in real time
+                    def _read_stdout():
+                        for line in iter(process.stdout.readline, ''):
+                            print(f"[WhisperLive Warmup] {line.strip()}")
+                        process.stdout.close()
+                        
+                    def _read_stderr():
+                        for line in iter(process.stderr.readline, ''):
+                            print(f"[WhisperLive Warmup ERR] {line.strip()}", file=sys.stderr)
+                        process.stderr.close()
+                        
+                    t1 = threading.Thread(target=_read_stdout, daemon=True)
+                    t2 = threading.Thread(target=_read_stderr, daemon=True)
+                    t1.start()
+                    t2.start()
+                    
+                    process.wait()
+                    t1.join()
+                    t2.join()
+                    
+                    if process.returncode == 0:
+                        print("Real-time transcription warmup completed successfully.")
+                    else:
+                        print(f"Real-time transcription warmup failed with code {process.returncode}")
+                except Exception as e:
+                    print(f"Error executing warmup script: {e}")
+                    
+            threading.Thread(target=_run_warmup, daemon=True).start()
+        else:
+            print("Warning: Real-time transcription warmup script not found.")
+    except Exception as e:
+        print(f"Error initializing Real-time transcription warmup: {e}")
+
 def main():
     # Configure logging early
     logging.basicConfig(
@@ -1018,6 +1072,10 @@ def main():
     if config.get("warmup_speech_recognition", True):
         temp_sr = SoundSource(config)
         threading.Thread(target=temp_sr.warmup, daemon=True).start()
+        
+    # Warmup WhisperLive (Real-time transcription) if enabled
+    if config.get("warmup_realtime_transcription", False):
+        warmup_whisperlive_process(config)
 
     # Function to test transcription display
     def handle_test_transcription():
