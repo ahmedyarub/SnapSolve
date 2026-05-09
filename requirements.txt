@@ -17,3 +17,4 @@ pyqt6-sip
 opencv-python
 fastapi
 resampy
+pydantic

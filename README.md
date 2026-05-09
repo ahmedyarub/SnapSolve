@@ -78,7 +78,7 @@ It is highly recommended to use the official Baidu mirror to get the correctly c
 PyPI package can sometimes fail to link against Windows CUDA binaries properly.
 
 ```bash
-python -m pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+python -m pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
 pip install "paddlex[base]"
 paddlex --install PaddleOCR PaddleClas
 ```
