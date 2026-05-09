@@ -297,7 +297,7 @@ class SubtitleWidget(QWidget):
         # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Use a more visible background for debugging
         self.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 0.8); border: 2px solid red;"
+            "background-color: transparent; border: 1px solid rgba(255, 0, 0, 0.3);"
         )
 
         self.layout = QVBoxLayout(self)
@@ -354,6 +354,12 @@ class SubtitleWidget(QWidget):
         logger.info(f"add_subtitle called with text: {text}")
         logger.info(f"Subtitle widget visible: {self.isVisible()}")
         logger.info(f"Subtitle widget position: {self.pos()}, size: {self.size()}")
+
+        # Update the creation time of existing subtitles so they fade out relative to the newest one
+        current_time = time.time()
+        for i, existing_label in enumerate(reversed(self.subtitle_labels)):
+            # Give older subtitles an artificial age bump so they look older
+            existing_label.creation_time = current_time - (i + 1) * 2.0
 
         # Create new subtitle label
         label = SubtitleLabel(text)
@@ -421,6 +427,11 @@ class SubtitleWidget(QWidget):
 
         # Update the last subtitle's text
         last_label = self.subtitle_labels[-1]
+        
+        # Reset the creation time of the active subtitle so it doesn't fade while being updated
+        import time
+        last_label.creation_time = time.time()
+        
         if append:
             # Append to existing text
             current_text = last_label.text()
@@ -482,6 +493,10 @@ class SubtitleWidget(QWidget):
 
             # Combine factors, but ensure minimum visibility
             opacity = min(0.95, max(0.4, position_factor * age_factor))
+            
+            # The newest subtitle should always be fully visible if it's less than fade_start old
+            if i == len(self.subtitle_labels) - 1 and age < fade_start:
+                opacity = 0.95
 
             # Update label style with new opacity
             label.setStyleSheet(f"""
