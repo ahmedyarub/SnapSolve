@@ -15,11 +15,12 @@ answers, and provides responses via frameless popup notifications and/or local T
 * **Flexible Output Sinks:** Render rich Markdown answers in a floating popup and/or read them aloud via TTS.
 * **Background Mode:** Run the app seamlessly from your system tray.
 * **Multi-Capture Support:** Capture multiple screen regions in sequence for combined processing.
-* **Audio Input:** Record and transcribe audio input using speech recognition.
+* **Audio Input:** Record and transcribe audio input using speech recognition. Real-time transcription is also available using WhisperLive.
 * **Remote OCR Service:** Offload OCR processing to a remote server.
 
 For a full, detailed breakdown of all features, see [FEATURES.md](FEATURES.md).
 For technical details regarding how data flows through the application, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For details regarding the real-time transcription feature, see [REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md).
 
 ## Setup & Installation
 
