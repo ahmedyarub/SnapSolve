@@ -712,7 +712,8 @@ def handle_cycle_source(config, active_profile):
             ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
     elif isinstance(active_source, ScreenshotSource):
-        new_source = SoundSource(config)
+        global session_manager
+        new_source = SoundSource(config, session_manager=session_manager)
     else:
         new_source = TextSource()
 
@@ -762,9 +763,13 @@ def handle_reselect(config):
 
 
 def exit_app():
-    global is_running
+    global is_running, session_manager
     is_running = False
     print("Exiting...")
+    
+    if session_manager:
+        session_manager.cleanup()
+
     app = QApplication.instance()
     if app:
         app.quit()
@@ -917,11 +922,14 @@ def main():
     validate_config(active_profile)
 
     # Determine the initial source
+    global session_manager
+    session_manager = SessionManager(config)
+
     default_source = config.get("default_source", "text")
     if default_source == "image":
         set_active_source_instance(ScreenshotSource())
     elif default_source == "audio":
-        set_active_source_instance(SoundSource(config))
+        set_active_source_instance(SoundSource(config, session_manager=session_manager))
     else:
         set_active_source_instance(TextSource())
 
@@ -982,9 +990,7 @@ def main():
         ocr_engine_instance, \
         llm_engine_instance, \
         fallback_llm_engine_instance, \
-        session_manager, \
         audio_sink_instance
-    session_manager = SessionManager(config)
     ocr_type = active_profile.get("ocr_engine", "none")
     if ocr_type == "paddleocr":
         ocr_engine_instance = LocalPaddleOCREngine(
@@ -1070,7 +1076,7 @@ def main():
 
     # Warmup Speech Recognition asynchronously if enabled
     if config.get("warmup_speech_recognition", True):
-        temp_sr = SoundSource(config)
+        temp_sr = SoundSource(config, session_manager=session_manager)
         threading.Thread(target=temp_sr.warmup, daemon=True).start()
         
     # Warmup WhisperLive (Real-time transcription) if enabled

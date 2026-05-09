@@ -80,10 +80,11 @@ def start_whisperlive_service():
 
 
 class SoundSource(Source):
-    def __init__(self, config=None):
+    def __init__(self, config=None, session_manager=None):
         self._sample_width = None
         self._sample_rate = None
         self.config = config or {}
+        self.session_manager = session_manager
         self.is_recording = False
         self._record_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -236,6 +237,15 @@ class SoundSource(Source):
                 return
                 
             logger.info("WhisperLive client initialized and recording.")
+            
+            # Print initial UI separator
+            if self.session_manager and getattr(self.session_manager, 'save_transcriptions', False) and getattr(self.session_manager, 'transcription_file', None):
+                try:
+                    with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
+                        f.write(f"\n--- User ---\n")
+                except Exception as e:
+                    logger.error(f"Failed to write initial transcription separator: {e}")
+                    
         except Exception as e:
             logger.error(f"Failed to initialize WhisperLive client: {e}")
             self.is_recording = False
@@ -288,7 +298,13 @@ class SoundSource(Source):
         logger.debug(f"Received segments: {segments}")
         if not segments:
             if self._current_utterance_text:
+                # Mark as finalized
                 self._last_transcription_text += self._current_utterance_text + " "
+                
+                # Appending finalized segment to session manager
+                if self.session_manager:
+                    self.session_manager.append_transcription_segment(self._current_utterance_text)
+                    
                 self._current_utterance_text = ""
             return
 
@@ -303,6 +319,9 @@ class SoundSource(Source):
                 # This is a new segment. Finalize the previous one.
                 if self._current_utterance_text:
                     self._last_transcription_text += self._current_utterance_text + " "
+                    # Appending finalized segment to session manager
+                    if self.session_manager:
+                        self.session_manager.append_transcription_segment(self._current_utterance_text)
                 
                 # Show the new segment and update tracking state.
                 show_subtitle(text)
@@ -332,6 +351,9 @@ class SoundSource(Source):
             # Finalize the very last utterance
             if self._current_utterance_text:
                 self._last_transcription_text += self._current_utterance_text
+                # Appending finalized segment to session manager
+                if self.session_manager:
+                    self.session_manager.append_transcription_segment(self._current_utterance_text)
             
             # Let subtitles fade out naturally, but clear any empty ones
             if not self._current_utterance_text:
