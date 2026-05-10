@@ -1,18 +1,18 @@
+import difflib
 import json
 import logging
 import os
-import subprocess
-import sys
-import threading
-import time
-import wave
 import string
-import difflib
+import subprocess
+import threading
+import wave
 
 import numpy as np
 import pyaudio
 import resampy
 import speech_recognition as sr
+import sys
+import time
 
 # Configure basic logging
 logging.basicConfig(
@@ -94,7 +94,9 @@ def start_whisperlive_service():
             print("WhisperLive service is already running on port 9090")
             return None  # Service is already running, don't start a new one
 
-        venv_python = os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin", "python")
+        venv_python = os.path.join(whisperlive_path, ".venv", "Scripts",
+                                   "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin",
+                                                                                      "python")
         python_exec = venv_python if os.path.exists(venv_python) else sys.executable
 
         # Start the server in a subprocess with extended connection time
@@ -183,6 +185,7 @@ class SoundTestApp(QMainWindow):
         self.heard_text = QTextEdit()
         self.volume_bar = QProgressBar()
         self.log_text = QTextEdit()
+        self.playback_only_btn = QPushButton()
         self.recording_btn = QPushButton()
         self.transcription_btn = QPushButton()
 
@@ -249,6 +252,11 @@ class SoundTestApp(QMainWindow):
 
         # Action Buttons
         button_layout = QHBoxLayout()
+
+        self.playback_only_btn = QPushButton("Playback Only")
+        self.playback_only_btn.clicked.connect(self.start_playback_only)
+        button_layout.addWidget(self.playback_only_btn)
+
         self.recording_btn = QPushButton("Recording Test")
         self.recording_btn.clicked.connect(self.start_recording_test)
         button_layout.addWidget(self.recording_btn)
@@ -333,12 +341,56 @@ class SoundTestApp(QMainWindow):
     def on_playback_finished(self):
         self.playback_done = True
         self.log("Playback finished. Stopping recording...")
+        self._enable_buttons()
 
     def on_transcription_finished(self):
         self.is_transcribing = False
         self.log("Transcription finished.")
+        self._enable_buttons()
+
+    def _enable_buttons(self):
+        import PyQt6.QtCore as QtCore
+        QtCore.QMetaObject.invokeMethod(
+            self.playback_only_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+        QtCore.QMetaObject.invokeMethod(
+            self.recording_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+        QtCore.QMetaObject.invokeMethod(
+            self.transcription_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+
+    def start_playback_only(self):
+        self.playback_only_btn.setEnabled(False)
+        self.recording_btn.setEnabled(False)
+        self.transcription_btn.setEnabled(False)
+        self.log_text.clear()
+
+        out_idx = self.out_combo.currentData()
+        text = self.speak_text.toPlainText()
+
+        if out_idx is None:
+            self.log("Please select output device.")
+            self._enable_buttons()
+            return
+
+        self.playback_done = False
+
+        threading.Thread(
+            target=self.play_audio, args=(text, out_idx), daemon=True
+        ).start()
 
     def start_recording_test(self):
+        self.playback_only_btn.setEnabled(False)
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
         self.log_text.clear()
@@ -351,8 +403,7 @@ class SoundTestApp(QMainWindow):
 
         if out_idx is None or in_idx is None:
             self.log("Please select both input and output devices.")
-            self.recording_btn.setEnabled(True)
-            self.transcription_btn.setEnabled(True)
+            self._enable_buttons()
             return
 
         self.save_settings(out_idx, in_idx)
@@ -368,6 +419,7 @@ class SoundTestApp(QMainWindow):
         threading.Thread(target=self.record_audio, args=(in_idx,), daemon=True).start()
 
     def start_transcription_test(self):
+        self.playback_only_btn.setEnabled(False)
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
         self.log_text.clear()
@@ -380,8 +432,7 @@ class SoundTestApp(QMainWindow):
 
         if out_idx is None or in_idx is None:
             self.log("Please select both input and output devices.")
-            self.recording_btn.setEnabled(True)
-            self.transcription_btn.setEnabled(True)
+            self._enable_buttons()
             return
 
         self.save_settings(out_idx, in_idx)
@@ -398,8 +449,7 @@ class SoundTestApp(QMainWindow):
                     self.log("WhisperLive service is running. Proceeding with test.")
                 else:
                     self.log("Failed to start WhisperLive service. Aborting test.")
-                    self.recording_btn.setEnabled(True)
-                    self.transcription_btn.setEnabled(True)
+                    self._enable_buttons()
                     return
 
             # Wait longer for the service to be fully ready
@@ -510,7 +560,7 @@ class SoundTestApp(QMainWindow):
 
             # Add a slight delay before playing audio
             time.sleep(1.0)
-            
+
             data = wf.readframes(1024)
             while data and not self.playback_done:
                 stream.write(data)
@@ -519,7 +569,7 @@ class SoundTestApp(QMainWindow):
             stream.stop_stream()
             stream.close()
             wf.close()
-            
+
             # Add a slight delay after playing audio to allow the transcriber to catch up
             time.sleep(2.0)
 
@@ -662,8 +712,8 @@ class SoundTestApp(QMainWindow):
 
                         # Convert audio data to float array
                         audio_array = (
-                            np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                            / 32768.0
+                                np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                                / 32768.0
                         )
 
                         # Resample if needed
@@ -741,9 +791,9 @@ class SoundTestApp(QMainWindow):
 
         # Check for exact match (normalized)
         if (
-            transcribed_normalized in original_normalized
-            or original_normalized in transcribed_normalized
-            or match_ratio >= 0.8
+                transcribed_normalized in original_normalized
+                or original_normalized in transcribed_normalized
+                or match_ratio >= 0.8
         ):
             self.signals.log_message.emit(
                 "Result: SUCCESS - Transcribed text matches original."
@@ -779,20 +829,7 @@ class SoundTestApp(QMainWindow):
             finally:
                 self.transcription_client = None
 
-        import PyQt6.QtCore as QtCore
-
-        QtCore.QMetaObject.invokeMethod(
-            self.recording_btn,
-            "setEnabled",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(bool, True),
-        )
-        QtCore.QMetaObject.invokeMethod(
-            self.transcription_btn,
-            "setEnabled",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(bool, True),
-        )
+        self._enable_buttons()
         self.signals.transcription_finished.emit()
 
     def on_transcription_result(self, _, segments):
@@ -890,20 +927,7 @@ class SoundTestApp(QMainWindow):
     def _cleanup_recording(self):
         """Clean up recording resources."""
         self.is_recording = False
-        import PyQt6.QtCore as QtCore
-
-        QtCore.QMetaObject.invokeMethod(
-            self.recording_btn,
-            "setEnabled",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(bool, True),
-        )
-        QtCore.QMetaObject.invokeMethod(
-            self.transcription_btn,
-            "setEnabled",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(bool, True),
-        )
+        self._enable_buttons()
 
     def closeEvent(self, event):
         self.p.terminate()
