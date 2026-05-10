@@ -308,7 +308,11 @@ def process_pipeline(
     if session_manager and final_result and not final_result.startswith("Error"):
         try:
             session_manager.append_interaction(
-                prompt, image_path, final_result, extracted_text, source_name=source_name
+                prompt,
+                image_path,
+                final_result,
+                extracted_text,
+                source_name=source_name,
             )
         except Exception as e:
             print(f"Failed to append to session manager: {e}")

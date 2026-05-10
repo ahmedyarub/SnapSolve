@@ -5,7 +5,9 @@ import time
 import wave
 
 # Add parent directories to sys.path to access core modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from core.sources.sound import start_whisperlive_service, is_whisperlive_service_online
 
@@ -13,6 +15,7 @@ from core.sources.sound import start_whisperlive_service, is_whisperlive_service
 def generate_audio_piper(text, output_wav, piper_model="en_US-lessac-medium.onnx"):
     try:
         from piper import PiperVoice
+
         config_path = piper_model + ".json"
 
         if not os.path.exists(piper_model):
@@ -59,7 +62,7 @@ def test_whisperlive_warmup():
         with open("config/config.json", "r") as f:
             config = json.load(f)
             piper_model = config.get("piper_model", piper_model)
-    except:
+    except Exception:
         pass
 
     if not generate_audio_piper(test_text, test_wav, piper_model):
@@ -79,7 +82,7 @@ def test_whisperlive_warmup():
         def on_transcription(x, segments):
             if segments:
                 for seg in segments:
-                    text = seg.get('text', '').strip()
+                    text = seg.get("text", "").strip()
                     if text:
                         transcription_result.append(text)
 
@@ -89,27 +92,27 @@ def test_whisperlive_warmup():
             port=9090,
             lang="en",
             use_vad=True,
-            transcription_callback=on_transcription
+            transcription_callback=on_transcription,
         )
 
         # Wait for client to be ready
         c = client.client
         timeout = 15
         start_time = time.time()
-        while not getattr(c, 'recording', False):
+        while not getattr(c, "recording", False):
             if time.time() - start_time > timeout:
                 print("Timeout waiting for WhisperLive client.")
                 break
             time.sleep(0.5)
 
-        if not getattr(c, 'recording', False):
+        if not getattr(c, "recording", False):
             print("Failed to connect to WhisperLive client.")
             if process:
                 process.terminate()
             return False
 
         print("Sending audio file...")
-        with wave.open(test_wav, 'rb') as wf:
+        with wave.open(test_wav, "rb") as wf:
             sample_rate = wf.getframerate()
             target_rate = 16000
 
@@ -117,9 +120,13 @@ def test_whisperlive_warmup():
             data = wf.readframes(chunk_size)
 
             while data:
-                audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                audio_array = (
+                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                )
                 if sample_rate != target_rate:
-                    audio_array = resampy.resample(audio_array, sample_rate, target_rate)
+                    audio_array = resampy.resample(
+                        audio_array, sample_rate, target_rate
+                    )
 
                 c.send_packet_to_server(audio_array.tobytes())
                 time.sleep(len(audio_array) / target_rate)  # Send in real time roughly

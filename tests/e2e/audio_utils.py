@@ -1,4 +1,3 @@
-import os
 import tempfile
 import wave
 
@@ -31,7 +30,9 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
     if device_index is not None:
         try:
             p = pyaudio.PyAudio()
-            device_name = p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+            device_name = p.get_device_info_by_index(device_index).get(
+                "name", "Unknown Device"
+            )
             p.terminate()
         except Exception:
             pass
@@ -114,7 +115,9 @@ def speak(text: str, output_device: str):
             output_device_index=target_device_index,
         )
 
-        device_name = output_device if target_device_index is not None else 'Default Device'
+        device_name = (
+            output_device if target_device_index is not None else "Default Device"
+        )
         print(f"Playing audio on {device_name}")
 
         data = wf.readframes(1024)

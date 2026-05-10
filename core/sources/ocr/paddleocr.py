@@ -40,14 +40,14 @@ class LocalPaddleOCREngine(OCREngine):
                     self.ocr.ocr(temp_file.name)
 
         except ImportError:
-            raise Exception(
+            raise ImportError(
                 "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
             )
         except Exception as e:
             import traceback
 
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
-            raise Exception(f"Error during OCR initialization: {str(e)}")
+            raise RuntimeError(f"Error during OCR initialization: {str(e)}") from e
 
     def extract_text(
         self,
@@ -105,7 +105,7 @@ class LocalPaddleOCREngine(OCREngine):
             return extracted_text
 
         except ImportError:
-            raise Exception(
+            raise ImportError(
                 "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
             )
         except Exception as e:
@@ -114,4 +114,4 @@ class LocalPaddleOCREngine(OCREngine):
             import traceback
 
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
-            raise Exception(f"Error during OCR execution: {str(e)}")
+            raise RuntimeError(f"Error during OCR execution: {str(e)}") from e

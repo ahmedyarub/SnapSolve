@@ -9,8 +9,8 @@ def cycle_until(target_button):
     while True:
         try:
             if (
-                    pyautogui.locateCenterOnScreen(target_button, confidence=0.8)
-                    is not None
+                pyautogui.locateCenterOnScreen(target_button, confidence=0.8)
+                is not None
             ):
                 return
         except pyautogui.ImageNotFoundException:

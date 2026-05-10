@@ -31,7 +31,8 @@ from config import (
     TTS_INPUT_DEVICE_NAME,
     WORKING_DIR,
     RECORD_BUTTON,
-    TTS_OUTPUT_DEVICE_NAME, STOP_RECORD_BUTTON,
+    TTS_OUTPUT_DEVICE_NAME,
+    STOP_RECORD_BUTTON,
 )
 from network_utils import check_port_in_use, poll_port
 from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
@@ -264,13 +265,15 @@ def test_audio_transcription():
 
     time.sleep(1)
 
-    print(f"Clicking on transcription...")
+    print("Clicking on transcription...")
     pyautogui.doubleClick(x=1700, y=2000)
 
     time.sleep(2)
 
     if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
-        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the transcription!")
+        print(
+            f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the transcription!"
+        )
         test_results["test_audio_transcription"] = "PASSED"
     else:
         print(

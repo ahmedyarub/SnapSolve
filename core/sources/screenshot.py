@@ -60,21 +60,18 @@ class ScreenshotSource(ImageSource):
         if cancel_event and cancel_event.is_set():
             raise ValueError("Capture cancelled.")
 
-        try:
-            if (
-                hasattr(self.ocr_engine, "extract_text")
-                and "cancel_event" in self.ocr_engine.extract_text.__code__.co_varnames
-            ):
-                text = self.ocr_engine.extract_text(
-                    image_path, status_callback, cancel_event
-                )
-            else:
-                text = self.ocr_engine.extract_text(image_path, status_callback)
-            if not text:
-                raise ValueError("OCR engine found no text.")
-            return text
-        finally:
-            pass
+        if (
+            hasattr(self.ocr_engine, "extract_text")
+            and "cancel_event" in self.ocr_engine.extract_text.__code__.co_varnames
+        ):
+            text = self.ocr_engine.extract_text(
+                image_path, status_callback, cancel_event
+            )
+        else:
+            text = self.ocr_engine.extract_text(image_path, status_callback)
+        if not text:
+            raise ValueError("OCR engine found no text.")
+        return text
 
     def get_image(
         self, coords=None, cancel_event: threading.Event = None, *args, **kwargs

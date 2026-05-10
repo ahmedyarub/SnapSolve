@@ -206,7 +206,9 @@ class RecordButton(QPushButton):
     start_recording = pyqtSignal(
         object
     )  # Pass enable_transcription flag (can be None or bool)
-    stop_recording = pyqtSignal(bool) # Pass boolean flag indicating if it was a long press
+    stop_recording = pyqtSignal(
+        bool
+    )  # Pass boolean flag indicating if it was a long press
 
     def __init__(self, text, style):
         super().__init__(text)
@@ -427,11 +429,12 @@ class SubtitleWidget(QWidget):
 
         # Update the last subtitle's text
         last_label = self.subtitle_labels[-1]
-        
+
         # Reset the creation time of the active subtitle so it doesn't fade while being updated
         import time
+
         last_label.creation_time = time.time()
-        
+
         if append:
             # Append to existing text
             current_text = last_label.text()
@@ -493,7 +496,7 @@ class SubtitleWidget(QWidget):
 
             # Combine factors, but ensure minimum visibility
             opacity = min(0.95, max(0.4, position_factor * age_factor))
-            
+
             # The newest subtitle should always be fully visible if it's less than fade_start old
             if i == len(self.subtitle_labels) - 1 and age < fade_start:
                 opacity = 0.95

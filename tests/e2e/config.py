@@ -28,6 +28,4 @@ MAIN_SCRIPT_ARGS = [
     "--default-source=text",
 ]
 SERVICE_SCRIPT_PATH = "services/ocr_service.py"
-ERROR_RESPONSES =[
-    "No speech recognized."
-]
+ERROR_RESPONSES = ["No speech recognized."]

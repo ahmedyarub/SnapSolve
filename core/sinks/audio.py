@@ -146,13 +146,19 @@ class AudioSink(Sink):
                         output=True,
                         output_device_index=target_device_index,
                     )
-                    device_name = self.tts_output_device_name if target_device_index is not None else 'Default Device'
-                    logger.info(
-                        f"Playing audio on {device_name}"
+                    device_name = (
+                        self.tts_output_device_name
+                        if target_device_index is not None
+                        else "Default Device"
                     )
+                    logger.info(f"Playing audio on {device_name}")
 
                 except Exception as e:
-                    device_name = self.tts_output_device_name if target_device_index is not None else 'Default Device'
+                    device_name = (
+                        self.tts_output_device_name
+                        if target_device_index is not None
+                        else "Default Device"
+                    )
                     logger.error(
                         f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
                         exc_info=True,

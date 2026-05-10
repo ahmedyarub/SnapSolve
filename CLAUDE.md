@@ -8,6 +8,7 @@ Before declaring a task complete, you MUST verify the code against the static an
 If the script returns a non-zero exit code, you must read the terminal error output, fix the unused variables/imports or
 formatting issues, and run the script again until it passes. Do not commit or declare completion until the script
 outputs success.
+Ignore submodules like services\whisperlive\
 
 When done with any task, run the following PowerShell commannd to notify me that the task is done:
 `New-BurntToastNotification -Text 'Claude Code', 'I am done with the loop!'`

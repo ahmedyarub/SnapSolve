@@ -94,9 +94,11 @@ def start_whisperlive_service():
             print("WhisperLive service is already running on port 9090")
             return None  # Service is already running, don't start a new one
 
-        venv_python = os.path.join(whisperlive_path, ".venv", "Scripts",
-                                   "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin",
-                                                                                      "python")
+        venv_python = (
+            os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe")
+            if os.name == "nt"
+            else os.path.join(whisperlive_path, ".venv", "bin", "python")
+        )
         python_exec = venv_python if os.path.exists(venv_python) else sys.executable
 
         # Start the server in a subprocess with extended connection time
@@ -351,6 +353,7 @@ class SoundTestApp(QMainWindow):
 
     def _enable_buttons(self):
         import PyQt6.QtCore as QtCore
+
         QtCore.QMetaObject.invokeMethod(
             self.playback_only_btn,
             "setEnabled",
@@ -475,7 +478,9 @@ class SoundTestApp(QMainWindow):
 
         # Run playback and record in separate background threads
         threading.Thread(
-            target=self.play_audio, args=(text, out_idx, server_ready_event), daemon=True
+            target=self.play_audio,
+            args=(text, out_idx, server_ready_event),
+            daemon=True,
         ).start()
 
         # Record and transcribe in a separate thread
@@ -552,7 +557,9 @@ class SoundTestApp(QMainWindow):
                     wav.writeframes(buffer)
 
             if server_ready_event is not None:
-                self.signals.log_message.emit("Waiting for transcription server to be ready before playback...")
+                self.signals.log_message.emit(
+                    "Waiting for transcription server to be ready before playback..."
+                )
                 server_ready_event.wait()
 
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
@@ -588,7 +595,9 @@ class SoundTestApp(QMainWindow):
 
     def record_audio_to_file(self, device_index, server_ready_event=None):
         """Records audio from microphone and streams it directly to WhisperLive."""
-        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+        device_name = self.p.get_device_info_by_index(device_index).get(
+            "name", "Unknown Device"
+        )
         try:
             self.signals.log_message.emit(
                 f"Starting recording on {device_name} for transcription..."
@@ -721,8 +730,8 @@ class SoundTestApp(QMainWindow):
 
                         # Convert audio data to float array
                         audio_array = (
-                                np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                                / 32768.0
+                            np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                            / 32768.0
                         )
 
                         # Resample if needed
@@ -796,13 +805,15 @@ class SoundTestApp(QMainWindow):
             )
             return
 
-        match_ratio = difflib.SequenceMatcher(None, original_normalized, transcribed_normalized).ratio()
+        match_ratio = difflib.SequenceMatcher(
+            None, original_normalized, transcribed_normalized
+        ).ratio()
 
         # Check for exact match (normalized)
         if (
-                transcribed_normalized in original_normalized
-                or original_normalized in transcribed_normalized
-                or match_ratio >= 0.8
+            transcribed_normalized in original_normalized
+            or original_normalized in transcribed_normalized
+            or match_ratio >= 0.8
         ):
             self.signals.log_message.emit(
                 "Result: SUCCESS - Transcribed text matches original."
@@ -856,9 +867,13 @@ class SoundTestApp(QMainWindow):
 
     def monitor_mic_volume(self, device_index):
         """Monitors microphone volume without recording or transcribing."""
-        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+        device_name = self.p.get_device_info_by_index(device_index).get(
+            "name", "Unknown Device"
+        )
         try:
-            self.signals.log_message.emit(f"Starting microphone monitoring on {device_name}...")
+            self.signals.log_message.emit(
+                f"Starting microphone monitoring on {device_name}..."
+            )
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
                 while not self.playback_done:
@@ -872,12 +887,12 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit(f"Microphone monitoring error: {e}")
 
     def record_audio(self, device_index):
-        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+        device_name = self.p.get_device_info_by_index(device_index).get(
+            "name", "Unknown Device"
+        )
         try:
             r = sr.Recognizer()
-            self.signals.log_message.emit(
-                f"Starting recording on {device_name}..."
-            )
+            self.signals.log_message.emit(f"Starting recording on {device_name}...")
 
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
@@ -928,14 +943,20 @@ class SoundTestApp(QMainWindow):
             original_normalized = self._normalize_text(original_text)
             recognized_normalized = self._normalize_text(recognized_text)
 
-            match_ratio = difflib.SequenceMatcher(None, original_normalized, recognized_normalized).ratio()
+            match_ratio = difflib.SequenceMatcher(
+                None, original_normalized, recognized_normalized
+            ).ratio()
 
             # Check for empty recognition first
             if not recognized_normalized.strip():
                 self.signals.log_message.emit(
                     "Result: FAILURE - No recognition received."
                 )
-            elif recognized_normalized in original_normalized or original_normalized in recognized_normalized or match_ratio >= 0.8:
+            elif (
+                recognized_normalized in original_normalized
+                or original_normalized in recognized_normalized
+                or match_ratio >= 0.8
+            ):
                 self.signals.log_message.emit(
                     "Result: SUCCESS - Recognized text matches original."
                 )
