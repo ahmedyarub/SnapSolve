@@ -49,69 +49,49 @@ class LocalPaddleOCREngine(OCREngine):
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
             raise RuntimeError(f"Error during OCR initialization: {str(e)}") from e
 
-    def extract_text(
-        self,
-        image_path: str,
-        status_callback=None,
-        cancel_event: threading.Event = None,
-    ) -> str:
-        if cancel_event and cancel_event.is_set():
-            raise ValueError("OCR cancelled.")
+    def _parse_json_result(self, res, text_lines):
+        data = res.json
+        if "res" in data and "rec_texts" in data["res"]:
+            for text, score in zip(data["res"]["rec_texts"], data["res"]["rec_scores"]):
+                if score >= 0.5: text_lines.append(text)
 
+    def _parse_list_result(self, res, text_lines):
+        for line in res:
+            text, confidence = line[1][0], line[1][1]
+            if confidence >= 0.5: text_lines.append(text)
+
+    def _parse_ocr_result(self, results):
+        text_lines = []
+        if results:
+            for res in results:
+                if not res: continue
+                if hasattr(res, "json"): self._parse_json_result(res, text_lines)
+                elif isinstance(res, list): self._parse_list_result(res, text_lines)
+        return " ".join(text_lines) if text_lines else None
+
+    def extract_text(self, image_path: str, status_callback=None, cancel_event: threading.Event = None) -> str:
+        if cancel_event and cancel_event.is_set(): raise ValueError("OCR cancelled.")
         print("Using local PaddleOCR engine.")
-        if status_callback:
-            status_callback("Running PaddleOCR...")
+        if status_callback: status_callback("Running PaddleOCR...")
 
         try:
             start_time = time.time()
-
             results = self.ocr.ocr(image_path)
+            if cancel_event and cancel_event.is_set(): raise ValueError("OCR cancelled.")
 
-            if cancel_event and cancel_event.is_set():
-                raise ValueError("OCR cancelled.")
+            extracted_text = self._parse_ocr_result(results)
 
-            text_lines = []
-            if results:
-                for res in results:
-                    if not res:
-                        continue
-                    if hasattr(res, "json"):
-                        data = res.json
-                        if "res" in data and "rec_texts" in data["res"]:
-                            texts = data["res"]["rec_texts"]
-                            scores = data["res"]["rec_scores"]
-
-                            for text, score in zip(texts, scores):
-                                if score >= 0.5:
-                                    text_lines.append(text)
-
-                    elif isinstance(res, list):
-                        for line in res:
-                            text = line[1][0]
-                            confidence = line[1][1]
-                            if confidence >= 0.5:
-                                text_lines.append(text)
-
-            extracted_text = None
-            if text_lines:
-                extracted_text = " ".join(text_lines)
-                print(f"Extracted Text: {extracted_text}")
-            else:
-                print("PaddleOCR found no text.")
+            if extracted_text: print(f"Extracted Text: {extracted_text}")
+            else: print("PaddleOCR found no text.")
 
             elapsed_ms = (time.time() - start_time) * 1000
             print(f"PaddleOCR took {elapsed_ms:.2f} ms")
-
             return extracted_text
 
         except ImportError:
-            raise ImportError(
-                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
-            )
+            raise ImportError("Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine.")
         except Exception as e:
-            if "cancelled" in str(e).lower():
-                raise
+            if "cancelled" in str(e).lower(): raise
             import traceback
-
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
             raise RuntimeError(f"Error during OCR execution: {str(e)}") from e

@@ -117,9 +117,9 @@ def get_audio_input_devices():
     return input_devices
 
 
-def load_config():
-    config = {
-        "output_mode": ["popup"],  # Can be 'popup', 'audio', or both
+def _get_default_config():
+    return {
+        "output_mode": ["popup"],
         "hotkeys": [
             {"action": "capture", "key": "ctrl+alt+shift+c"},
             {"action": "reselect", "key": "ctrl+alt+shift+s"},
@@ -130,88 +130,53 @@ def load_config():
             {"action": "new_chat_session", "key": "ctrl+alt+shift+h"},
             {"action": "toggle_stitching", "key": "ctrl+alt+shift+i"},
         ],
-        "save_images": False,
-        "save_transcriptions": True,
-        "coordinates": None,  # [x1, y1, x2, y2]
-        "background": False,
-        "piper_model": "en_US-lessac-medium.onnx",  # Path to piper model
-        "active_profile_id": "prof1",
-        "ollama_url": "http://localhost:11434",
-        "google_genai_api_key": "",
-        "auto_close_results": False,
-        "popup_opacity": 0.8,
-        "show_control_panel": False,
-        "default_source": "text",
-        "warmup_ocr": True,
-        "warmup_llm": True,
-        "warmup_tts": False,
-        "warmup_speech_recognition": True,
-        "warmup_realtime_transcription": False,
-        "tts_output_device_name": None,
-        "audio_input_device_name": None,
-        "realtime_transcription": True,
-        "transcription_pause_threshold": 1.0,  # seconds of silence to trigger transcription
+        "save_images": False, "save_transcriptions": True, "coordinates": None,
+        "background": False, "piper_model": "en_US-lessac-medium.onnx",
+        "active_profile_id": "prof1", "ollama_url": "http://localhost:11434",
+        "google_genai_api_key": "", "auto_close_results": False,
+        "popup_opacity": 0.8, "show_control_panel": False, "default_source": "text",
+        "warmup_ocr": True, "warmup_llm": True, "warmup_tts": False,
+        "warmup_speech_recognition": True, "warmup_realtime_transcription": False,
+        "tts_output_device_name": None, "audio_input_device_name": None,
+        "realtime_transcription": True, "transcription_pause_threshold": 1.0,
     }
 
-    # Ensure config directory exists
+def _merge_hotkeys(file_config):
+    if "hotkey" in file_config and "hotkeys" not in file_config:
+        file_config["hotkeys"] = [
+            {"action": "capture", "key": file_config["hotkey"]},
+            {"action": "reselect", "key": "ctrl+alt+shift+r"},
+        ]
+        del file_config["hotkey"]
+    elif "hotkeys" in file_config:
+        current_actions = {hk["action"]: hk["key"] for hk in file_config["hotkeys"]}
+        defaults = {
+            "capture": "ctrl+alt+shift+s", "reselect": "ctrl+alt+shift+r",
+            "multi_capture": "ctrl+alt+shift+m", "end_multi_capture": "ctrl+alt+shift+n",
+            "cancel_multi_capture": "ctrl+alt+t", "toggle_panel": "ctrl+alt+p"
+        }
+        for act, key in defaults.items():
+            if act not in current_actions:
+                file_config["hotkeys"].append({"action": act, "key": key})
+    return file_config
+
+def load_config():
+    config = _get_default_config()
     os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
 
-    # Legacy config loading from root if it exists
     legacy_config = "config.json"
     if os.path.exists(legacy_config) and not os.path.exists(CONFIG_FILE):
         import shutil
-
         shutil.move(legacy_config, CONFIG_FILE)
 
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
                 file_config = json.load(f)
-
-                # Migrate old "hotkey" to "hotkeys" format
-                if "hotkey" in file_config and "hotkeys" not in file_config:
-                    file_config["hotkeys"] = [
-                        {"action": "capture", "key": file_config["hotkey"]},
-                        {"action": "reselect", "key": "ctrl+alt+shift+r"},
-                    ]
-                    del file_config["hotkey"]
-                elif "hotkeys" in file_config:
-                    # Merge existing actions carefully so we don't overwrite user settings
-                    current_actions = {
-                        hk["action"]: hk["key"] for hk in file_config["hotkeys"]
-                    }
-
-                    if "capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "capture", "key": "ctrl+alt+shift+s"}
-                        )
-                    if "reselect" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "reselect", "key": "ctrl+alt+shift+r"}
-                        )
-                    if "multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "multi_capture", "key": "ctrl+alt+shift+m"}
-                        )
-                    if "end_multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "end_multi_capture", "key": "ctrl+alt+shift+n"}
-                        )
-                    if "cancel_multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "cancel_multi_capture", "key": "ctrl+alt+t"}
-                        )
-                    if "toggle_panel" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "toggle_panel", "key": "ctrl+alt+p"}
-                        )
-
+                file_config = _merge_hotkeys(file_config)
                 config.update(file_config)
         except json.JSONDecodeError:
-            print(
-                f"Warning: {CONFIG_FILE} is not a valid JSON. Using default settings."
-            )
-
+            print(f"Warning: {CONFIG_FILE} is not a valid JSON. Using default settings.")
     return config
 
 
@@ -350,94 +315,49 @@ def parse_args():
     return parser.parse_args()
 
 
+def _apply_hotkeys_args(config, args):
+    if args.hotkey_capture or args.hotkey_reselect:
+        for hk in config["hotkeys"]:
+            if hk["action"] == "capture" and args.hotkey_capture: hk["key"] = args.hotkey_capture
+            if hk["action"] == "reselect" and args.hotkey_reselect: hk["key"] = args.hotkey_reselect
+
+def _apply_bool_args(config, args):
+    bool_flags = [
+        ("background", True, "background"), ("background", False, "foreground"),
+        ("auto_close_results", True, "auto_close_results"), ("auto_close_results", False, "no_auto_close_results"),
+        ("show_control_panel", True, "show_control_panel"), ("show_control_panel", False, "hide_control_panel"),
+        ("warmup_ocr", False, "disable_warmup_ocr"), ("warmup_llm", False, "disable_warmup_llm"),
+        ("warmup_tts", False, "disable_warmup_tts"), ("warmup_speech_recognition", False, "disable_warmup_speech_recognition"),
+        ("warmup_realtime_transcription", False, "disable_warmup_realtime_transcription"),
+        ("save_transcriptions", False, "disable_save_transcriptions"), ("realtime_transcription", False, "disable_realtime_transcription"),
+        ("continue_last", True, "continue_last")
+    ]
+    for key, val, flag in bool_flags:
+        if getattr(args, flag, False): config[key] = val
+
+def _apply_str_args(config, args):
+    str_flags = [
+        ("coordinates", "coords"), ("piper_model", "piper_model"), ("active_profile_id", "active_profile"),
+        ("ollama_url", "ollama_url"), ("google_genai_api_key", "google_genai_api_key"),
+        ("popup_opacity", "popup_opacity"), ("continue_session", "continue_session"),
+        ("default_source", "default_source"), ("tts_output_device_name", "tts_output_device_name"),
+        ("audio_input_device_name", "audio_input_device_name"), ("transcription_pause_threshold", "transcription_pause_threshold")
+    ]
+    for key, flag in str_flags:
+        if getattr(args, flag, None) is not None:
+            config[key] = getattr(args, flag)
+
+def _apply_cli_args(config, args):
+    if args.output_mode:
+        config["output_mode"] = ["popup", "audio"] if "both" in args.output_mode else args.output_mode
+    _apply_hotkeys_args(config, args)
+    _apply_bool_args(config, args)
+    _apply_str_args(config, args)
+    return config
+
+
+
 def get_config():
     config = load_config()
     args = parse_args()
-
-    if args.output_mode:
-        if "both" in args.output_mode:
-            config["output_mode"] = ["popup", "audio"]
-        else:
-            config["output_mode"] = args.output_mode
-
-    if args.hotkey_capture or args.hotkey_reselect:
-        # Update specific hotkey actions
-        for hk in config["hotkeys"]:
-            if hk["action"] == "capture" and args.hotkey_capture:
-                hk["key"] = args.hotkey_capture
-            if hk["action"] == "reselect" and args.hotkey_reselect:
-                hk["key"] = args.hotkey_reselect
-
-    if args.coords:
-        config["coordinates"] = args.coords
-
-    if args.background:
-        config["background"] = True
-    elif args.foreground:
-        config["background"] = False
-
-    if args.piper_model:
-        config["piper_model"] = args.piper_model
-
-    if args.active_profile:
-        config["active_profile_id"] = args.active_profile
-
-    if args.ollama_url:
-        config["ollama_url"] = args.ollama_url
-
-    if args.google_genai_api_key:
-        config["google_genai_api_key"] = args.google_genai_api_key
-
-    if args.auto_close_results:
-        config["auto_close_results"] = True
-    elif args.no_auto_close_results:
-        config["auto_close_results"] = False
-
-    if args.popup_opacity is not None:
-        config["popup_opacity"] = args.popup_opacity
-
-    if args.show_control_panel:
-        config["show_control_panel"] = True
-    elif args.hide_control_panel:
-        config["show_control_panel"] = False
-
-    if args.continue_last:
-        config["continue_last"] = True
-
-    if args.continue_session:
-        config["continue_session"] = args.continue_session
-
-    if args.default_source:
-        config["default_source"] = args.default_source
-
-    if args.disable_warmup_ocr:
-        config["warmup_ocr"] = False
-
-    if args.disable_warmup_llm:
-        config["warmup_llm"] = False
-
-    if args.disable_warmup_tts:
-        config["warmup_tts"] = False
-
-    if args.disable_warmup_speech_recognition:
-        config["warmup_speech_recognition"] = False
-
-    if args.disable_warmup_realtime_transcription:
-        config["warmup_realtime_transcription"] = False
-
-    if args.disable_save_transcriptions:
-        config["save_transcriptions"] = False
-
-    if args.tts_output_device_name is not None:
-        config["tts_output_device_name"] = args.tts_output_device_name
-
-    if args.audio_input_device_name is not None:
-        config["audio_input_device_name"] = args.audio_input_device_name
-
-    if args.disable_realtime_transcription:
-        config["realtime_transcription"] = False
-
-    if args.transcription_pause_threshold is not None:
-        config["transcription_pause_threshold"] = args.transcription_pause_threshold
-
-    return config
+    return _apply_cli_args(config, args)

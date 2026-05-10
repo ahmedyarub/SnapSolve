@@ -62,34 +62,15 @@ class GoogleGenAIEngine(LLMEngine):
 
         return contents
 
-    def _execute_stream(
-        self,
-        client,
-        contents,
-        sink: Sink,
-        is_main: bool,
-        cancel_event: threading.Event = None,
-    ) -> str:
-        if cancel_event and cancel_event.is_set():
-            return "Cancelled"
-
-        print("[GoogleGenAIEngine] Calling generate_content_stream...")
-        response_stream = client.models.generate_content_stream(
-            model=self.model,
-            contents=contents,
-        )
-
-        print("[GoogleGenAIEngine] Stream started, waiting for chunks...")
+    def _process_stream_chunks(self, response_stream, sink, is_main, cancel_event):
         ans_chunks = []
         buffer = ""
         for i, chunk in enumerate(response_stream):
             if cancel_event and cancel_event.is_set():
-                return "Cancelled"
+                return "Cancelled", None
 
             print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
-
-            if chunk.text is None:
-                continue
+            if chunk.text is None: continue
 
             ans_chunks.append(chunk.text)
             buffer += chunk.text
@@ -100,11 +81,29 @@ class GoogleGenAIEngine(LLMEngine):
                 if sink and not (cancel_event and cancel_event.is_set()):
                     sink.process_chunk(complete_lines, is_main=is_main)
 
+        return ans_chunks, buffer
+
+    def _execute_stream(
+        self,
+        client,
+        contents,
+        sink: Sink,
+        is_main: bool,
+        cancel_event: threading.Event = None,
+    ) -> str:
+        if cancel_event and cancel_event.is_set(): return "Cancelled"
+
+        print("[GoogleGenAIEngine] Calling generate_content_stream...")
+        response_stream = client.models.generate_content_stream(model=self.model, contents=contents)
+        print("[GoogleGenAIEngine] Stream started, waiting for chunks...")
+
+        ans_chunks, buffer = self._process_stream_chunks(response_stream, sink, is_main, cancel_event)
+        if ans_chunks == "Cancelled": return "Cancelled"
+
         if buffer and sink and not (cancel_event and cancel_event.is_set()):
             sink.process_chunk(buffer, is_main=is_main)
 
-        if cancel_event and cancel_event.is_set():
-            return "Cancelled"
+        if cancel_event and cancel_event.is_set(): return "Cancelled"
 
         ans = "".join(ans_chunks)
         print("Request finished successfully")

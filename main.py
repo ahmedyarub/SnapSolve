@@ -1,3 +1,4 @@
+GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
 import json
 import logging
 import os
@@ -90,121 +91,224 @@ def set_processing(state):
         cancel_event.clear()  # Reset cancel event when not processing
 
 
+def _process_text_input(config, active_profile, text, status_update):
+    try:
+        global llm_engine_instance, fallback_llm_engine_instance
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
+
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
+
+        from core.sources import TextSource
+        temp_source = TextSource()
+
+        assert llm_engine_instance is not None
+
+        result = process_pipeline(
+            source=temp_source, llm=llm_engine_instance, prompt_text=text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink, fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            text=text, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if cancel_event.is_set():
+            print("Text processing was cancelled.")
+            return
+
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as text_error:
+        print(f"Error during processing text input: {text_error}")
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {text_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
+
+def _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event):
+    from core.sinks import PopupSink, CompositeSink
+    fallback_model = active_profile.get("fallback_model", "None")
+    main_model = active_profile.get("model", GEMINI_2_5_FLASH_LITE)
+    popup_sink = PopupSink(config, show_headers, main_model, fallback_model, cancel_event)
+    global audio_sink_instance
+    assert audio_sink_instance is not None
+    sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
+    return sink, popup_sink
+
+def _output_pipeline_result(config, active_profile, result, show_headers, popup_sink):
+    from core.output import output_result
+    final_result = result
+    if show_headers:
+        fallback_model = active_profile.get("fallback_model", "None")
+        main_model = active_profile.get("model", GEMINI_2_5_FLASH_LITE)
+        if popup_sink.accumulated_fallback and len(popup_sink.accumulated_result) == 1:
+            final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
+        else:
+            final_result = f"## Main Model ({main_model})\n\n{result}"
+    output_result(
+        final_result, config.get("output_mode"), None,
+        auto_close=config.get("auto_close_results", False),
+        opacity=config.get("popup_opacity", 0.8)
+    )
+
+def _create_status_update(config):
+    from core.output import show_popup
+    def status_update(msg):
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(msg, auto_close=None, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    return status_update
+
+def _prepare_ocr_engine(config, active_profile, status_update):
+    global ocr_engine_instance
+    if ocr_engine_instance is None and active_profile.get("ocr_engine", "none") == "paddleocr":
+        print("Loading PaddleOCR engine on demand...")
+        from core.sources.ocr import LocalPaddleOCREngine
+        ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
+    return ocr_engine_instance
+
+def _process_text_input(config, active_profile, text, status_update):
+    try:
+        from core.pipeline import process_pipeline
+        global llm_engine_instance, fallback_llm_engine_instance, session_manager, cancel_event
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
+
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
+
+        from core.sources import TextSource
+        temp_source = TextSource()
+
+        assert llm_engine_instance is not None
+
+        result = process_pipeline(
+            source=temp_source, llm=llm_engine_instance, prompt_text=text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink,
+            fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            text=text, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if cancel_event.is_set():
+            print("Text processing was cancelled.")
+            return
+
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as text_error:
+        print(f"Error during processing text input: {text_error}")
+        from core.output import show_popup
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {text_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
+
 def handle_text_submit(config, active_profile, text):
     global is_processing
     if is_processing:
         return
-
     set_processing(True)
     print(f"Processing text input: {text}")
+    status_update = _create_status_update(config)
+    threading.Thread(target=_process_text_input, args=(config, active_profile, text, status_update), daemon=True).start()
 
-    def status_update(msg):
+
+def _execute_capture(config, active_profile, active_prompt_text, coords, status_update, active_source_name, active_source):
+    try:
+        global llm_engine_instance, fallback_llm_engine_instance
+        if active_source_name == "image":
+            active_source.ocr_engine = _prepare_ocr_engine(config, status_update)
+        else:
+            if isinstance(active_source, SoundSource) and active_source.realtime_transcription:
+                status_update("Listening (Streaming)...")
+            else:
+                status_update(f"Recording from {active_source_name} source...")
+
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
+
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
+
+        assert llm_engine_instance is not None
+        result = process_pipeline(
+            source=active_source, llm=llm_engine_instance, prompt_text=active_prompt_text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink, fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            coords=coords, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if hasattr(active_source, "cleanup_all"): active_source.cleanup_all()
+        if cancel_event.is_set():
+            print("Capture was cancelled.")
+            return
+
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as capture_error:
+        print(f"Error during capture: {capture_error}")
         if "popup" in config.get("output_mode", ["popup"]):
-            show_popup(
-                msg,
-                auto_close=None,
-                opacity=config.get("popup_opacity", 0.8),
-                is_result=False,
-            )
+            show_popup(f"Error: {capture_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
 
-    def _process():
-        try:
-            global \
-                ocr_engine_instance, \
-                llm_engine_instance, \
-                fallback_llm_engine_instance, \
-                audio_sink_instance
-            show_headers = False
-            fallback_model = active_profile.get("fallback_model", "None")
-            main_model = active_profile.get("model", "gemini-2.5-flash-lite")
-            prompt_id = active_profile.get("prompt_id", "default")
+def _execute_capture(config, active_profile, active_prompt_text, coords, status_update, active_source_name, active_source):
+    try:
+        from core.pipeline import process_pipeline
+        global llm_engine_instance, fallback_llm_engine_instance, session_manager, cancel_event
 
-            if fallback_model and fallback_model != "None" and prompt_id != "quick":
-                show_headers = True
+        ocr_engine = _prepare_ocr_engine(config, active_profile, status_update)
+        if hasattr(active_source, "ocr_engine") and ocr_engine:
+            active_source.ocr_engine = ocr_engine
 
-            popup_sink = PopupSink(
-                config, show_headers, main_model, fallback_model, cancel_event
-            )
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
 
-            assert audio_sink_instance is not None
-            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
 
-            from core.sources import TextSource
+        assert active_source is not None
+        assert llm_engine_instance is not None
 
-            temp_source = TextSource()
+        result = process_pipeline(
+            source=active_source, llm=llm_engine_instance, prompt_text=active_prompt_text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink, fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            coords=coords, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if hasattr(active_source, "cleanup_all"): active_source.cleanup_all()
+        if cancel_event.is_set():
+            print("Capture processing was cancelled.")
+            return
 
-            assert llm_engine_instance is not None
-
-            result = process_pipeline(
-                source=temp_source,
-                llm=llm_engine_instance,
-                prompt_text=text,
-                status_callback=status_update,
-                session_manager=session_manager,
-                enable_stitching=active_profile.get("enable_stitching", True),
-                sink=sink,
-                fallback_llm=fallback_llm_engine_instance
-                if "fallback_llm_engine_instance" in globals()
-                else None,
-                text=text,
-                cancel_event=cancel_event,
-            )
-            if hasattr(sink, "finish"):
-                sink.finish()
-
-            if cancel_event.is_set():
-                print("Text processing was cancelled.")
-                return
-
-            print(f"Result: {result}")
-
-            final_result = result
-            if show_headers:
-                if (
-                    popup_sink.accumulated_fallback
-                    and len(popup_sink.accumulated_result) == 1
-                ):
-                    final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
-                else:
-                    final_result = f"## Main Model ({main_model})\n\n{result}"
-
-            output_result(
-                final_result,
-                config.get("output_mode"),
-                None,  # Deprecated voice_id
-                auto_close=config.get("auto_close_results", False),
-                opacity=config.get("popup_opacity", 0.8),
-            )
-        except Exception as text_error:
-            print(f"Error during processing text input: {text_error}")
-            if "popup" in config.get("output_mode", ["popup"]):
-                show_popup(
-                    f"Error: {text_error}",
-                    auto_close=5000,
-                    opacity=config.get("popup_opacity", 0.8),
-                    is_result=False,
-                )
-        finally:
-            set_processing(False)
-
-    threading.Thread(target=_process, daemon=True).start()
-
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as processing_error:
+        print(f"Error during processing: {processing_error}")
+        from core.output import show_popup
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {processing_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
 
 def handle_capture(config, active_profile, active_prompt_text):
     global is_processing
     if is_processing:
         return
 
+    from core.output import get_active_source_instance
     active_source = get_active_source_instance()
     if active_source and active_source.name == "audio":
         from core.output import ui_manager
-
         if ui_manager and ui_manager.panel:
             record_btn = ui_manager.panel.btn_record
-            if record_btn.is_recording:
-                record_btn.stop_record_action()
-            else:
-                record_btn.start_record_action()
+            if record_btn.is_recording: record_btn.stop_record_action()
+            else: record_btn.start_record_action()
         return
 
     if active_source and active_source.name != "image":
@@ -213,349 +317,208 @@ def handle_capture(config, active_profile, active_prompt_text):
 
     set_processing(True)
     print("Capturing and processing...")
+    status_update = _create_status_update(config)
+    threading.Thread(target=_execute_capture, args=(config, active_profile, active_prompt_text, config.get("coordinates"), status_update, active_source.name if active_source else "text", active_source), daemon=True).start()
 
-    def status_update(msg):
-        if "popup" in config.get("output_mode", ["popup"]):
-            show_popup(
-                msg,
-                auto_close=None,
-                opacity=config.get("popup_opacity", 0.8),
-                is_result=False,
-            )
 
-    def _capture():
+def _execute_multi_capture(config, coords, status_update):
+    global is_multi_capturing, multi_capture_texts, ocr_engine_instance
+    try:
+        temp_source = ScreenshotSource()
+        temp_source.ocr_engine = _prepare_ocr_engine(config, status_update)
+        extracted_text = None
         try:
-            global \
-                ocr_engine_instance, \
-                llm_engine_instance, \
-                fallback_llm_engine_instance, \
-                audio_sink_instance
-            active_src = get_active_source_instance()
-
-            if (
-                ocr_engine_instance is None
-                and active_profile.get("ocr_engine", "none") == "paddleocr"
-            ):
-                print("Loading PaddleOCR engine on demand...")
-                from core.sources.ocr import LocalPaddleOCREngine
-
-                ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
-                if hasattr(active_src, "ocr_engine"):
-                    active_src.ocr_engine = ocr_engine_instance
-
-            show_headers = False
-            fallback_model = active_profile.get("fallback_model", "None")
-            main_model = active_profile.get("model", "gemini-2.5-flash-lite")
-            prompt_id = active_profile.get("prompt_id", "default")
-
-            if fallback_model and fallback_model != "None" and prompt_id != "quick":
-                show_headers = True
-
-            popup_sink = PopupSink(
-                config, show_headers, main_model, fallback_model, cancel_event
-            )
-            # Use the global audio_sink_instance
-            assert audio_sink_instance is not None
-            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
-
-            assert active_src is not None
-            assert llm_engine_instance is not None
-
-            result = process_pipeline(
-                source=active_src,
-                llm=llm_engine_instance,
-                prompt_text=active_prompt_text,
-                status_callback=status_update,
-                session_manager=session_manager,
-                enable_stitching=active_profile.get("enable_stitching", True),
-                sink=sink,
-                fallback_llm=fallback_llm_engine_instance
-                if "fallback_llm_engine_instance" in globals()
-                else None,
-                coords=config.get("coordinates"),
-                cancel_event=cancel_event,
-            )
-            if hasattr(sink, "finish"):
-                sink.finish()
-
-            if hasattr(active_src, "cleanup_all"):
-                active_src.cleanup_all()
-
-            if cancel_event.is_set():
-                print("Capture processing was cancelled.")
-                return
-
-            print(f"Result: {result}")
-
-            final_result = result
-            if show_headers:
-                if (
-                    popup_sink.accumulated_fallback
-                    and len(popup_sink.accumulated_result) == 1
-                ):
-                    final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
-                else:
-                    final_result = f"## Main Model ({main_model})\n\n{result}"
-
-            output_result(
-                final_result,
-                config.get("output_mode"),
-                None,  # Deprecated voice_id
-                auto_close=config.get("auto_close_results", False),
-                opacity=config.get("popup_opacity", 0.8),
-            )
-        except Exception as processing_error:
-            print(f"Error during processing: {processing_error}")
-            if "popup" in config.get("output_mode", ["popup"]):
-                show_popup(
-                    f"Error: {processing_error}",
-                    auto_close=5000,
-                    opacity=config.get("popup_opacity", 0.8),
-                    is_result=False,
-                )
+            extracted_text = temp_source.get_text(coords=coords, status_callback=status_update, cancel_event=cancel_event)
+        except Exception as ocr_error:
+            status_update(f"Error during OCR: {str(ocr_error)}")
         finally:
-            set_processing(False)
+            temp_source.cleanup_all()
 
-    # Must run in a separate thread so we don't block the global keyboard hook
-    threading.Thread(target=_capture, daemon=True).start()
+        if cancel_event.is_set():
+            print("Multi-capture OCR was cancelled.")
+            return
 
+        if extracted_text:
+            multi_capture_texts.append(extracted_text)
+            status_update(f"Captured {len(multi_capture_texts)} images... Multiple capture mode")
+        else:
+            status_update(f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode")
+    except Exception as multi_capture_error:
+        print(f"Error during multi-capture: {multi_capture_error}")
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {multi_capture_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
+
+def _execute_multi_capture(config, coords, status_update):
+    global is_multi_capturing, multi_capture_texts, ocr_engine_instance, cancel_event
+    try:
+        from core.sources import ScreenshotSource
+        from core.sources.ocr import LocalPaddleOCREngine
+        if config.get("ocr_engine", "none") == "paddleocr" and not isinstance(ocr_engine_instance, LocalPaddleOCREngine):
+            status_update("Loading PaddleOCR engine...")
+            ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
+
+        temp_source = ScreenshotSource()
+        temp_source.ocr_engine = ocr_engine_instance
+        extracted_text = None
+        try:
+            extracted_text = temp_source.get_text(coords=coords, status_callback=status_update, cancel_event=cancel_event)
+        except Exception as ocr_error:
+            status_update(f"Error during OCR: {str(ocr_error)}")
+        finally:
+            temp_source.cleanup_all()
+
+        if cancel_event.is_set():
+            print("Multi-capture OCR was cancelled.")
+            return
+
+        if extracted_text:
+            multi_capture_texts.append(extracted_text)
+            status_update(f"Captured {len(multi_capture_texts)} images... Multiple capture mode")
+        else:
+            status_update(f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode")
+    except Exception as multi_capture_error:
+        print(f"Error during multi-capture: {multi_capture_error}")
+        from core.output import show_popup
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {multi_capture_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
 
 def handle_multi_capture(config, active_profile):
-    global is_processing
-    if is_processing:
-        return
+    global is_processing, is_multi_capturing, multi_capture_texts, cancel_event
+    if is_processing: return
 
-    active_source = get_active_source_instance()
-    if active_source and active_source.name != "image":
-        print(f"Multi-capture is disabled for {active_source.name} source.")
+    from core.output import update_multi_state, get_coordinates, show_popup
+    if not is_multi_capturing:
+        is_multi_capturing = True
+        multi_capture_texts = []
+        update_multi_state(True)
+
+    if "popup" in config.get("output_mode", ["popup"]):
+        show_popup("Multiple capture mode", auto_close=None, opacity=config.get("popup_opacity", 0.8), is_result=False)
+
+    coords = get_coordinates()
+    if not coords or cancel_event.is_set():
+        print("Multi-capture: Selection cancelled.")
+        is_multi_capturing = False
+        update_multi_state(False)
         return
 
     set_processing(True)
+    status_update = _create_status_update(config)
+    threading.Thread(target=_execute_multi_capture, args=(config, coords, status_update), daemon=True).start()
 
-    def _multi_capture():
-        global is_multi_capturing, multi_capture_texts, ocr_engine_instance
-        try:
-            ocr_type = active_profile.get("ocr_engine", "none")
-            if ocr_type == "none":
-                if "popup" in config.get("output_mode", ["popup"]):
-                    show_popup(
-                        "Error: Multi-capture requires an OCR engine to be defined in the active profile.",
-                        auto_close=5000,
-                        opacity=config.get("popup_opacity", 0.8),
-                        is_result=False,
-                    )
-                return
 
-            if not is_multi_capturing:
-                is_multi_capturing = True
-                multi_capture_texts = []
-                update_multi_state(True)
-
+def _execute_end_multi_capture(config, active_profile, active_prompt_text):
+    global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance
+    try:
+        if not multi_capture_texts:
             if "popup" in config.get("output_mode", ["popup"]):
-                show_popup(
-                    "Multiple capture mode",
-                    auto_close=None,
-                    opacity=config.get("popup_opacity", 0.8),
-                    is_result=False,
-                )
+                show_popup("No text captured in multi-capture mode.", auto_close=3000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+            is_multi_capturing = False
+            update_multi_state(False)
+            return
 
-            # Get coordinates specifically for this capture (don't update config)
-            coords = get_coordinates()
-            if not coords or cancel_event.is_set():
-                print("Multi-capture: Selection cancelled.")
-                if is_multi_capturing:
-                    handle_cancel()
-                return
+        combined_text = "\n\n".join(multi_capture_texts)
+        print(f"Combined Text:\n{combined_text}")
+        status_update = _create_status_update(config)
 
-            def status_update(msg):
-                if "popup" in config.get("output_mode", ["popup"]):
-                    show_popup(
-                        msg,
-                        auto_close=None,
-                        opacity=config.get("popup_opacity", 0.8),
-                        is_result=False,
-                    )
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
 
-            status_update("Capturing screen...")
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
 
-            if (
-                ocr_engine_instance is None
-                and active_profile.get("ocr_engine", "none") == "paddleocr"
-            ):
-                status_update("Loading PaddleOCR engine...")
-                from core.sources.ocr import LocalPaddleOCREngine
+        from core.sources import TextSource
+        temp_source = TextSource()
 
-                ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
+        assert llm_engine_instance is not None
+        result = process_pipeline(
+            source=temp_source, llm=llm_engine_instance, prompt_text=active_prompt_text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink, fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            text=combined_text, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if cancel_event.is_set():
+            print("Multi-capture processing was cancelled.")
+            return
 
-            temp_source = ScreenshotSource()
-            temp_source.ocr_engine = ocr_engine_instance
-            extracted_text = None
-            try:
-                extracted_text = temp_source.get_text(
-                    coords=coords,
-                    status_callback=status_update,
-                    cancel_event=cancel_event,
-                )
-            except Exception as ocr_error:
-                status_update(f"Error during OCR: {str(ocr_error)}")
-            finally:
-                temp_source.cleanup_all()
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as multi_error:
+        print(f"Error during processing multi-capture: {multi_error}")
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {multi_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
+        is_multi_capturing = False
+        multi_capture_texts = []
 
-            if cancel_event.is_set():
-                print("Multi-capture OCR was cancelled.")
-                return
-
-            if extracted_text:
-                multi_capture_texts.append(extracted_text)
-                status_update(
-                    f"Captured {len(multi_capture_texts)} images... Multiple capture mode"
-                )
-            else:
-                status_update(
-                    f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode"
-                )
-
-        except Exception as multi_capture_error:
-            print(f"Error during multi-capture: {multi_capture_error}")
+def _execute_end_multi_capture(config, active_profile, active_prompt_text):
+    global is_processing, is_multi_capturing, multi_capture_texts, llm_engine_instance, fallback_llm_engine_instance, cancel_event, session_manager
+    try:
+        from core.output import show_popup, update_multi_state
+        if not multi_capture_texts:
             if "popup" in config.get("output_mode", ["popup"]):
-                show_popup(
-                    f"Error: {multi_capture_error}",
-                    auto_close=5000,
-                    opacity=config.get("popup_opacity", 0.8),
-                    is_result=False,
-                )
-        finally:
-            set_processing(False)
+                show_popup("No text captured in multi-capture mode.", auto_close=3000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+            is_multi_capturing = False
+            update_multi_state(False)
+            return
 
-    threading.Thread(target=_multi_capture, daemon=True).start()
+        combined_text = "\n\n".join(multi_capture_texts)
+        print(f"Combined Text:\n{combined_text}")
+        status_update = _create_status_update(config)
 
+        fallback_model = active_profile.get("fallback_model", "None")
+        prompt_id = active_profile.get("prompt_id", "default")
+        show_headers = fallback_model and fallback_model != "None" and prompt_id != "quick"
+
+        sink, popup_sink = _setup_pipeline_sinks(config, active_profile, show_headers, cancel_event)
+
+        from core.sources import TextSource
+        from core.pipeline import process_pipeline
+        temp_source = TextSource()
+
+        assert llm_engine_instance is not None
+        result = process_pipeline(
+            source=temp_source, llm=llm_engine_instance, prompt_text=active_prompt_text,
+            status_callback=status_update, session_manager=session_manager,
+            enable_stitching=active_profile.get("enable_stitching", True),
+            sink=sink, fallback_llm=fallback_llm_engine_instance if "fallback_llm_engine_instance" in globals() else None,
+            text=combined_text, cancel_event=cancel_event
+        )
+        if hasattr(sink, "finish"): sink.finish()
+        if cancel_event.is_set():
+            print("Multi-capture processing was cancelled.")
+            return
+
+        print(f"Result: {result}")
+        _output_pipeline_result(config, active_profile, result, show_headers, popup_sink)
+    except Exception as multi_error:
+        print(f"Error during processing multi-capture: {multi_error}")
+        from core.output import show_popup
+        if "popup" in config.get("output_mode", ["popup"]):
+            show_popup(f"Error: {multi_error}", auto_close=5000, opacity=config.get("popup_opacity", 0.8), is_result=False)
+    finally:
+        set_processing(False)
+        is_multi_capturing = False
+        multi_capture_texts = []
 
 def handle_end_multi_capture(config, active_profile, active_prompt_text):
     global is_processing, is_multi_capturing, multi_capture_texts
-    if is_processing:
-        return
+    if is_processing or not is_multi_capturing: return
 
-    if not is_multi_capturing:
-        return
-
+    from core.output import get_active_source_instance, update_multi_state
     active_source = get_active_source_instance()
-    if active_source and active_source.name != "image":
-        return
+    if active_source and active_source.name != "image": return
 
     set_processing(True)
-
-    # Immediately update UI state to hide buttons before processing starts
     update_multi_state(False)
-
-    def _end_multi_capture():
-        global \
-            is_processing, \
-            is_multi_capturing, \
-            multi_capture_texts, \
-            llm_engine_instance, \
-            fallback_llm_engine_instance, \
-            audio_sink_instance
-        try:
-            if not multi_capture_texts:
-                if "popup" in config.get("output_mode", ["popup"]):
-                    show_popup(
-                        "No text captured in multi-capture mode.",
-                        auto_close=3000,
-                        opacity=config.get("popup_opacity", 0.8),
-                        is_result=False,
-                    )
-                is_multi_capturing = False
-                update_multi_state(False)
-                return
-
-            combined_text = "\n\n".join(multi_capture_texts)
-            print(f"Combined Text:\n{combined_text}")
-
-            def status_update(msg):
-                if "popup" in config.get("output_mode", ["popup"]):
-                    show_popup(
-                        msg,
-                        auto_close=None,
-                        opacity=config.get("popup_opacity", 0.8),
-                        is_result=False,
-                    )
-
-            show_headers = False
-            fallback_model = active_profile.get("fallback_model", "None")
-            main_model = active_profile.get("model", "gemini-2.5-flash-lite")
-            prompt_id = active_profile.get("prompt_id", "default")
-
-            if fallback_model and fallback_model != "None" and prompt_id != "quick":
-                show_headers = True
-
-            popup_sink = PopupSink(
-                config, show_headers, main_model, fallback_model, cancel_event
-            )
-            # Use the global audio_sink_instance
-            assert audio_sink_instance is not None
-            sink = CompositeSink([popup_sink, audio_sink_instance], cancel_event)
-
-            from core.sources import TextSource
-
-            temp_source = TextSource()
-
-            assert llm_engine_instance is not None
-            result = process_pipeline(
-                source=temp_source,
-                llm=llm_engine_instance,
-                prompt_text=active_prompt_text,
-                status_callback=status_update,
-                session_manager=session_manager,
-                enable_stitching=active_profile.get("enable_stitching", True),
-                sink=sink,
-                fallback_llm=fallback_llm_engine_instance
-                if "fallback_llm_engine_instance" in globals()
-                else None,
-                text=combined_text,
-                cancel_event=cancel_event,
-            )
-            if hasattr(sink, "finish"):
-                sink.finish()
-
-            if cancel_event.is_set():
-                print("Multi-capture processing was cancelled.")
-                return
-
-            print(f"Result: {result}")
-
-            final_result = result
-            if show_headers:
-                if (
-                    popup_sink.accumulated_fallback
-                    and len(popup_sink.accumulated_result) == 1
-                ):
-                    final_result = f"## Fallback Model ({fallback_model})\n\n{result}"
-                else:
-                    final_result = f"## Main Model ({main_model})\n\n{result}"
-
-            output_result(
-                final_result,
-                config.get("output_mode"),
-                None,  # Deprecated voice_id
-                auto_close=config.get("auto_close_results", False),
-                opacity=config.get("popup_opacity", 0.8),
-            )
-
-        except Exception as multi_error:
-            print(f"Error during processing multi-capture: {multi_error}")
-            if "popup" in config.get("output_mode", ["popup"]):
-                show_popup(
-                    f"Error: {multi_error}",
-                    auto_close=5000,
-                    opacity=config.get("popup_opacity", 0.8),
-                    is_result=False,
-                )
-        finally:
-            set_processing(False)
-            is_multi_capturing = False
-            multi_capture_texts = []
-
-    threading.Thread(target=_end_multi_capture, daemon=True).start()
+    threading.Thread(target=_execute_end_multi_capture, args=(config, active_profile, active_prompt_text), daemon=True).start()
 
 
 def handle_new_chat_session(config):
@@ -792,7 +755,7 @@ def load_models_data():
 
 def validate_config(active_profile):
     llm_type = active_profile.get("llm_engine", "gemini")
-    model_id = active_profile.get("model", "gemini-2.5-flash-lite")
+    model_id = active_profile.get("model", GEMINI_2_5_FLASH_LITE)
     fallback_model_id = active_profile.get("fallback_model", "None")
     ocr_type = active_profile.get("ocr_engine", "none")
 
@@ -829,359 +792,202 @@ def validate_config(active_profile):
             sys.exit(1)
 
 
-def warmup_whisperlive_process(_config):
-    """Executes the test_whisperlive_warmup script from main thread as a warmup."""
+def _read_warmup_stream(stream, prefix, is_error=False):
+    import sys
+    for line in iter(stream.readline, ""):
+        if is_error:
+            print(f"{prefix} {line.strip()}", file=sys.stderr)
+        else:
+            print(f"{prefix} {line.strip()}")
+    stream.close()
+
+def _run_whisperlive_warmup(script_path):
+    import subprocess, sys, threading
     try:
-        import subprocess
-
-        # Get path to test_whisperlive_warmup.py
-        script_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "tests",
-            "sanity",
-            "test_whisperlive_warmup.py",
+        process = subprocess.Popen(
+            [sys.executable, script_path], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True
         )
+        t1 = threading.Thread(target=_read_warmup_stream, args=(process.stdout, "[WhisperLive Warmup]"), daemon=True)
+        t2 = threading.Thread(target=_read_warmup_stream, args=(process.stderr, "[WhisperLive Warmup ERR]", True), daemon=True)
+        t1.start()
+        t2.start()
+        process.wait()
+        t1.join()
+        t2.join()
+        if process.returncode == 0:
+            print("Real-time transcription warmup completed successfully.")
+        else:
+            print(f"Real-time transcription warmup failed with code {process.returncode}")
+    except Exception as warmup_error:
+        print(f"Error executing warmup script: {warmup_error}")
+
+def _read_warmup_stream(stream, prefix, is_error=False):
+    import sys
+    for line in iter(stream.readline, ""):
+        if is_error:
+            print(f"{prefix} {line.strip()}", file=sys.stderr)
+        else:
+            print(f"{prefix} {line.strip()}")
+    stream.close()
+
+def _run_whisperlive_warmup(script_path):
+    import subprocess, sys, threading
+    try:
+        process = subprocess.Popen(
+            [sys.executable, script_path], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True
+        )
+        t1 = threading.Thread(target=_read_warmup_stream, args=(process.stdout, "[WhisperLive Warmup]"), daemon=True)
+        t2 = threading.Thread(target=_read_warmup_stream, args=(process.stderr, "[WhisperLive Warmup ERR]", True), daemon=True)
+        t1.start()
+        t2.start()
+        process.wait()
+        t1.join()
+        t2.join()
+        if process.returncode == 0:
+            print("Real-time transcription warmup completed successfully.")
+        else:
+            print(f"Real-time transcription warmup failed with code {process.returncode}")
+    except Exception as warmup_error:
+        print(f"Error executing warmup script: {warmup_error}")
+
+def warmup_whisperlive_process(_config):
+    try:
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "sanity", "test_whisperlive_warmup.py")
         if os.path.exists(script_path):
-            print(
-                "Running Real-time transcription warmup (test_whisperlive_warmup.py)..."
-            )
-
-            # Start process asynchronously
-            def _run_warmup():
-                try:
-                    process = subprocess.Popen(
-                        [sys.executable, script_path],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        bufsize=1,  # Line buffered
-                        universal_newlines=True,
-                    )
-
-                    # Read stdout in a background thread to print in real time
-                    def _read_stdout():
-                        for line in iter(process.stdout.readline, ""):
-                            print(f"[WhisperLive Warmup] {line.strip()}")
-                        process.stdout.close()
-
-                    def _read_stderr():
-                        for line in iter(process.stderr.readline, ""):
-                            print(
-                                f"[WhisperLive Warmup ERR] {line.strip()}",
-                                file=sys.stderr,
-                            )
-                        process.stderr.close()
-
-                    t1 = threading.Thread(target=_read_stdout, daemon=True)
-                    t2 = threading.Thread(target=_read_stderr, daemon=True)
-                    t1.start()
-                    t2.start()
-
-                    process.wait()
-                    t1.join()
-                    t2.join()
-
-                    if process.returncode == 0:
-                        print("Real-time transcription warmup completed successfully.")
-                    else:
-                        print(
-                            f"Real-time transcription warmup failed with code {process.returncode}"
-                        )
-                except Exception as warmup_error:
-                    print(f"Error executing warmup script: {warmup_error}")
-
-            threading.Thread(target=_run_warmup, daemon=True).start()
+            print("Running Real-time transcription warmup (test_whisperlive_warmup.py)...")
+            threading.Thread(target=_run_whisperlive_warmup, args=(script_path,), daemon=True).start()
         else:
             print("Warning: Real-time transcription warmup script not found.")
     except Exception as init_error:
         print(f"Error initializing Real-time transcription warmup: {init_error}")
 
 
-def main():
-    # Configure logging early
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    global is_running
-
-    # Initialize PyQt application in the main thread
-    app = QApplication.instance()
-    if not app:
-        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-        app = QApplication(sys.argv)
-        # Needed for tray icon to keep app alive if windows are closed
+def _setup_app_ui(config):
+    global app
+    app = QApplication(sys.argv)
+    if "linux" in sys.platform:
         app.setQuitOnLastWindowClosed(False)
+    icon_path = os.path.join("assets", "tray_icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
-    print("Initializing Screen Capture & Gemini QA App...")
+    _app_callbacks["capture"] = lambda coords=None: handle_hotkey_capture(coords=coords)
+    _app_callbacks["multi_capture"] = lambda coords=None: handle_multi_capture(config, get_active_profile(config)[1], coords=coords)
+    _app_callbacks["end_multi_capture"] = lambda: handle_end_multi_capture(config, *get_active_profile(config)[1:])
+    _app_callbacks["cancel_multi_capture"] = lambda: handle_cancel_multi_capture(config)
+    _app_callbacks["toggle_panel"] = lambda: ui_broker.toggle_panel_signal.emit()
+    _app_callbacks["cancel"] = lambda: cancel_event.set()
+    _app_callbacks["text_submit"] = lambda text: handle_text_submit(config, get_active_profile(config)[1], text)
+    _app_callbacks["cancel_source"] = lambda: handle_cancel_source()
 
-    config = get_config()
-    profiles = load_profiles()
-    prompts = load_prompts()
+    ui_broker.config_changed.connect(handle_config_changed)
+    ui_broker.source_changed.connect(handle_source_changed)
 
-    active_profile_id = config.get("active_profile_id", "prof1")
-    active_profile = next(
-        (p for p in profiles if p.get("id") == active_profile_id),
-        profiles[0] if profiles else {},
-    )
-
-    prompt_id = active_profile.get("prompt_id", "default")
-    active_prompt = next(
-        (p for p in prompts if p.get("id") == prompt_id), prompts[0] if prompts else {}
-    )
-    active_prompt_text = active_prompt.get(
-        "text", "answer the following question quickly and briefly"
-    )
-
-    validate_config(active_profile)
-
-    # Determine the initial source
+def _init_session(config):
     global session_manager
-    session_manager = SessionManager(config)
-
-    default_source = config.get("default_source", "text")
-    if default_source == "image":
-        set_active_source_instance(ScreenshotSource())
-    elif default_source == "audio":
-        set_active_source_instance(SoundSource(config, session_manager=session_manager))
+    if config.get("resume_session"):
+        session_manager = SessionManager(session_id=config.get("resume_session"), save_transcriptions=config.get("save_transcriptions"))
+        print(f"Resuming session: {session_manager.session_id}")
     else:
-        set_active_source_instance(TextSource())
+        session_manager = SessionManager(save_transcriptions=config.get("save_transcriptions"))
 
-    active_source = get_active_source_instance()
+def _setup_app_ui(config, active_profile, active_prompt_text):
+    global app
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
+    from core.output import set_app_callbacks, ui_broker
 
-    # Set up UI callbacks before starting the main loop
+    app = QApplication(sys.argv)
+    if "linux" in sys.platform: app.setQuitOnLastWindowClosed(False)
+    icon_path = os.path.join("assets", "tray_icon.png")
+    if os.path.exists(icon_path): app.setWindowIcon(QIcon(icon_path))
+
     callbacks = {
         "capture": lambda: handle_capture(config, active_profile, active_prompt_text),
         "reselect": lambda: handle_reselect(config),
         "multi_capture": lambda: handle_multi_capture(config, active_profile),
-        "end_multi_capture": lambda: handle_end_multi_capture(
-            config, active_profile, active_prompt_text
-        ),
+        "end_multi_capture": lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
         "cancel": handle_cancel,
         "toggle_stitching": lambda: handle_toggle_stitching(config, active_profile),
         "cycle_source": lambda: handle_cycle_source(config, active_profile),
         "text_submit": lambda text: handle_text_submit(config, active_profile, text),
-        "start_record": lambda enable_transcription: handle_start_record(
-            config, enable_transcription
-        ),
-        "stop_record": lambda is_long_press: handle_stop_record(
-            config, active_profile, active_prompt_text, is_long_press
-        ),
+        "start_record": lambda enable_transcription: handle_start_record(config, enable_transcription),
+        "stop_record": lambda is_long_press: handle_stop_record(config, active_profile, active_prompt_text, is_long_press),
     }
-    # Initialize the UI Manager and set callbacks
-    from core.output import init_ui_manager
 
+    from core.output import init_ui_manager
     init_ui_manager()
     set_app_callbacks(callbacks)
 
-    # Initialize the UI with the active source before showing the panel
-    set_active_source_ui(
-        active_source.name if active_source else "text",
-        opacity=config.get("popup_opacity", 0.8),
-    )
+    ui_broker.config_changed.connect(handle_config_changed)
+    ui_broker.source_changed.connect(handle_source_changed)
 
-    if config.get("show_control_panel", False):
-        toggle_control_panel(True)
-
-    if (
-        active_source
-        and active_source.name == "image"
-        and not config.get("coordinates")
-    ):
-        print("Coordinates not found in config. Launching coordinate selector...")
-        coords = get_coordinates()
-        if coords:
-            config["coordinates"] = coords
-            save_config(config)
-            print(f"Coordinates saved: {coords}")
-        else:
-            print("No coordinates selected. Exiting.")
-            sys.exit(1)
-
-    # Initialize Engines
-    print("Checking engine pre-initialization...")
-    global \
-        ocr_engine_instance, \
-        llm_engine_instance, \
-        fallback_llm_engine_instance, \
-        audio_sink_instance
-    ocr_type = active_profile.get("ocr_engine", "none")
-    if ocr_type == "paddleocr":
-        ocr_engine_instance = LocalPaddleOCREngine(
-            status_callback=lambda msg: print(f"Init status: {msg}")
-        )
-    elif ocr_type == "remote_paddle":
-        ocr_config = config.get("ocr_config", {})
-        ocr_engine_instance = RemotePaddleOCREngine(
-            config=ocr_config, status_callback=lambda msg: print(f"Init status: {msg}")
-        )
+def _init_session(config):
+    from core.session_manager import SessionManager
+    global session_manager
+    if config.get("resume_session"):
+        session_manager = SessionManager(session_id=config.get("resume_session"), save_transcriptions=config.get("save_transcriptions"))
+        print(f"Resuming session: {session_manager.session_id}")
     else:
-        ocr_engine_instance = NoOCREngine()
+        session_manager = SessionManager(save_transcriptions=config.get("save_transcriptions"))
 
-    if config.get("warmup_ocr", True) and hasattr(ocr_engine_instance, "warmup"):
-        ocr_engine_instance.warmup()
+def _run_warmups(config, active_profile):
+    from core.output import get_active_source_instance
+    from core.sources import SoundSource
+    global audio_sink_instance
 
-    if isinstance(active_source, ScreenshotSource):
-        active_source.ocr_engine = ocr_engine_instance
-        set_active_source_instance(active_source)
-
-    llm_type = active_profile.get("llm_engine", "gemini")
-    model = active_profile.get("model", "gemini-2.5-flash-lite")
-    fallback_model = active_profile.get("fallback_model", "None")
-
-    if llm_type == "ollama":
-        print("Initializing Ollama Engine...")
-        llm_engine_instance = OllamaEngine(
-            model,
-            config.get("ollama_url", "http://localhost:11434"),
-            session_manager=session_manager,
-        )
-        if fallback_model and fallback_model != "None":
-            print("Initializing Fallback Ollama Engine (with warmup)...")
-            fallback_llm_engine_instance = OllamaEngine(
-                fallback_model,
-                config.get("ollama_url", "http://localhost:11434"),
-                session_manager=session_manager,
-            )
-    elif llm_type == "google-genai":
-        llm_engine_instance = GoogleGenAIEngine(
-            model,
-            config.get("google_genai_api_key", ""),
-            session_manager=session_manager,
-        )
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine_instance = GoogleGenAIEngine(
-                fallback_model,
-                config.get("google_genai_api_key", ""),
-                session_manager=session_manager,
-            )
-    else:
-        llm_engine_instance = GeminiCLIEngine(model, session_manager=session_manager)
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine_instance = GeminiCLIEngine(
-                fallback_model, session_manager=session_manager
-            )
-
-    # Perform Warmup: fallback first, then main if fallback fails or doesn't exist
-    def warmup_status_cb(msg):
-        print(f"Init status: {msg}")
-
-    warmup_success = False
-    if config.get("warmup_llm", True):
-        if (
-            fallback_model
-            and fallback_model != "None"
-            and "fallback_llm_engine_instance" in globals()
-        ):
-            assert fallback_llm_engine_instance is not None
-            warmup_success = fallback_llm_engine_instance.warmup(
-                status_callback=warmup_status_cb
-            )
-
-        if not warmup_success and llm_engine_instance:
-            llm_engine_instance.warmup(status_callback=warmup_status_cb)
-
-    # Initialize AudioSink globally
-    audio_sink_instance = AudioSink(config, cancel_event)
-
-    # Warmup AudioSink asynchronously if enabled
     if config.get("warmup_tts", False) and hasattr(audio_sink_instance, "warmup"):
         threading.Thread(target=audio_sink_instance.warmup, daemon=True).start()
 
-    # Warmup Speech Recognition asynchronously if enabled
     if config.get("warmup_speech_recognition", True):
         temp_sr = SoundSource(config, session_manager=session_manager)
         threading.Thread(target=temp_sr.warmup, daemon=True).start()
 
-    # Warmup WhisperLive (Real-time transcription) if enabled
     if config.get("warmup_realtime_transcription", False):
         warmup_whisperlive_process(config)
 
-    # Function to test transcription display
-    def handle_test_transcription():
-        import random
-        from core.output import show_subtitle
+def main():
+    global ocr_engine_instance, llm_engine_instance, fallback_llm_engine_instance
+    global audio_sink_instance, active_source_name, active_source, app, session_manager
+    from config import load_config, get_active_profile
+    from core.sinks.audio import AudioSink
 
-        test_text = f"Transcription test with random number: {random.randint(1, 1000)}"
-        print(f"Testing transcription display: {test_text}")
-        show_subtitle(test_text)
+    config = load_config()
+    active_profile_id, active_profile, active_prompt_text = get_active_profile(config)
 
-    def handle_select_subtitle(index):
-        text = get_subtitle_text(index)
-        if text:
-            print(f"Selected subtitle {index}: {text}")
-            handle_text_submit(config, active_profile, text)
-        else:
-            print(f"No subtitle found at index {index}")
+    from core.output import validate_config
+    validate_config(active_profile)
+    _init_session(config)
 
-    # Register keyboard shortcuts
-    keyboard.add_hotkey("ctrl+alt+shift+t", handle_test_transcription)
+    audio_sink_instance = AudioSink(config, cancel_event)
+    audio_sink_instance.warmup()
 
-    for i in range(1, 6):
-        keyboard.add_hotkey(f"ctrl+alt+shift+{i}", handle_select_subtitle, args=(i,))
+    from core.output import update_instances, get_active_source_instance, set_active_source_instance
+    from core.sources import ScreenshotSource, SoundSource, TextSource
 
-    hotkeys = config.get("hotkeys", [])
+    default_source = config.get("default_source", "text")
+    if default_source == "image": set_active_source_instance(ScreenshotSource())
+    elif default_source == "audio": set_active_source_instance(SoundSource(config, session_manager=session_manager))
+    else: set_active_source_instance(TextSource())
 
-    for hk in hotkeys:
-        action = hk.get("action")
-        key = hk.get("key")
-        if not action or not key:
-            continue
+    active_source = get_active_source_instance()
 
-        print(f"Listening for '{action}' hotkey: {key}")
+    _setup_app_ui(config, active_profile, active_prompt_text)
 
-        if action == "capture":
-            keyboard.add_hotkey(
-                key, handle_capture, args=(config, active_profile, active_prompt_text)
-            )
-        elif action == "reselect":
-            keyboard.add_hotkey(key, handle_reselect, args=(config,))
-        elif action == "multi_capture":
-            keyboard.add_hotkey(
-                key,
-                handle_multi_capture,
-                args=(config, active_profile, active_prompt_text),
-            )
-        elif action == "end_multi_capture":
-            keyboard.add_hotkey(
-                key,
-                handle_end_multi_capture,
-                args=(config, active_profile, active_prompt_text),
-            )
-        elif action == "cancel":
-            keyboard.add_hotkey(key, handle_cancel)
-        elif action == "toggle_panel":
-            keyboard.add_hotkey(key, handle_toggle_panel, args=(config,))
-        elif action == "new_chat_session":
-            keyboard.add_hotkey(key, handle_new_chat_session, args=(config,))
-        elif action == "toggle_stitching":
-            keyboard.add_hotkey(
-                key, handle_toggle_stitching, args=(config, active_profile)
-            )
-        elif action == "cycle_source":
-            keyboard.add_hotkey(key, handle_cycle_source, args=(config, active_profile))
+    from core.output import set_active_source_ui, toggle_control_panel
+    set_active_source_ui(active_source.name if active_source else "text", opacity=config.get("popup_opacity", 0.8))
+    if config.get("show_control_panel", False): toggle_control_panel(True)
 
-    if config.get("background", False):
-        print("Running in background tray mode with pystray...")
+    update_instances(config)
+    _run_warmups(config, active_profile)
 
-        def run_tray():
-            icon = create_tray_icon(exit_app)
-            icon.run()
+    bind_hotkeys(config)
 
-        threading.Thread(target=run_tray, daemon=True).start()
-    else:
-        print("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")
-        import signal
-
-        signal.signal(signal.SIGINT, lambda sig, frame: exit_app())
-        from PyQt6.QtCore import QTimer
-
-        timer = QTimer()
-        timer.start(500)
-        timer.timeout.connect(lambda: None)
-
-    print("Initialization done.")
+    from core.output import run_tray, show_config_panel
+    run_tray(config, show_config_panel)
+    logger.info("Main loop started. Waiting for hotkeys...")
     sys.exit(app.exec())
 
 

@@ -671,23 +671,24 @@ class TextInputWidget(QWidget):
         self.is_processing = False
 
     # noinspection PyPep8Naming
+    def _submit_text(self, text):
+        self.text_edit.clear()
+        if "text_submit" in _app_callbacks:
+            threading.Thread(target=_app_callbacks["text_submit"], args=(text,), daemon=True).start()
+
+    def _handle_enter_key(self, event):
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            return False  # Allow new line
+
+        if not self.is_processing:
+            text = self.text_edit.toPlainText().strip()
+            if text: self._submit_text(text)
+        return True  # Consume event
+
     def eventFilter(self, obj, event):
         if obj is self.text_edit and event.type() == event.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    return False  # Allow new line
-                else:
-                    if not self.is_processing:
-                        text = self.text_edit.toPlainText().strip()
-                        if text:
-                            self.text_edit.clear()
-                            if "text_submit" in _app_callbacks:
-                                threading.Thread(
-                                    target=_app_callbacks["text_submit"],
-                                    args=(text,),
-                                    daemon=True,
-                                ).start()
-                    return True  # Consume event
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                return self._handle_enter_key(event)
         return super().eventFilter(obj, event)
 
     def update_position(self):

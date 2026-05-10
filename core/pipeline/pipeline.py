@@ -47,276 +47,119 @@ class ConcurrentSinkWrapper(Sink):
             self.target_sink.process_chunk("", is_main=True, replace=True)
 
 
-def process_pipeline(
-    source: Source,
-    llm: LLMEngine,
-    prompt_text: str,
-    status_callback=None,
-    session_manager=None,
-    enable_stitching: bool = True,
-    sink: Sink = None,
-    fallback_llm: LLMEngine = None,
-    coords=None,
-    text=None,
-    cancel_event: threading.Event = None,
-) -> str:
-    if cancel_event is None:
-        cancel_event = threading.Event()
-
-    pipeline_start_time = time.time()
-    extracted_text = None
-    image_path = None
-    is_image = False
-
-    print(f"Using source: {source.__class__.__name__}")
-    source_name = getattr(source, "name", "unknown")
-
-    # 1. Text/Image Retrieval
+def _retrieve_source_data(source, llm, coords, text, status_callback, cancel_event):
+    extracted_text, image_path, is_image = None, None, False
     try:
-        try:
-            # Pass cancel_event to source if it accepts it
-            if (
-                hasattr(source, "get_text")
-                and "cancel_event" in source.get_text.__code__.co_varnames
-            ):
-                extracted_text = source.get_text(
-                    coords=coords,
-                    text=text,
-                    status_callback=status_callback,
-                    cancel_event=cancel_event,
-                )
-            else:
-                extracted_text = source.get_text(
-                    coords=coords, text=text, status_callback=status_callback
-                )
-            print(f"Retrieved text from source: {extracted_text}")
-        except ValueError as e:
-            if llm.supports_images:
-                is_image = True
-                if (
-                    hasattr(source, "get_image")
-                    and "cancel_event" in source.get_image.__code__.co_varnames
-                ):
-                    image_path = source.get_image(
-                        coords=coords, text=text, cancel_event=cancel_event
-                    )
-                else:
-                    image_path = source.get_image(coords=coords, text=text)
-                print(f"Retrieved image from source: {image_path}")
-            else:
-                raise ValueError(
-                    f"Pipeline failed: Source could not provide text ({str(e)}), and LLM does not support images."
-                )
-    except Exception as e:
-        return f"Error retrieving data from source: {str(e)}"
-
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
-
-    # 2. Prompt Augmentation
-    if not prompt_text:
-        prompt = extracted_text
-    else:
-        prompt = f"{prompt_text}: {extracted_text}" if extracted_text else prompt_text
-
-    print(f"Submitted prompt: {prompt}")
-
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
-
-    # 3. LLM Execution (with Fallback Concurrency)
-    if not fallback_llm:
-        if is_image:
-            if "cancel_event" in llm.process_image.__code__.co_varnames:
-                return llm.process_image(
-                    prompt,
-                    image_path,
-                    status_callback,
-                    enable_stitching,
-                    sink,
-                    is_main=True,
-                    cancel_event=cancel_event,
-                )
-            return llm.process_image(
-                prompt,
-                image_path,
-                status_callback,
-                enable_stitching,
-                sink,
-                is_main=True,
-            )
+        if hasattr(source, "get_text") and "cancel_event" in source.get_text.__code__.co_varnames:
+            extracted_text = source.get_text(coords=coords, text=text, status_callback=status_callback, cancel_event=cancel_event)
         else:
-            if "cancel_event" in llm.process_text.__code__.co_varnames:
-                return llm.process_text(
-                    prompt,
-                    status_callback,
-                    enable_stitching,
-                    sink,
-                    is_main=True,
-                    cancel_event=cancel_event,
-                )
-            return llm.process_text(
-                prompt, status_callback, enable_stitching, sink, is_main=True
-            )
+            extracted_text = source.get_text(coords=coords, text=text, status_callback=status_callback)
+        print(f"Retrieved text from source: {extracted_text}")
+    except ValueError as e:
+        if llm.supports_images:
+            is_image = True
+            if hasattr(source, "get_image") and "cancel_event" in source.get_image.__code__.co_varnames:
+                image_path = source.get_image(coords=coords, text=text, cancel_event=cancel_event)
+            else:
+                image_path = source.get_image(coords=coords, text=text)
+            print(f"Retrieved image from source: {image_path}")
+        else:
+            raise ValueError(f"Pipeline failed: Source could not provide text ({str(e)}), and LLM does not support images.")
+    return extracted_text, image_path, is_image
 
+def _execute_single_llm(llm, prompt, image_path, is_image, status_callback, enable_stitching, sink, cancel_event, is_main=True):
+    if is_image:
+        if "cancel_event" in llm.process_image.__code__.co_varnames:
+            return llm.process_image(prompt, image_path, status_callback, enable_stitching, sink, is_main=is_main, cancel_event=cancel_event)
+        return llm.process_image(prompt, image_path, status_callback, enable_stitching, sink, is_main=is_main)
+    else:
+        if "cancel_event" in llm.process_text.__code__.co_varnames:
+            return llm.process_text(prompt, status_callback, enable_stitching, sink, is_main=is_main, cancel_event=cancel_event)
+        return llm.process_text(prompt, status_callback, enable_stitching, sink, is_main=is_main)
+
+def _handle_main_result(results, main_success, ans, concurrent_sink, main_started):
+    if isinstance(ans, str) and ans.startswith("Error"):
+        results["main_error"] = ans
+    else:
+        results["main"], main_success[0] = ans, True
+        if concurrent_sink:
+            concurrent_sink.force_replace()
+            if not main_started[0]: concurrent_sink.target_sink.process_chunk(ans, is_main=True, replace=False)
+
+def _finalize_concurrent_result(results, main_success, fallback_thread):
+    if main_success[0] and "main" in results: return results["main"]
+    fallback_thread.join()
+    if "fallback" in results: return results["fallback"]
+    if "main_error" in results: return f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
+    return "Error processing with both models."
+
+def _run_concurrent_llms(llm, fallback_llm, prompt, image_path, is_image, status_callback, enable_stitching, sink, cancel_event):
     results = {}
-    lock = threading.Lock()
+    lock, main_finished = threading.Lock(), threading.Event()
+    main_started, fallback_started, main_success = [False], [False], [False]
 
-    main_started = [False]
-    fallback_started = [False]
-    main_success = [False]
-    main_finished = threading.Event()
-
-    concurrent_sink = (
-        ConcurrentSinkWrapper(
-            sink,
-            main_finished,
-            main_started,
-            fallback_started,
-            main_success,
-            cancel_event,
-        )
-        if sink
-        else None
-    )
+    concurrent_sink = ConcurrentSinkWrapper(sink, main_finished, main_started, fallback_started, main_success, cancel_event) if sink else None
 
     def run_main():
         try:
-            if is_image:
-                if "cancel_event" in llm.process_image.__code__.co_varnames:
-                    ans = llm.process_image(
-                        prompt,
-                        image_path,
-                        status_callback,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=True,
-                        cancel_event=cancel_event,
-                    )
-                else:
-                    ans = llm.process_image(
-                        prompt,
-                        image_path,
-                        status_callback,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=True,
-                    )
-            else:
-                if "cancel_event" in llm.process_text.__code__.co_varnames:
-                    ans = llm.process_text(
-                        prompt,
-                        status_callback,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=True,
-                        cancel_event=cancel_event,
-                    )
-                else:
-                    ans = llm.process_text(
-                        prompt,
-                        status_callback,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=True,
-                    )
-
-            with lock:
-                if isinstance(ans, str) and ans.startswith("Error"):
-                    results["main_error"] = ans
-                else:
-                    results["main"] = ans
-                    main_success[0] = True
-                    if concurrent_sink:
-                        concurrent_sink.force_replace()
-                        if not main_started[0]:
-                            concurrent_sink.target_sink.process_chunk(
-                                ans, is_main=True, replace=False
-                            )
-
-        except Exception as main_error:
-            with lock:
-                results["main_error"] = str(main_error)
+            ans = _execute_single_llm(llm, prompt, image_path, is_image, status_callback, enable_stitching, concurrent_sink, cancel_event, True)
+            with lock: _handle_main_result(results, main_success, ans, concurrent_sink, main_started)
+        except Exception as e:
+            with lock: results["main_error"] = str(e)
         finally:
             main_finished.set()
 
     def run_fallback():
         try:
-            if is_image:
-                if "cancel_event" in fallback_llm.process_image.__code__.co_varnames:
-                    ans = fallback_llm.process_image(
-                        prompt,
-                        image_path,
-                        None,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=False,
-                        cancel_event=cancel_event,
-                    )
-                else:
-                    ans = fallback_llm.process_image(
-                        prompt,
-                        image_path,
-                        None,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=False,
-                    )
-            else:
-                if "cancel_event" in fallback_llm.process_text.__code__.co_varnames:
-                    ans = fallback_llm.process_text(
-                        prompt,
-                        None,
-                        enable_stitching,
-                        concurrent_sink,
-                        is_main=False,
-                        cancel_event=cancel_event,
-                    )
-                else:
-                    ans = fallback_llm.process_text(
-                        prompt, None, enable_stitching, concurrent_sink, is_main=False
-                    )
-            with lock:
-                results["fallback"] = ans
-        except Exception as fallback_error:
-            with lock:
-                results["fallback_error"] = str(fallback_error)
+            ans = _execute_single_llm(fallback_llm, prompt, image_path, is_image, None, enable_stitching, concurrent_sink, cancel_event, False)
+            with lock: results["fallback"] = ans
+        except Exception as e:
+            with lock: results["fallback_error"] = str(e)
 
-    main_thread = threading.Thread(target=run_main, daemon=True)
-    fallback_thread = threading.Thread(target=run_fallback, daemon=True)
+    mt = threading.Thread(target=run_main, daemon=True)
+    ft = threading.Thread(target=run_fallback, daemon=True)
+    mt.start()
+    ft.start()
+    mt.join()
 
-    main_thread.start()
-    fallback_thread.start()
+    if cancel_event.is_set(): return PIPELINE_CANCELLED_MSG
+    return _finalize_concurrent_result(results, main_success, ft)
 
-    main_thread.join()
 
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
+def process_pipeline(
+    source: Source, llm: LLMEngine, prompt_text: str, status_callback=None, session_manager=None,
+    enable_stitching: bool = True, sink: Sink = None, fallback_llm: LLMEngine = None,
+    coords=None, text=None, cancel_event: threading.Event = None,
+) -> str:
+    if cancel_event is None: cancel_event = threading.Event()
+    pipeline_start_time = time.time()
+
+    print(f"Using source: {source.__class__.__name__}")
+    source_name = getattr(source, "name", "unknown")
+
+    try:
+        extracted_text, image_path, is_image = _retrieve_source_data(source, llm, coords, text, status_callback, cancel_event)
+    except Exception as e: return f"Error retrieving data from source: {str(e)}"
+
+    if cancel_event.is_set(): return PIPELINE_CANCELLED_MSG
+
+    prompt = f"{prompt_text}: {extracted_text}" if prompt_text and extracted_text else (prompt_text or extracted_text)
+    print(f"Submitted prompt: {prompt}")
+
+    if cancel_event.is_set(): return PIPELINE_CANCELLED_MSG
+
+    if not fallback_llm:
+        final_result = _execute_single_llm(llm, prompt, image_path, is_image, status_callback, enable_stitching, sink, cancel_event, True)
+    else:
+        final_result = _run_concurrent_llms(llm, fallback_llm, prompt, image_path, is_image, status_callback, enable_stitching, sink, cancel_event)
+
+    if cancel_event.is_set(): return PIPELINE_CANCELLED_MSG
 
     elapsed_ms = (time.time() - pipeline_start_time) * 1000
     print(f"[Pipeline] Main thread finished processing in {elapsed_ms:.2f} ms")
 
-    if main_success[0] and "main" in results:
-        final_result = results["main"]
-    else:
-        fallback_thread.join()
-        if "fallback" in results:
-            final_result = results["fallback"]
-        elif "main_error" in results:
-            final_result = f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
-        else:
-            final_result = "Error processing with both models."
-
     if session_manager and final_result and not final_result.startswith("Error"):
-        try:
-            session_manager.append_interaction(
-                prompt,
-                image_path,
-                final_result,
-                extracted_text,
-                source_name=source_name,
-            )
-        except Exception as e:
-            print(f"Failed to append to session manager: {e}")
+        try: session_manager.append_interaction(prompt, image_path, final_result, extracted_text, source_name=source_name)
+        except Exception as e: print(f"Failed to append to session manager: {e}")
 
     return final_result

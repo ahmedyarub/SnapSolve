@@ -228,20 +228,16 @@ class SoundSource(Source):
             logger.info("Simple recording loop stopped.")
             self.is_recording = False
 
-    def _record_and_transcribe_worker(self):
-        """Connects to WhisperLive and streams microphone audio for transcription."""
-        # 1. Ensure WhisperLive service is running
+    def _ensure_whisperlive_running(self) -> bool:
         if not is_whisperlive_service_online():
             logger.warning("WhisperLive service not detected. Attempting to start...")
             self.warmup()  # This will start the service and wait
             if not is_whisperlive_service_online():
-                logger.error(
-                    "Failed to start or connect to WhisperLive service. Aborting."
-                )
-                self.is_recording = False
-                return
+                logger.error("Failed to start or connect to WhisperLive service. Aborting.")
+                return False
+        return True
 
-        # 2. Initialize Transcription Client
+    def _init_whisperlive_client(self) -> bool:
         try:
             self.transcription_client = WhisperLiveTranscriptionClient(
                 host="localhost",
@@ -249,19 +245,16 @@ class SoundSource(Source):
                 lang="en",
                 use_vad=True,
                 transcription_callback=self._on_transcription_result,
-                no_speech_thresh=0.4,  # Lower value -> more sensitive to silence
+                no_speech_thresh=0.4,
             )
 
-            # Wait for client to be ready, similar to test_sound.py
             client = self.transcription_client.client
             timeout = 15
             start_time = time.time()
 
             while not client.recording:
                 if getattr(client, "server_error", False):
-                    logger.error(
-                        f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}"
-                    )
+                    logger.error(f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}")
                     break
                 if time.time() - start_time > timeout:
                     logger.error("Timeout waiting for WhisperLive server to be ready.")
@@ -270,33 +263,223 @@ class SoundSource(Source):
 
             if not client.recording:
                 logger.error("Failed to connect to WhisperLive server.")
-                self.is_recording = False
-                return
+                return False
 
             logger.info("WhisperLive client initialized and recording.")
 
-            # Print initial UI separator
             if (
                 self.session_manager
                 and getattr(self.session_manager, "save_transcriptions", False)
                 and getattr(self.session_manager, "transcription_file", None)
             ):
                 try:
-                    with open(
-                        self.session_manager.transcription_file, "a", encoding="utf-8"
-                    ) as f:
+                    with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
                         f.write("\n--- User ---\n")
                 except Exception as e:
-                    logger.error(
-                        f"Failed to write initial transcription separator: {e}"
-                    )
+                    logger.error(f"Failed to write initial transcription separator: {e}")
 
+            return True
         except Exception as e:
             logger.error(f"Failed to initialize WhisperLive client: {e}")
+            return False
+
+    def _stream_microphone(self, device_name: str, device_index: int):
+        try:
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+                logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
+
+                while not self._stop_event.is_set():
+                    data = stream.read(source.CHUNK)
+                    audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                    if source_sample_rate != target_sample_rate:
+                        audio_array = resampy.resample(audio_array, source_sample_rate, target_sample_rate)
+
+                    self.transcription_client.client.send_packet_to_server(audio_array.tobytes())
+        except Exception as e:
+            logger.error(f"Audio streaming error: {e}")
+
+    def _ensure_whisperlive_running(self) -> bool:
+        if not is_whisperlive_service_online():
+            logger.warning("WhisperLive service not detected. Attempting to start...")
+            self.warmup()
+            if not is_whisperlive_service_online():
+                logger.error("Failed to start or connect to WhisperLive service. Aborting.")
+                return False
+        return True
+
+    def _init_whisperlive_client(self) -> bool:
+        try:
+            self.transcription_client = WhisperLiveTranscriptionClient(
+                host="localhost", port=9090, lang="en", use_vad=True,
+                transcription_callback=self._on_transcription_result, no_speech_thresh=0.4
+            )
+            client = self.transcription_client.client
+            timeout = 15
+            start_time = time.time()
+            while not client.recording:
+                if getattr(client, "server_error", False):
+                    logger.error(f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}")
+                    break
+                if time.time() - start_time > timeout:
+                    logger.error("Timeout waiting for WhisperLive server to be ready.")
+                    break
+                time.sleep(0.1)
+            if not client.recording:
+                logger.error("Failed to connect to WhisperLive server.")
+                return False
+            logger.info("WhisperLive client initialized and recording.")
+            if self.session_manager and getattr(self.session_manager, "save_transcriptions", False) and getattr(self.session_manager, "transcription_file", None):
+                try:
+                    with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
+                        f.write("\n--- User ---\n")
+                except Exception as e:
+                    logger.error(f"Failed to write initial transcription separator: {e}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize WhisperLive client: {e}")
+            return False
+
+    def _stream_microphone(self, device_name: str, device_index: int):
+        try:
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+                logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
+                while not self._stop_event.is_set():
+                    data = stream.read(source.CHUNK)
+                    audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                    if source_sample_rate != target_sample_rate:
+                        audio_array = resampy.resample(audio_array, source_sample_rate, target_sample_rate)
+                    self.transcription_client.client.send_packet_to_server(audio_array.tobytes())
+        except Exception as e:
+            logger.error(f"Audio streaming error: {e}")
+
+    def _ensure_whisperlive_running(self) -> bool:
+        if not is_whisperlive_service_online():
+            logger.warning("WhisperLive service not detected. Attempting to start...")
+            self.warmup()
+            if not is_whisperlive_service_online():
+                logger.error("Failed to start or connect to WhisperLive service. Aborting.")
+                return False
+        return True
+
+    def _init_whisperlive_client(self) -> bool:
+        try:
+            self.transcription_client = WhisperLiveTranscriptionClient(
+                host="localhost", port=9090, lang="en", use_vad=True,
+                transcription_callback=self._on_transcription_result, no_speech_thresh=0.4
+            )
+            client = self.transcription_client.client
+            timeout = 15
+            start_time = time.time()
+            while not client.recording:
+                if getattr(client, "server_error", False):
+                    logger.error(f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}")
+                    break
+                if time.time() - start_time > timeout:
+                    logger.error("Timeout waiting for WhisperLive server to be ready.")
+                    break
+                time.sleep(0.1)
+            if not client.recording:
+                logger.error("Failed to connect to WhisperLive server.")
+                return False
+            logger.info("WhisperLive client initialized and recording.")
+            if self.session_manager and getattr(self.session_manager, "save_transcriptions", False) and getattr(self.session_manager, "transcription_file", None):
+                try:
+                    with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
+                        f.write("\n--- User ---\n")
+                except Exception as e:
+                    logger.error(f"Failed to write initial transcription separator: {e}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize WhisperLive client: {e}")
+            return False
+
+    def _stream_microphone(self, device_name: str, device_index: int):
+        try:
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+                logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
+                while not self._stop_event.is_set():
+                    data = stream.read(source.CHUNK)
+                    audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                    if source_sample_rate != target_sample_rate:
+                        audio_array = resampy.resample(audio_array, source_sample_rate, target_sample_rate)
+                    self.transcription_client.client.send_packet_to_server(audio_array.tobytes())
+        except Exception as e:
+            logger.error(f"Audio streaming error: {e}")
+
+    def _ensure_whisperlive_running(self) -> bool:
+        if not is_whisperlive_service_online():
+            logger.warning("WhisperLive service not detected. Attempting to start...")
+            self.warmup()
+            if not is_whisperlive_service_online():
+                logger.error("Failed to start or connect to WhisperLive service. Aborting.")
+                return False
+        return True
+
+    def _init_whisperlive_client(self) -> bool:
+        try:
+            self.transcription_client = WhisperLiveTranscriptionClient(
+                host="localhost", port=9090, lang="en", use_vad=True,
+                transcription_callback=self._on_transcription_result, no_speech_thresh=0.4
+            )
+            client = self.transcription_client.client
+            timeout = 15
+            start_time = time.time()
+            while not client.recording:
+                if getattr(client, "server_error", False):
+                    logger.error(f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}")
+                    break
+                if time.time() - start_time > timeout:
+                    logger.error("Timeout waiting for WhisperLive server to be ready.")
+                    break
+                time.sleep(0.1)
+            if not client.recording:
+                logger.error("Failed to connect to WhisperLive server.")
+                return False
+            logger.info("WhisperLive client initialized and recording.")
+            if self.session_manager and getattr(self.session_manager, "save_transcriptions", False) and getattr(self.session_manager, "transcription_file", None):
+                try:
+                    with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
+                        f.write("\n--- User ---\n")
+                except Exception as e:
+                    logger.error(f"Failed to write initial transcription separator: {e}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize WhisperLive client: {e}")
+            return False
+
+    def _stream_microphone(self, device_name: str, device_index: int):
+        try:
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+                logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
+                while not self._stop_event.is_set():
+                    data = stream.read(source.CHUNK)
+                    audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                    if source_sample_rate != target_sample_rate:
+                        audio_array = resampy.resample(audio_array, source_sample_rate, target_sample_rate)
+                    self.transcription_client.client.send_packet_to_server(audio_array.tobytes())
+        except Exception as e:
+            logger.error(f"Audio streaming error: {e}")
+
+    def _record_and_transcribe_worker(self):
+        """Connects to WhisperLive and streams microphone audio for transcription."""
+        if not self._ensure_whisperlive_running():
             self.is_recording = False
             return
-
-        # 3. Start streaming from microphone
+        if not self._init_whisperlive_client():
+            self.is_recording = False
+            return
         device_name = self.config.get("audio_input_device_name")
         device_index = None
         if device_name:
@@ -307,40 +490,15 @@ class SoundSource(Source):
                     device_index = i
                     break
             p.terminate()
-
         try:
-            with sr.Microphone(device_index=device_index) as source:
-                stream = source.stream
-                source_sample_rate = source.SAMPLE_RATE
-                target_sample_rate = 16000
-                logger.info(
-                    f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz."
-                )
-
-                while not self._stop_event.is_set():
-                    data = stream.read(source.CHUNK)
-                    audio_array = (
-                        np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                    )
-                    if source_sample_rate != target_sample_rate:
-                        audio_array = resampy.resample(
-                            audio_array, source_sample_rate, target_sample_rate
-                        )
-
-                    self.transcription_client.client.send_packet_to_server(
-                        audio_array.tobytes()
-                    )
-        except Exception as e:
-            logger.error(f"Audio streaming error: {e}")
+            self._stream_microphone(device_name, device_index)
         finally:
             logger.info("Recording loop stopped.")
             if self.transcription_client:
                 try:
-                    self.transcription_client.client.send_packet_to_server(
-                        "END_OF_AUDIO".encode("utf-8")
-                    )
+                    self.transcription_client.client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
                     logger.info("END_OF_AUDIO signal sent.")
-                    time.sleep(1)  # Give it a moment to process final audio
+                    time.sleep(1)
                     self.transcription_client.client.close_websocket()
                     logger.info("WhisperLive client closed.")
                 except Exception as e:
@@ -348,50 +506,158 @@ class SoundSource(Source):
             self.transcription_client = None
             self.is_recording = False
 
+    def _finalize_segment(self, text: str):
+        self._last_transcription_text += text + " "
+        if self.session_manager:
+            self.session_manager.append_transcription_segment(text)
+
+    def _finalize_segment(self, text: str):
+        self._last_transcription_text += text + " "
+        if self.session_manager:
+            self.session_manager.append_transcription_segment(text)
+
     def _on_transcription_result(self, _, segments):
         """Callback from WhisperLive client with transcription segments."""
         logger.debug(f"Received segments: {segments}")
         if not segments:
             if self._current_utterance_text:
-                # Mark as finalized
-                self._last_transcription_text += self._current_utterance_text + " "
-
-                # Appending finalized segment to session manager
-                if self.session_manager:
-                    self.session_manager.append_transcription_segment(
-                        self._current_utterance_text
-                    )
-
+                self._finalize_segment(self._current_utterance_text)
                 self._current_utterance_text = ""
             return
 
         for segment in segments:
             text = segment["text"].strip()
             start = float(segment.get("start", 0.0))
-
             if not text:
                 continue
-
             if start > self._last_segment_start:
-                # This is a new segment. Finalize the previous one.
                 if self._current_utterance_text:
-                    self._last_transcription_text += self._current_utterance_text + " "
-                    # Appending finalized segment to session manager
-                    if self.session_manager:
-                        self.session_manager.append_transcription_segment(
-                            self._current_utterance_text
-                        )
-
-                # Show the new segment and update tracking state.
+                    self._finalize_segment(self._current_utterance_text)
                 show_subtitle(text)
                 self._last_segment_start = start
                 self._current_utterance_text = text
-
             elif start == self._last_segment_start:
-                # This is an update to the current segment.
                 if text != self._current_utterance_text:
                     update_subtitle(text, append=False)
                     self._current_utterance_text = text
+
+    def _cleanup_realtime(self) -> str:
+        if self._current_utterance_text:
+            self._last_transcription_text += self._current_utterance_text
+            if self.session_manager:
+                self.session_manager.append_transcription_segment(self._current_utterance_text)
+
+        if not self._current_utterance_text:
+            threading.Timer(5.0, clear_subtitles).start()
+
+        return self._last_transcription_text.strip()
+
+    def _process_google_audio(self) -> str:
+        if not self.audio_frames:
+            return ""
+
+        try:
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                return ""
+            audio_data = sr.AudioData(b"".join(self.audio_frames), self._sample_rate, self._sample_width)
+            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            return text
+        except sr.UnknownValueError:
+            logger.info("Speech Recognition could not understand audio")
+            return ""
+        except sr.RequestError as e:
+            logger.error(f"Could not request results from Speech Recognition service; {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Error during audio processing: {e}")
+            return ""
+
+    def _cleanup_realtime(self) -> str:
+        if self._current_utterance_text:
+            self._last_transcription_text += self._current_utterance_text
+            if self.session_manager:
+                self.session_manager.append_transcription_segment(self._current_utterance_text)
+
+        if not self._current_utterance_text:
+            threading.Timer(5.0, clear_subtitles).start()
+
+        return self._last_transcription_text.strip()
+
+    def _process_google_audio(self) -> str:
+        if not self.audio_frames:
+            return ""
+
+        try:
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                return ""
+            audio_data = sr.AudioData(b"".join(self.audio_frames), self._sample_rate, self._sample_width)
+            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            return text
+        except sr.UnknownValueError:
+            logger.info("Speech Recognition could not understand audio")
+            return ""
+        except sr.RequestError as e:
+            logger.error(f"Could not request results from Speech Recognition service; {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Error during audio processing: {e}")
+            return ""
+
+    def _cleanup_realtime(self) -> str:
+        if self._current_utterance_text:
+            self._last_transcription_text += self._current_utterance_text
+            if self.session_manager:
+                self.session_manager.append_transcription_segment(self._current_utterance_text)
+        if not self._current_utterance_text:
+            threading.Timer(5.0, clear_subtitles).start()
+        return self._last_transcription_text.strip()
+
+    def _process_google_audio(self) -> str:
+        if not self.audio_frames:
+            return ""
+        try:
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                return ""
+            audio_data = sr.AudioData(b"".join(self.audio_frames), self._sample_rate, self._sample_width)
+            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            return text
+        except sr.UnknownValueError:
+            logger.info("Speech Recognition could not understand audio")
+            return ""
+        except sr.RequestError as e:
+            logger.error(f"Could not request results from Speech Recognition service; {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Error during audio processing: {e}")
+            return ""
+
+    def _cleanup_realtime(self) -> str:
+        if self._current_utterance_text:
+            self._last_transcription_text += self._current_utterance_text
+            if self.session_manager:
+                self.session_manager.append_transcription_segment(self._current_utterance_text)
+        if not self._current_utterance_text:
+            threading.Timer(5.0, clear_subtitles).start()
+        return self._last_transcription_text.strip()
+
+    def _process_google_audio(self) -> str:
+        if not self.audio_frames:
+            return ""
+        try:
+            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                return ""
+            audio_data = sr.AudioData(b"".join(self.audio_frames), self._sample_rate, self._sample_width)
+            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            return text
+        except sr.UnknownValueError:
+            logger.info("Speech Recognition could not understand audio")
+            return ""
+        except sr.RequestError as e:
+            logger.error(f"Could not request results from Speech Recognition service; {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Error during audio processing: {e}")
+            return ""
 
     def stop_recording(self) -> str:
         if not self.is_recording:
@@ -407,51 +673,6 @@ class SoundSource(Source):
         logger.info("Recording stopped.")
 
         if self.realtime_transcription:
-            # Finalize the very last utterance
-            if self._current_utterance_text:
-                self._last_transcription_text += self._current_utterance_text
-                # Appending finalized segment to session manager
-                if self.session_manager:
-                    self.session_manager.append_transcription_segment(
-                        self._current_utterance_text
-                    )
-
-            # Let subtitles fade out naturally, but clear any empty ones
-            if not self._current_utterance_text:
-                # Small delay to allow fade out animation to be noticeable
-                threading.Timer(5.0, clear_subtitles).start()
-
-            return self._last_transcription_text.strip()
+            return self._cleanup_realtime()
         else:
-            # Simple recording logic (non-streaming)
-            if not self.audio_frames:
-                return ""
-
-            try:
-                if not hasattr(self, "_sample_rate") or not hasattr(
-                    self, "_sample_width"
-                ):
-                    return ""
-                audio_data = sr.AudioData(
-                    b"".join(self.audio_frames), self._sample_rate, self._sample_width
-                )
-                text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
-                return text
-            except sr.UnknownValueError:
-                logger.info("Speech Recognition could not understand audio")
-                return ""
-            except sr.RequestError as e:
-                logger.error(
-                    f"Could not request results from Speech Recognition service; {e}"
-                )
-                return ""
-            except Exception as e:
-                logger.error(f"Error during audio processing: {e}")
-                return ""
-
-    def __del__(self):
-        # Terminate the server process if this instance started it
-        if self.whisperlive_process:
-            logger.info("Terminating WhisperLive service process...")
-            self.whisperlive_process.terminate()
-            self.whisperlive_process.wait()
+            return self._process_google_audio()

@@ -16,29 +16,30 @@ logging.basicConfig(
 
 
 # Helper function to parse OCR results consistently, based on local_paddleocr_engine.py
+def _parse_json_result(res, text_lines):
+    data = res.json
+    if "res" in data and "rec_texts" in data["res"]:
+        for text, score in zip(data["res"]["rec_texts"], data["res"]["rec_scores"]):
+            if score >= 0.5:
+                text_lines.append(text)
+
+def _parse_list_result(res, text_lines):
+    for line in res:
+        text = line[1][0]
+        confidence = line[1][1]
+        if confidence >= 0.5:
+            text_lines.append(text)
+
 def parse_ocr_results(results):
     text_lines = []
     if results:
         for res in results:
             if not res:
                 continue
-            # This handles a specific output format that might be used by some PaddleOCR versions
             if hasattr(res, "json"):
-                data = res.json
-                if "res" in data and "rec_texts" in data["res"]:
-                    texts = data["res"]["rec_texts"]
-                    scores = data["res"]["rec_scores"]
-                    for text, score in zip(texts, scores):
-                        if score >= 0.5:
-                            text_lines.append(text)
-            # This is the more common list-based format
+                _parse_json_result(res, text_lines)
             elif isinstance(res, list):
-                for line in res:
-                    text = line[1][0]
-                    confidence = line[1][1]
-                    if confidence >= 0.5:
-                        text_lines.append(text)
-
+                _parse_list_result(res, text_lines)
     return " ".join(text_lines)
 
 
