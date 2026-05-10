@@ -57,10 +57,13 @@ def start_whisperlive_service():
         logger.error(f"WhisperLive server script not found at {server_script}")
         return None
 
+    venv_python = os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin", "python")
+    python_exec = venv_python if os.path.exists(venv_python) else sys.executable
+
     try:
         process = subprocess.Popen(
             [
-                sys.executable,
+                python_exec,
                 server_script,
                 "--port",
                 "9090",

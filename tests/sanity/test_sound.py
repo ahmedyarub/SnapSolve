@@ -94,10 +94,13 @@ def start_whisperlive_service():
             print("WhisperLive service is already running on port 9090")
             return None  # Service is already running, don't start a new one
 
+        venv_python = os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin", "python")
+        python_exec = venv_python if os.path.exists(venv_python) else sys.executable
+
         # Start the server in a subprocess with extended connection time
         process = subprocess.Popen(
             [
-                sys.executable,
+                python_exec,
                 server_script,
                 "--port",
                 "9090",
