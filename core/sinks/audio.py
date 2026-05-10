@@ -152,8 +152,9 @@ class AudioSink(Sink):
                     )
 
                 except Exception as e:
+                    device_name = self.tts_output_device_name if target_device_index is not None else 'Default Device'
                     logger.error(
-                        f"Failed to open audio stream on configured device (index: {target_device_index}, name: {self.tts_output_device_name}): {e}. Falling back to default output device.",
+                        f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
                         exc_info=True,
                     )
                     # Fallback to default device if opening the specific device fails

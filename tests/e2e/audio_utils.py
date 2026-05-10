@@ -23,8 +23,18 @@ def get_microphone_index(target_name: str) -> int | None:
 def record_audio_in_background(stop_event, audio_queue, device_index):
     """Records audio continuously in the background."""
     frames = []
+    
+    device_name = "Unknown Device"
+    if device_index is not None:
+        try:
+            p = pyaudio.PyAudio()
+            device_name = p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+            p.terminate()
+        except Exception:
+            pass
+            
     try:
-        print("[Recorder] Background audio recording started.")
+        print(f"[Recorder] Background audio recording started on {device_name}.")
         with sr.Microphone(device_index=device_index) as source:
             stream = source.stream
 
@@ -45,7 +55,7 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
                     b"".join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
                 )
                 audio_queue.put(audio_data)
-            print("[Recorder] Background audio recording stopped.")
+            print(f"[Recorder] Background audio recording stopped on {device_name}.")
     except Exception as e:
         print(f"[Recorder] Error during background recording setup or execution: {e}")
 
