@@ -6,6 +6,7 @@ from PIL import ImageGrab
 from .base import ImageSource
 from .ocr.base import OCREngine
 
+CAPTURE_CANCELLED_MSG = "Capture cancelled."
 
 class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
@@ -14,7 +15,7 @@ class ScreenshotSource(ImageSource):
 
     def _capture(self, coords, cancel_event: threading.Event = None) -> str:
         if cancel_event and cancel_event.is_set():
-            raise ValueError("Capture cancelled.")
+            raise ValueError(CAPTURE_CANCELLED_MSG)
 
         if not coords or len(coords) != 4:
             raise ValueError(
@@ -28,7 +29,7 @@ class ScreenshotSource(ImageSource):
             raise ValueError(f"Error capturing screen: {str(e)}")
 
         if cancel_event and cancel_event.is_set():
-            raise ValueError("Capture cancelled.")
+            raise ValueError(CAPTURE_CANCELLED_MSG)
 
         temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         temp_file_path = temp_file.name
@@ -48,7 +49,7 @@ class ScreenshotSource(ImageSource):
         **kwargs,
     ) -> str:
         if cancel_event and cancel_event.is_set():
-            raise ValueError("Capture cancelled.")
+            raise ValueError(CAPTURE_CANCELLED_MSG)
 
         if not self.ocr_engine or self.ocr_engine.__class__.__name__ == "NoOCREngine":
             raise ValueError(
@@ -58,7 +59,7 @@ class ScreenshotSource(ImageSource):
         image_path = self._capture(coords, cancel_event)
 
         if cancel_event and cancel_event.is_set():
-            raise ValueError("Capture cancelled.")
+            raise ValueError(CAPTURE_CANCELLED_MSG)
 
         if (
             hasattr(self.ocr_engine, "extract_text")

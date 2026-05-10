@@ -11,6 +11,8 @@ SESSIONS_DIR = "sessions"
 IMAGES_DIR = os.path.join(SESSIONS_DIR, "images")
 TRANSCRIPTIONS_DIR = os.path.join(SESSIONS_DIR, "transcriptions")
 
+DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +52,7 @@ class SessionManager:
 
         # Setup new transcription file
         if self.save_transcriptions:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            timestamp = datetime.now().strftime(DATE_FORMAT)
             filename = f"transcription_{timestamp}.txt"
             self.transcription_file = os.path.join(TRANSCRIPTIONS_DIR, filename)
             logger.debug(
@@ -68,7 +70,7 @@ class SessionManager:
 
             # Setup new transcription file for resumed session to append new transcriptions
             if self.save_transcriptions:
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                timestamp = datetime.now().strftime(DATE_FORMAT)
                 filename = f"transcription_resumed_{session_id}_{timestamp}.txt"
                 self.transcription_file = os.path.join(TRANSCRIPTIONS_DIR, filename)
                 logger.debug(
@@ -96,7 +98,7 @@ class SessionManager:
 
         # Setup new transcription file for resumed session to append new transcriptions
         if self.save_transcriptions:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            timestamp = datetime.now().strftime(DATE_FORMAT)
             filename = (
                 f"transcription_resumed_{self.current_session_id}_{timestamp}.txt"
             )

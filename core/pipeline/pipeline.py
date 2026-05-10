@@ -4,6 +4,8 @@ from core.sources.base import Source
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 
+PIPELINE_CANCELLED_MSG = "Pipeline cancelled."
+
 
 class ConcurrentSinkWrapper(Sink):
     def __init__(
@@ -109,7 +111,7 @@ def process_pipeline(
         return f"Error retrieving data from source: {str(e)}"
 
     if cancel_event.is_set():
-        return "Pipeline cancelled."
+        return PIPELINE_CANCELLED_MSG
 
     # 2. Prompt Augmentation
     if not prompt_text:
@@ -120,7 +122,7 @@ def process_pipeline(
     print(f"Submitted prompt: {prompt}")
 
     if cancel_event.is_set():
-        return "Pipeline cancelled."
+        return PIPELINE_CANCELLED_MSG
 
     # 3. LLM Execution (with Fallback Concurrency)
     if not fallback_llm:
@@ -289,7 +291,7 @@ def process_pipeline(
     main_thread.join()
 
     if cancel_event.is_set():
-        return "Pipeline cancelled."
+        return PIPELINE_CANCELLED_MSG
 
     elapsed_ms = (time.time() - pipeline_start_time) * 1000
     print(f"[Pipeline] Main thread finished processing in {elapsed_ms:.2f} ms")
