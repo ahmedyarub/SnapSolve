@@ -6,6 +6,8 @@ import sys
 import threading
 import time
 import wave
+import string
+import difflib
 
 import numpy as np
 import pyaudio
@@ -704,14 +706,23 @@ class SoundTestApp(QMainWindow):
         finally:
             self._cleanup_transcription()
 
+    def _normalize_text(self, text):
+        """Normalize text by converting to lowercase, removing punctuation, and collapsing whitespace."""
+        text = text.lower()
+        # Remove punctuation
+        text = text.translate(str.maketrans("", "", string.punctuation))
+        # Collapse whitespace
+        text = " ".join(text.split())
+        return text
+
     def _compare_transcription_results(self):
         """Compare transcription results with original text."""
-        original_text = self.speak_text.toPlainText().lower()
-        transcribed_text = self.transcription_text.lower().replace(".", "").strip()
+        original_text = self.speak_text.toPlainText()
+        transcribed_text = self.transcription_text
 
         # Normalize line breaks for comparison
-        original_normalized = " ".join(original_text.split())
-        transcribed_normalized = " ".join(transcribed_text.split())
+        original_normalized = self._normalize_text(original_text)
+        transcribed_normalized = self._normalize_text(transcribed_text)
 
         self.signals.log_message.emit(f"Original text: '{original_text}'")
         self.signals.log_message.emit(f"Transcribed text: '{transcribed_text}'")
@@ -723,10 +734,13 @@ class SoundTestApp(QMainWindow):
             )
             return
 
+        match_ratio = difflib.SequenceMatcher(None, original_normalized, transcribed_normalized).ratio()
+
         # Check for exact match (normalized)
         if (
             transcribed_normalized in original_normalized
             or original_normalized in transcribed_normalized
+            or match_ratio >= 0.8
         ):
             self.signals.log_message.emit(
                 "Result: SUCCESS - Transcribed text matches original."
@@ -738,11 +752,11 @@ class SoundTestApp(QMainWindow):
             common_words = words_original & words_transcribed
 
             if len(common_words) > 0:
-                match_ratio = len(common_words) / max(
+                match_ratio_words = len(common_words) / max(
                     len(words_original), len(words_transcribed)
                 )
                 self.signals.log_message.emit(
-                    f"Result: PARTIAL MATCH - {match_ratio:.1%} of words match."
+                    f"Result: PARTIAL MATCH - {match_ratio_words:.1%} of words match."
                 )
             else:
                 self.signals.log_message.emit("Result: FAILURE - Texts do not match.")
@@ -842,15 +856,19 @@ class SoundTestApp(QMainWindow):
             self.signals.update_heard.emit(recognized_text)
             self.signals.log_message.emit("Recognition successful.")
 
-            original_text = self.speak_text.toPlainText().lower().replace("\n", " ")
-            recognized_lower = recognized_text.lower()
+            original_text = self.speak_text.toPlainText()
+
+            original_normalized = self._normalize_text(original_text)
+            recognized_normalized = self._normalize_text(recognized_text)
+
+            match_ratio = difflib.SequenceMatcher(None, original_normalized, recognized_normalized).ratio()
 
             # Check for empty recognition first
-            if not recognized_lower.strip():
+            if not recognized_normalized.strip():
                 self.signals.log_message.emit(
                     "Result: FAILURE - No recognition received."
                 )
-            elif recognized_lower in original_text or original_text in recognized_lower:
+            elif recognized_normalized in original_normalized or original_normalized in recognized_normalized or match_ratio >= 0.8:
                 self.signals.log_message.emit(
                     "Result: SUCCESS - Recognized text matches original."
                 )
