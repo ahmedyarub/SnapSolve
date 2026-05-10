@@ -342,6 +342,7 @@ class SoundTestApp(QMainWindow):
         self.playback_done = True
         self.log("Playback finished. Stopping recording...")
         self._enable_buttons()
+        self.signals.update_volume.emit(0)
 
     def on_transcription_finished(self):
         self.is_transcribing = False
@@ -374,19 +375,26 @@ class SoundTestApp(QMainWindow):
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
         self.log_text.clear()
+        self.volume_bar.setValue(0)
 
         out_idx = self.out_combo.currentData()
+        in_idx = self.in_combo.currentData()
         text = self.speak_text.toPlainText()
 
-        if out_idx is None:
-            self.log("Please select output device.")
+        if out_idx is None or in_idx is None:
+            self.log("Please select both input and output devices.")
             self._enable_buttons()
             return
+
+        self.save_settings(out_idx, in_idx)
 
         self.playback_done = False
 
         threading.Thread(
             target=self.play_audio, args=(text, out_idx), daemon=True
+        ).start()
+        threading.Thread(
+            target=self.monitor_mic_volume, args=(in_idx,), daemon=True
         ).start()
 
     def start_recording_test(self):
@@ -844,6 +852,22 @@ class SoundTestApp(QMainWindow):
         self.transcription_text = new_text
         self.signals.append_heard.emit(new_text)
         self.signals.log_message.emit(f"Transcribed: '{new_text}'")
+
+    def monitor_mic_volume(self, device_index):
+        """Monitors microphone volume without recording or transcribing."""
+        try:
+            self.signals.log_message.emit(f"Starting microphone monitoring on device {device_index}...")
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                while not self.playback_done:
+                    try:
+                        data = stream.read(source.CHUNK)
+                        self._update_volume_from_audio(data)
+                    except Exception:
+                        break
+            self.signals.update_volume.emit(0)
+        except Exception as e:
+            self.signals.log_message.emit(f"Microphone monitoring error: {e}")
 
     def record_audio(self, device_index):
         try:
