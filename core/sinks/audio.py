@@ -146,8 +146,9 @@ class AudioSink(Sink):
                         output=True,
                         output_device_index=target_device_index,
                     )
+                    device_name = self.tts_output_device_name if target_device_index is not None else 'Default Device'
                     logger.info(
-                        f"Playing audio on device index: {target_device_index if target_device_index is not None else 'Default'}"
+                        f"Playing audio on {device_name}"
                     )
 
                 except Exception as e:

@@ -856,8 +856,9 @@ class SoundTestApp(QMainWindow):
 
     def monitor_mic_volume(self, device_index):
         """Monitors microphone volume without recording or transcribing."""
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
         try:
-            self.signals.log_message.emit(f"Starting microphone monitoring on device {device_index}...")
+            self.signals.log_message.emit(f"Starting microphone monitoring on {device_name}...")
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
                 while not self.playback_done:

@@ -96,7 +96,8 @@ def speak(text: str, output_device: str):
         output=True,
         output_device_index=target_device_index,
     )
-    print(f"Playing audio on device index: {target_device_index}")
+    device_name = output_device if target_device_index is not None else 'Default Device'
+    print(f"Playing audio on {device_name}")
 
     # Stream all audio chunks
     for chunk in voice.synthesize(text):
