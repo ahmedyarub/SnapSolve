@@ -124,6 +124,12 @@ If you want to use the high-quality local Text-to-Speech (TTS) feature:
     * `warmup_tts`: Set to `true` to preload the Piper model on application startup, reducing the delay for the first
       spoken output.
 
+### Option 7: Real-time Transcription with WhisperLive
+
+If you want to use real-time transcription via WhisperLive:
+
+For setup instructions, please refer to the [Setup & Installation section in REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md#setup--installation).
+
 ## Supported Engines
 
 **LLM Engines (`llm_engine`):**

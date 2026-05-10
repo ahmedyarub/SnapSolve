@@ -2,6 +2,17 @@
 
 This document outlines how real-time transcription is implemented in SnapSolve using [WhisperLive](https://github.com/collabora/WhisperLive).
 
+## Setup & Installation
+
+Due to compatibility issues with PyTorch, it is recommended to create a separate virtual environment (`venv`) inside the WhisperLive directory.
+
+1. Create and activate a new virtual environment inside your WhisperLive directory.
+2. Install the necessary packages:
+   ```bash
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+   pip install fastapi uvicorn faster_whisper websockets
+   ```
+
 ## Overview
 
 Real-time transcription is achieved by running a local instance of the WhisperLive server and connecting to it via a WebSocket client. Audio from the microphone is continuously streamed to the server, which returns real-time transcriptions that are displayed as subtitles on the screen and eventually appended to the session.
