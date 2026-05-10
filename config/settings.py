@@ -131,6 +131,7 @@ def load_config():
             {"action": "toggle_stitching", "key": "ctrl+alt+shift+i"},
         ],
         "save_images": False,
+        "save_transcriptions": True,
         "coordinates": None,  # [x1, y1, x2, y2]
         "background": False,
         "piper_model": "en_US-lessac-medium.onnx",  # Path to piper model
@@ -145,6 +146,7 @@ def load_config():
         "warmup_llm": True,
         "warmup_tts": False,
         "warmup_speech_recognition": True,
+        "warmup_realtime_transcription": False,
         "tts_output_device_name": None,
         "audio_input_device_name": None,
         "realtime_transcription": True,
@@ -315,6 +317,16 @@ def parse_args():
         help="Disable Speech Recognition warmup",
     )
     parser.add_argument(
+        "--disable-warmup-realtime-transcription",
+        action="store_true",
+        help="Disable Real-time Transcription warmup",
+    )
+    parser.add_argument(
+        "--disable-save-transcriptions",
+        action="store_true",
+        help="Disable saving transcriptions to files",
+    )
+    parser.add_argument(
         "--tts-output-device-name",
         type=str,
         help="Name of the audio device for TTS output",
@@ -409,6 +421,12 @@ def get_config():
 
     if args.disable_warmup_speech_recognition:
         config["warmup_speech_recognition"] = False
+
+    if args.disable_warmup_realtime_transcription:
+        config["warmup_realtime_transcription"] = False
+
+    if args.disable_save_transcriptions:
+        config["save_transcriptions"] = False
 
     if args.tts_output_device_name is not None:
         config["tts_output_device_name"] = args.tts_output_device_name

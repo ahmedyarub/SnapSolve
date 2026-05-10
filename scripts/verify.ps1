@@ -7,12 +7,12 @@ try
 {
     # 1. Python: Ruff
     Write-Host "Running Python Checks (Ruff)..." -ForegroundColor Yellow
-    ruff check .
+    ruff check . --exclude "services/whisperlive"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Ruff check failed."
     }
-    ruff format --check .
+    ruff format --check . --exclude "services/whisperlive"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Ruff format check failed."

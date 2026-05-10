@@ -15,7 +15,7 @@ POPUP_X, POPUP_Y = 3500, 1800
 BASIC_QUESTION = "What is the fifth largest country in the world?"
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
-TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual"
+TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual "
 TTS_OUTPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
@@ -28,3 +28,6 @@ MAIN_SCRIPT_ARGS = [
     "--default-source=text",
 ]
 SERVICE_SCRIPT_PATH = "services/ocr_service.py"
+ERROR_RESPONSES =[
+    "No speech recognized."
+]

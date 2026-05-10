@@ -1,9 +1,8 @@
-import time
-
 import pyautogui
 import pyperclip
+import time
 
-from config import CYCLE_SOURCE
+from config import CYCLE_SOURCE, ERROR_RESPONSES
 
 
 def cycle_until(target_button):
@@ -79,6 +78,9 @@ def find_text(text, popup_x, popup_y):
 
         if text.lower() in copied_text.lower():
             return True
+        elif copied_text in ERROR_RESPONSES:
+            print(f"\n❌ FAILURE: {text}")
+            break
         else:
             print(f"\n❌ FAILURE: The word '{text}' was NOT found. Retrying")
             retries += 1

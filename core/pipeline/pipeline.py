@@ -67,6 +67,7 @@ def process_pipeline(
     is_image = False
 
     print(f"Using source: {source.__class__.__name__}")
+    source_name = getattr(source, "name", "unknown")
 
     # 1. Text/Image Retrieval
     try:
@@ -307,7 +308,7 @@ def process_pipeline(
     if session_manager and final_result and not final_result.startswith("Error"):
         try:
             session_manager.append_interaction(
-                prompt, image_path, final_result, extracted_text
+                prompt, image_path, final_result, extracted_text, source_name=source_name
             )
         except Exception as e:
             print(f"Failed to append to session manager: {e}")

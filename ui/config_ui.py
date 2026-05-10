@@ -87,10 +87,12 @@ class ConfigUI(QDialog):
         self.audio_input_device_combo = QComboBox()
         self.background_mode = QCheckBox("Run in system tray")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
+        self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
         self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_tts = QCheckBox("Warmup TTS Engine")
         self.warmup_sr = QCheckBox("Warmup Speech Recognition")
+        self.warmup_realtime_transcription = QCheckBox("Warmup Real-time Transcription")
         self._current_profile_data = None
 
         self.setWindowTitle("Application Configuration")
@@ -227,6 +229,11 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Real-time Transcription:", self.realtime_transcription)
 
+        self.save_transcriptions.setChecked(
+            self.config.get("save_transcriptions", True)
+        )
+        layout.addRow("Save Transcriptions:", self.save_transcriptions)
+
         # Background Mode
         self.background_mode.setChecked(self.config.get("background", False))
         layout.addRow("Background Mode:", self.background_mode)
@@ -359,11 +366,13 @@ class ConfigUI(QDialog):
         self.warmup_llm.setChecked(self.config.get("warmup_llm", True))
         self.warmup_tts.setChecked(self.config.get("warmup_tts", False))
         self.warmup_sr.setChecked(self.config.get("warmup_speech_recognition", True))
+        self.warmup_realtime_transcription.setChecked(self.config.get("warmup_realtime_transcription", False))
 
         layout.addRow("OCR:", self.warmup_ocr)
         layout.addRow("LLM:", self.warmup_llm)
         layout.addRow("TTS:", self.warmup_tts)
         layout.addRow("Speech Recognition:", self.warmup_sr)
+        layout.addRow("Real-time Transcription:", self.warmup_realtime_transcription)
 
     def setup_shortcuts_tab(self):
         scroll = QScrollArea()
@@ -414,10 +423,12 @@ class ConfigUI(QDialog):
         self.config["background"] = self.background_mode.isChecked()
         self.config["show_control_panel"] = self.show_control_panel.isChecked()
         self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
+        self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
         self.config["warmup_llm"] = self.warmup_llm.isChecked()
         self.config["warmup_tts"] = self.warmup_tts.isChecked()
         self.config["warmup_speech_recognition"] = self.warmup_sr.isChecked()
+        self.config["warmup_realtime_transcription"] = self.warmup_realtime_transcription.isChecked()
         self.config["ollama_url"] = self.ollama_url.text()
         self.config["google_genai_api_key"] = self.google_genai_api_key.text()
 

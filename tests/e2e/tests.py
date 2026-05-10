@@ -1,12 +1,12 @@
 import os
 import queue
 import threading
-import time
 
 import keyboard
 import pyautogui
 import pyperclip
 import speech_recognition as sr
+import time
 
 from audio_utils import get_microphone_index, record_audio_in_background, speak
 from config import (
@@ -31,7 +31,7 @@ from config import (
     TTS_INPUT_DEVICE_NAME,
     WORKING_DIR,
     RECORD_BUTTON,
-    TTS_OUTPUT_DEVICE_NAME,
+    TTS_OUTPUT_DEVICE_NAME, STOP_RECORD_BUTTON,
 )
 from network_utils import check_port_in_use, poll_port
 from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
@@ -40,7 +40,9 @@ from ui_utils import (
     cycle_until,
     find_text,
     minimize_all_windows,
-    poll_button, mouse_down_button, mouse_up_button,
+    poll_button,
+    mouse_down_button,
+    mouse_up_button,
 )
 
 # --- Global variables for background recording ---
@@ -54,7 +56,8 @@ test_results = {
     "test_tts": "NOT_RUN",  # TTS test (part of test_text_source)
     "test_capture": "NOT_RUN",  # Single image capture test
     "test_multi_capture": "NOT_RUN",  # Multi-select image capture test
-    "test_audio_source": "NOT_RUN",  # Audio input test
+    "test_audio_record": "NOT_RUN",  # Audio record test
+    "test_audio_transcription": "NOT_RUN",  # Audio transcription test
 }
 
 
@@ -113,7 +116,7 @@ def run_tests():
     try:
         test_text_source()
         test_image_source()
-        test_audio_source()
+        test_audio_record()
     finally:
         show_test_summary()
         _stop_recording_event.set()
@@ -243,10 +246,44 @@ def test_image_source():
     test_multi_capture()
 
 
-def test_audio_source():
-    test_results["test_audio_source"] = "FAILED"
-
+def test_audio_record():
     cycle_until(RECORD_BUTTON)
+
+    test_audio_recording()
+    test_audio_transcription()
+
+
+def test_audio_transcription():
+    test_results["test_audio_transcription"] = "FAILED"
+
+    click_button(RECORD_BUTTON)
+
+    time.sleep(1)
+
+    speak("Answer with one word only: " + BASIC_QUESTION, TTS_OUTPUT_DEVICE_NAME)
+
+    time.sleep(1)
+
+    print(f"Clicking on transcription...")
+    pyautogui.doubleClick(x=1700, y=2000)
+
+    time.sleep(2)
+
+    if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
+        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the transcription!")
+        test_results["test_audio_transcription"] = "PASSED"
+    else:
+        print(
+            f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."
+        )
+
+    click_button(STOP_RECORD_BUTTON)
+
+    time.sleep(1)
+
+
+def test_audio_recording():
+    test_results["test_audio_record"] = "FAILED"
 
     mouse_down_button(RECORD_BUTTON)
 
@@ -262,7 +299,7 @@ def test_audio_source():
 
     if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
         print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the audio!")
-        test_results["test_audio_source"] = "PASSED"
+        test_results["test_audio_record"] = "PASSED"
     else:
         print(
             f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."

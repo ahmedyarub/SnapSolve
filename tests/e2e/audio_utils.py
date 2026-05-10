@@ -1,4 +1,5 @@
 import os
+import tempfile
 import wave
 
 import pyaudio
@@ -25,8 +26,18 @@ def get_microphone_index(target_name: str) -> int | None:
 def record_audio_in_background(stop_event, audio_queue, device_index):
     """Records audio continuously in the background."""
     frames = []
+
+    device_name = "Unknown Device"
+    if device_index is not None:
+        try:
+            p = pyaudio.PyAudio()
+            device_name = p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+            p.terminate()
+        except Exception:
+            pass
+
     try:
-        print("[Recorder] Background audio recording started.")
+        print(f"[Recorder] Background audio recording started on {device_name}.")
         with sr.Microphone(device_index=device_index) as source:
             stream = source.stream
 
@@ -47,49 +58,54 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
                     b"".join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
                 )
                 audio_queue.put(audio_data)
-            print("[Recorder] Background audio recording stopped.")
+            print(f"[Recorder] Background audio recording stopped on {device_name}.")
     except Exception as e:
         print(f"[Recorder] Error during background recording setup or execution: {e}")
 
 
 def speak(text: str, output_device: str):
+    """
+    Synthesizes text to a temporary WAV file and plays it on the specified output device.
+    This implementation mirrors the known-working method from test_sound.py.
+    """
     voice = PiperVoice.load(
         "../en_US-lessac-high.onnx", config_path="../en_US-lessac-high.onnx.json"
     )
 
     print(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
 
-    wav_file = "temp_output.wav"
+    p = pyaudio.PyAudio()
 
-    # Synthesize directly to a WAV file
-    with wave.open(wav_file, "wb") as wav:
-        voice.synthesize_wav(text, wav)
+    target_device_index: int | None = None
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
 
-    print(f"Audio synthesized to {wav_file}. Attempting playback.")
-
-    # Play the audio using PyAudio
-    if os.path.exists(wav_file):
-        wf = wave.open(wav_file, "rb")
-        p = pyaudio.PyAudio()
-
-        target_device_index: int | None = None
-        for i in range(p.get_device_count()):
-            info = p.get_device_info_by_index(i)
-            host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
-
-            # Hardcode "MME" for comparison
-            if info["name"] == output_device and host_api_name == "MME":
-                target_device_index = int(info["index"])
-                print(
-                    f"Found configured audio device: {output_device} (MME) at index {target_device_index}"
-                )
-                break
-        if target_device_index is None:
+        if info["name"] == output_device and host_api_name == "MME":
+            target_device_index = int(info["index"])
             print(
-                f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
+                f"Found configured audio device: {output_device} (MME) at index {target_device_index}"
             )
+            break
+    if target_device_index is None:
+        print(
+            f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
+        )
 
-        # Attempt to open stream with the target device index
+    # Use a temporary file for robust playback
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
+        wav_file_path = tmpfile.name
+
+    try:
+        # Synthesize directly to the WAV file
+        print(f"Synthesizing to temporary file: {wav_file_path}")
+        with wave.open(wav_file_path, "wb") as wav:
+            voice.synthesize_wav(text, wav)
+        print("Synthesis complete.")
+
+        # Play the audio using PyAudio
+        wf = wave.open(wav_file_path, "rb")
+
         stream = p.open(
             format=p.get_format_from_width(wf.getsampwidth()),
             channels=wf.getnchannels(),
@@ -97,9 +113,10 @@ def speak(text: str, output_device: str):
             output=True,
             output_device_index=target_device_index,
         )
-        print(f"Playing audio on device index: {target_device_index}")
 
-        # Playback loop
+        device_name = output_device if target_device_index is not None else 'Default Device'
+        print(f"Playing audio on {device_name}")
+
         data = wf.readframes(1024)
         while data:
             stream.write(data)
@@ -108,8 +125,8 @@ def speak(text: str, output_device: str):
         stream.stop_stream()
         stream.close()
         wf.close()
+
+    finally:
         p.terminate()
 
-        print(f"Playback of {wav_file} completed.")
-
-        os.remove(wav_file)
+    print("Audio playback completed.")

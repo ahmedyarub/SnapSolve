@@ -22,6 +22,7 @@ from core.output import (
     update_multi_state,
     set_active_source_ui,
     set_app_processing_state,
+    get_subtitle_text,
 )
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
@@ -649,7 +650,7 @@ def handle_start_record(config, enable_transcription):
     )
 
 
-def handle_stop_record(config, active_profile, _active_prompt_text):
+def handle_stop_record(config, active_profile, active_prompt_text, is_long_press):
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
@@ -673,6 +674,13 @@ def handle_stop_record(config, active_profile, _active_prompt_text):
         assert active_source is not None
         assert isinstance(active_source, SoundSource)
         text = active_source.stop_recording()
+        
+        if not is_long_press:
+            status_update("Transcription stopped.")
+            from core.output import clear_subtitles
+            clear_subtitles()
+            return
+            
         if not text:
             status_update("No speech recognized.")
             return
@@ -704,7 +712,8 @@ def handle_cycle_source(config, active_profile):
             ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
         new_source.ocr_engine = ocr_engine_instance
     elif isinstance(active_source, ScreenshotSource):
-        new_source = SoundSource(config)
+        global session_manager
+        new_source = SoundSource(config, session_manager=session_manager)
     else:
         new_source = TextSource()
 
@@ -754,9 +763,13 @@ def handle_reselect(config):
 
 
 def exit_app():
-    global is_running
+    global is_running, session_manager
     is_running = False
     print("Exiting...")
+    
+    if session_manager:
+        session_manager.cleanup()
+
     app = QApplication.instance()
     if app:
         app.quit()
@@ -815,6 +828,60 @@ def validate_config(active_profile):
             sys.exit(1)
 
 
+def warmup_whisperlive_process(config):
+    """Executes the test_whisperlive_warmup script from main thread as a warmup."""
+    try:
+        import subprocess
+        # Get path to test_whisperlive_warmup.py
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "sanity", "test_whisperlive_warmup.py")
+        if os.path.exists(script_path):
+            print("Running Real-time transcription warmup (test_whisperlive_warmup.py)...")
+            
+            # Start process asynchronously
+            def _run_warmup():
+                try:
+                    process = subprocess.Popen(
+                        [sys.executable, script_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1,  # Line buffered
+                        universal_newlines=True
+                    )
+                    
+                    # Read stdout in a background thread to print in real time
+                    def _read_stdout():
+                        for line in iter(process.stdout.readline, ''):
+                            print(f"[WhisperLive Warmup] {line.strip()}")
+                        process.stdout.close()
+                        
+                    def _read_stderr():
+                        for line in iter(process.stderr.readline, ''):
+                            print(f"[WhisperLive Warmup ERR] {line.strip()}", file=sys.stderr)
+                        process.stderr.close()
+                        
+                    t1 = threading.Thread(target=_read_stdout, daemon=True)
+                    t2 = threading.Thread(target=_read_stderr, daemon=True)
+                    t1.start()
+                    t2.start()
+                    
+                    process.wait()
+                    t1.join()
+                    t2.join()
+                    
+                    if process.returncode == 0:
+                        print("Real-time transcription warmup completed successfully.")
+                    else:
+                        print(f"Real-time transcription warmup failed with code {process.returncode}")
+                except Exception as e:
+                    print(f"Error executing warmup script: {e}")
+                    
+            threading.Thread(target=_run_warmup, daemon=True).start()
+        else:
+            print("Warning: Real-time transcription warmup script not found.")
+    except Exception as e:
+        print(f"Error initializing Real-time transcription warmup: {e}")
+
 def main():
     # Configure logging early
     logging.basicConfig(
@@ -855,11 +922,14 @@ def main():
     validate_config(active_profile)
 
     # Determine the initial source
+    global session_manager
+    session_manager = SessionManager(config)
+
     default_source = config.get("default_source", "text")
     if default_source == "image":
         set_active_source_instance(ScreenshotSource())
     elif default_source == "audio":
-        set_active_source_instance(SoundSource(config))
+        set_active_source_instance(SoundSource(config, session_manager=session_manager))
     else:
         set_active_source_instance(TextSource())
 
@@ -880,8 +950,8 @@ def main():
         "start_record": lambda enable_transcription: handle_start_record(
             config, enable_transcription
         ),
-        "stop_record": lambda: handle_stop_record(
-            config, active_profile, active_prompt_text
+        "stop_record": lambda is_long_press: handle_stop_record(
+            config, active_profile, active_prompt_text, is_long_press
         ),
     }
     # Initialize the UI Manager and set callbacks
@@ -920,9 +990,7 @@ def main():
         ocr_engine_instance, \
         llm_engine_instance, \
         fallback_llm_engine_instance, \
-        session_manager, \
         audio_sink_instance
-    session_manager = SessionManager(config)
     ocr_type = active_profile.get("ocr_engine", "none")
     if ocr_type == "paddleocr":
         ocr_engine_instance = LocalPaddleOCREngine(
@@ -1008,8 +1076,12 @@ def main():
 
     # Warmup Speech Recognition asynchronously if enabled
     if config.get("warmup_speech_recognition", True):
-        temp_sr = SoundSource(config)
+        temp_sr = SoundSource(config, session_manager=session_manager)
         threading.Thread(target=temp_sr.warmup, daemon=True).start()
+        
+    # Warmup WhisperLive (Real-time transcription) if enabled
+    if config.get("warmup_realtime_transcription", False):
+        warmup_whisperlive_process(config)
 
     # Function to test transcription display
     def handle_test_transcription():
@@ -1019,9 +1091,20 @@ def main():
         test_text = f"Transcription test with random number: {random.randint(1, 1000)}"
         print(f"Testing transcription display: {test_text}")
         show_subtitle(test_text)
+        
+    def handle_select_subtitle(index):
+        text = get_subtitle_text(index)
+        if text:
+            print(f"Selected subtitle {index}: {text}")
+            handle_text_submit(config, active_profile, text)
+        else:
+            print(f"No subtitle found at index {index}")
 
     # Register keyboard shortcuts
     keyboard.add_hotkey("ctrl+alt+shift+t", handle_test_transcription)
+    
+    for i in range(1, 6):
+        keyboard.add_hotkey(f"ctrl+alt+shift+{i}", handle_select_subtitle, args=(i,))
 
     hotkeys = config.get("hotkeys", [])
 

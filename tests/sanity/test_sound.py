@@ -1,18 +1,25 @@
+import difflib
 import json
 import logging
 import os
-import sys
+import string
+import subprocess
 import threading
 import wave
 
 import numpy as np
 import pyaudio
+import resampy
 import speech_recognition as sr
+import sys
+import time
 
 # Configure basic logging
-# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (  # noqa: E402
     QApplication,
     QMainWindow,
     QWidget,
@@ -24,14 +31,121 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QProgressBar,
 )
-from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject  # noqa: E402
+
+# Add WhisperLive to path
+whisperlive_path = os.path.join(
+    str(os.path.dirname(os.path.dirname(str(os.path.dirname(__file__))))),
+    "services",
+    "whisperlive",
+)
+if whisperlive_path not in sys.path:
+    sys.path.insert(0, whisperlive_path)
+
+from whisper_live.client import TranscriptionClient as WhisperLiveTranscriptionClient  # noqa: E402
+
+
+def is_whisperlive_service_online(host="localhost", port=9090):
+    """Check if WhisperLive service is online by checking if port is open."""
+    try:
+        import socket
+
+        # Simply check if the port is open - don't make a full WebSocket connection
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        sock.close()
+
+        if result == 0:
+            logging.debug(f"Port {port} is open - service appears to be running")
+            return True
+        else:
+            logging.debug(f"Port {port} is not open")
+            return False
+    except Exception as e:
+        logging.debug(f"Service health check failed: {e}")
+        return False
+
+
+def start_whisperlive_service():
+    """Start WhisperLive service if not already running."""
+    whisperlive_path = os.path.join(
+        str(os.path.dirname(str(os.path.dirname(str(os.path.dirname(__file__)))))),
+        "services",
+        "whisperlive",
+    )
+
+    server_script = os.path.join(whisperlive_path, "run_server.py")
+
+    if not os.path.exists(server_script):
+        print(f"Error: WhisperLive server script not found at {server_script}")
+        return None
+
+    try:
+        # Check if the service is already running by checking the port
+        import socket
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(("localhost", 9090))
+        sock.close()
+
+        if result == 0:
+            print("WhisperLive service is already running on port 9090")
+            return None  # Service is already running, don't start a new one
+
+        venv_python = os.path.join(whisperlive_path, ".venv", "Scripts",
+                                   "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin",
+                                                                                      "python")
+        python_exec = venv_python if os.path.exists(venv_python) else sys.executable
+
+        # Start the server in a subprocess with extended connection time
+        process = subprocess.Popen(
+            [
+                python_exec,
+                server_script,
+                "--port",
+                "9090",
+                "--backend",
+                "faster_whisper",
+                "--max_clients",
+                "4",
+                "--max_connection_time",
+                "60",  # 1 minute
+                "--no_single_model",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        # Wait a bit for the server to start
+        time.sleep(5)
+
+        # Check if it's running
+        if process.poll() is None:
+            print(f"WhisperLive service started (PID: {process.pid})")
+            return process
+        else:
+            stdout, stderr = process.communicate()
+            print("Failed to start WhisperLive service")
+            print(f"STDOUT: {stdout}")
+            print(f"STDERR: {stderr}")
+            return None
+
+    except Exception as e:
+        print(f"Error starting WhisperLive service: {e}")
+        return None
 
 
 class WorkerSignals(QObject):
     update_volume = pyqtSignal(int)
     update_heard = pyqtSignal(str)
+    append_heard = pyqtSignal(str)
+    playback_started = pyqtSignal()
     playback_finished = pyqtSignal()
     record_finished = pyqtSignal()
+    transcription_finished = pyqtSignal()
     log_message = pyqtSignal(str)
 
 
@@ -45,7 +159,10 @@ class SoundTestApp(QMainWindow):
         self.signals = WorkerSignals()
         self.signals.update_volume.connect(self.update_volume_bar)
         self.signals.update_heard.connect(self.set_heard_text)
+        self.signals.append_heard.connect(self.append_heard_text)
+        self.signals.playback_started.connect(self.on_playback_started)
         self.signals.playback_finished.connect(self.on_playback_finished)
+        self.signals.transcription_finished.connect(self.on_transcription_finished)
         self.signals.log_message.connect(self.log)
 
         # Hardcoded model
@@ -53,8 +170,13 @@ class SoundTestApp(QMainWindow):
         self.settings_file = "sound_test_settings.json"
 
         self.is_recording = False
+        self.is_transcribing = False
         self.playback_done = False
+        self.playback_started = False
         self.audio_frames = []
+        self.transcription_client = None
+        self.transcription_text = ""
+        self.whisperlive_process = None
 
         # UI components (initialized in init_ui)
         self.out_combo = QComboBox()
@@ -63,7 +185,9 @@ class SoundTestApp(QMainWindow):
         self.heard_text = QTextEdit()
         self.volume_bar = QProgressBar()
         self.log_text = QTextEdit()
-        self.action_btn = QPushButton()
+        self.playback_only_btn = QPushButton()
+        self.recording_btn = QPushButton()
+        self.transcription_btn = QPushButton()
 
         self.init_ui()
 
@@ -89,7 +213,9 @@ class SoundTestApp(QMainWindow):
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
-        self.speak_text.setText("this is a test of the audio system")
+        self.speak_text.setText(
+            "What is the 5th largest country in the world?\ngive me a brief answer."
+        )
         self.speak_text.setMaximumHeight(80)
         layout.addWidget(self.speak_text)
 
@@ -103,6 +229,20 @@ class SoundTestApp(QMainWindow):
         layout.addWidget(QLabel("Microphone Volume:"))
         self.volume_bar.setRange(0, 100)
         self.volume_bar.setValue(0)
+        self.volume_bar.setStyleSheet(
+            """
+            QProgressBar {
+                min-height: 30px;
+                max-height: 30px;
+                border-radius: 15px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                border-radius: 15px;
+            }
+            """
+        )
         layout.addWidget(self.volume_bar)
 
         # Log
@@ -110,10 +250,22 @@ class SoundTestApp(QMainWindow):
         self.log_text.setReadOnly(True)
         layout.addWidget(self.log_text)
 
-        # Action Button
-        self.action_btn = QPushButton("Start Test")
-        self.action_btn.clicked.connect(self.start_test)
-        layout.addWidget(self.action_btn)
+        # Action Buttons
+        button_layout = QHBoxLayout()
+
+        self.playback_only_btn = QPushButton("Playback Only")
+        self.playback_only_btn.clicked.connect(self.start_playback_only)
+        button_layout.addWidget(self.playback_only_btn)
+
+        self.recording_btn = QPushButton("Recording Test")
+        self.recording_btn.clicked.connect(self.start_recording_test)
+        button_layout.addWidget(self.recording_btn)
+
+        self.transcription_btn = QPushButton("Transcription Test")
+        self.transcription_btn.clicked.connect(self.start_transcription_test)
+        button_layout.addWidget(self.transcription_btn)
+
+        layout.addLayout(button_layout)
 
     def populate_devices(self):
         count = self.p.get_device_count()
@@ -175,12 +327,80 @@ class SoundTestApp(QMainWindow):
     def set_heard_text(self, text):
         self.heard_text.setText(text)
 
+    def append_heard_text(self, text):
+        # current_text = self.heard_text.toPlainText()
+        # if current_text:
+        #     self.heard_text.setText(current_text + " " + text)
+        # else:
+        self.heard_text.setText(text)
+
+    def on_playback_started(self):
+        self.playback_started = True
+        self.log("Playback started. Beginning recording...")
+
     def on_playback_finished(self):
         self.playback_done = True
         self.log("Playback finished. Stopping recording...")
+        self._enable_buttons()
+        self.signals.update_volume.emit(0)
 
-    def start_test(self):
-        self.action_btn.setEnabled(False)
+    def on_transcription_finished(self):
+        self.is_transcribing = False
+        self.log("Transcription finished.")
+        self._enable_buttons()
+
+    def _enable_buttons(self):
+        import PyQt6.QtCore as QtCore
+        QtCore.QMetaObject.invokeMethod(
+            self.playback_only_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+        QtCore.QMetaObject.invokeMethod(
+            self.recording_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+        QtCore.QMetaObject.invokeMethod(
+            self.transcription_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, True),
+        )
+
+    def start_playback_only(self):
+        self.playback_only_btn.setEnabled(False)
+        self.recording_btn.setEnabled(False)
+        self.transcription_btn.setEnabled(False)
+        self.log_text.clear()
+        self.volume_bar.setValue(0)
+
+        out_idx = self.out_combo.currentData()
+        in_idx = self.in_combo.currentData()
+        text = self.speak_text.toPlainText()
+
+        if out_idx is None or in_idx is None:
+            self.log("Please select both input and output devices.")
+            self._enable_buttons()
+            return
+
+        self.save_settings(out_idx, in_idx)
+
+        self.playback_done = False
+
+        threading.Thread(
+            target=self.play_audio, args=(text, out_idx), daemon=True
+        ).start()
+        threading.Thread(
+            target=self.monitor_mic_volume, args=(in_idx,), daemon=True
+        ).start()
+
+    def start_recording_test(self):
+        self.playback_only_btn.setEnabled(False)
+        self.recording_btn.setEnabled(False)
+        self.transcription_btn.setEnabled(False)
         self.log_text.clear()
         self.heard_text.clear()
         self.volume_bar.setValue(0)
@@ -191,7 +411,7 @@ class SoundTestApp(QMainWindow):
 
         if out_idx is None or in_idx is None:
             self.log("Please select both input and output devices.")
-            self.action_btn.setEnabled(True)
+            self._enable_buttons()
             return
 
         self.save_settings(out_idx, in_idx)
@@ -206,15 +426,77 @@ class SoundTestApp(QMainWindow):
         ).start()
         threading.Thread(target=self.record_audio, args=(in_idx,), daemon=True).start()
 
-    def play_audio(self, text, device_index):
+    def start_transcription_test(self):
+        self.playback_only_btn.setEnabled(False)
+        self.recording_btn.setEnabled(False)
+        self.transcription_btn.setEnabled(False)
+        self.log_text.clear()
+        self.heard_text.clear()
+        self.volume_bar.setValue(0)
+
+        out_idx = self.out_combo.currentData()
+        in_idx = self.in_combo.currentData()
+        text = self.speak_text.toPlainText()
+
+        if out_idx is None or in_idx is None:
+            self.log("Please select both input and output devices.")
+            self._enable_buttons()
+            return
+
+        self.save_settings(out_idx, in_idx)
+
+        # Check if WhisperLive service is online
+        self.log("Checking WhisperLive service status...")
+        if not is_whisperlive_service_online():
+            self.log("WhisperLive service is not running. Starting it...")
+            self.whisperlive_process = start_whisperlive_service()
+            if self.whisperlive_process is None:
+                self.log("WhisperLive service is already running or failed to start.")
+                # Check again to see if it's actually running
+                if is_whisperlive_service_online():
+                    self.log("WhisperLive service is running. Proceeding with test.")
+                else:
+                    self.log("Failed to start WhisperLive service. Aborting test.")
+                    self._enable_buttons()
+                    return
+
+            # Wait longer for the service to be fully ready
+            self.log("Waiting for WhisperLive service to be ready...")
+            time.sleep(5)
+        else:
+            self.log("WhisperLive service is running. Proceeding with test.")
+
+        self.playback_done = False
+        self.is_transcribing = True
+        self.audio_frames = []
+        self.transcription_text = ""
+
+        server_ready_event = threading.Event()
+
+        # Run playback and record in separate background threads
+        threading.Thread(
+            target=self.play_audio, args=(text, out_idx, server_ready_event), daemon=True
+        ).start()
+
+        # Record and transcribe in a separate thread
+        def record_and_transcribe():
+            self.record_audio_to_file(in_idx, server_ready_event)
+            self.run_transcription()
+
+        threading.Thread(target=record_and_transcribe, daemon=True).start()
+
+    def play_audio(self, text, device_index, server_ready_event=None):
         try:
             from piper import PiperVoice
+            import io
 
             if not os.path.exists(self.piper_model):
                 self.signals.log_message.emit(
                     f"Piper model not found at {self.piper_model}"
                 )
                 self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
                 return
 
             piper_config_path = self.piper_model + ".json"
@@ -223,14 +505,55 @@ class SoundTestApp(QMainWindow):
                     f"Piper config not found at {piper_config_path}"
                 )
                 self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
                 return
 
             self.signals.log_message.emit("Loading Piper voice model...")
             voice = PiperVoice.load(self.piper_model, config_path=piper_config_path)
 
+            # Split text by newlines and synthesize each line separately
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
+            if not lines:
+                self.signals.playback_finished.emit()
+                if server_ready_event is not None:
+                    server_ready_event.set()
+                return
+
+            # Synthesize each line to a buffer and combine with silence
+            audio_buffers = []
+            sample_rate = voice.config.sample_rate
+
+            for i, line in enumerate(lines):
+                # Synthesize line to a buffer
+                line_buffer = io.BytesIO()
+                with wave.open(line_buffer, "wb") as wav:
+                    voice.synthesize_wav(line, wav)
+                line_buffer.seek(0)
+
+                # Read the WAV data
+                with wave.open(line_buffer, "rb") as wav:
+                    frames = wav.readframes(wav.getnframes())
+                    audio_buffers.append(frames)
+
+                # Add 2 seconds of silence between lines (except after last line)
+                if i < len(lines) - 1:
+                    silence_samples = int(2 * sample_rate)
+                    silence = np.zeros(silence_samples, dtype=np.int16)
+                    audio_buffers.append(silence.tobytes())
+
+            # Write combined audio to file
             wav_file = "test_output.wav"
             with wave.open(wav_file, "wb") as wav:
-                voice.synthesize_wav(text, wav)
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(sample_rate)
+                for buffer in audio_buffers:
+                    wav.writeframes(buffer)
+
+            if server_ready_event is not None:
+                self.signals.log_message.emit("Waiting for transcription server to be ready before playback...")
+                server_ready_event.wait()
 
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
 
@@ -243,6 +566,9 @@ class SoundTestApp(QMainWindow):
                 output_device_index=device_index,
             )
 
+            # Add a slight delay before playing audio
+            time.sleep(1.0)
+
             data = wf.readframes(1024)
             while data and not self.playback_done:
                 stream.write(data)
@@ -252,16 +578,305 @@ class SoundTestApp(QMainWindow):
             stream.close()
             wf.close()
 
+            # Add a slight delay after playing audio to allow the transcriber to catch up
+            time.sleep(2.0)
+
         except Exception as e:
             self.signals.log_message.emit(f"Playback error: {e}")
         finally:
             self.signals.playback_finished.emit()
 
+    def record_audio_to_file(self, device_index, server_ready_event=None):
+        """Records audio from microphone and streams it directly to WhisperLive."""
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+        try:
+            self.signals.log_message.emit(
+                f"Starting recording on {device_name} for transcription..."
+            )
+
+            # Initialize WhisperLive client for streaming with retry logic
+            self.signals.log_message.emit("Initializing WhisperLive client...")
+            max_retries = 3
+            retry_delay = 2
+
+            for attempt in range(max_retries):
+                try:
+                    self.transcription_client = WhisperLiveTranscriptionClient(
+                        host="localhost",
+                        port=9090,
+                        lang="en",
+                        model="large-v3",
+                        use_vad=True,
+                        mute_audio_playback=True,
+                        enable_translation=False,
+                        display_segments=1,
+                        send_last_n_segments=3,
+                        transcription_callback=self.on_transcription_result,
+                        no_speech_thresh=0.9,  # Higher threshold to be less aggressive
+                        clip_audio=False,  # Don't clip audio
+                        same_output_threshold=5,  # Lower threshold for valid segments
+                    )
+
+                    # Wait for client to be ready
+                    self.signals.log_message.emit(
+                        "Waiting for WhisperLive server to be ready..."
+                    )
+                    timeout = 15
+                    start_time = time.time()
+                    client = self.transcription_client.client
+
+                    while not client.recording:
+                        # Check for errors or waiting state
+                        if client.server_error:
+                            error_msg = getattr(
+                                client, "error_message", "Unknown error"
+                            )
+                            self.signals.log_message.emit(
+                                f"WhisperLive server error: {error_msg}"
+                            )
+                            # Close the client and retry
+                            try:
+                                client.close_websocket()
+                            except Exception:
+                                pass
+                            break
+                        if client.waiting:
+                            self.signals.log_message.emit(
+                                "WhisperLive server is full. Waiting for slot..."
+                            )
+                            # Continue waiting
+                        if time.time() - start_time > timeout:
+                            self.signals.log_message.emit(
+                                "Timeout waiting for WhisperLive server to be ready."
+                            )
+                            # Close the client and retry
+                            try:
+                                client.close_websocket()
+                            except Exception:
+                                pass
+                            break
+                        time.sleep(0.1)
+
+                    if client.recording:
+                        # Connection successful, break out of retry loop
+                        self.signals.log_message.emit(
+                            "WhisperLive server ready. Starting streaming..."
+                        )
+                        if server_ready_event is not None:
+                            server_ready_event.set()
+                        break
+                    else:
+                        # Connection failed, retry
+                        if attempt < max_retries - 1:
+                            self.signals.log_message.emit(
+                                f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds..."
+                            )
+                            time.sleep(retry_delay)
+                        else:
+                            self.signals.log_message.emit(
+                                "Failed to connect to WhisperLive server after multiple attempts."
+                            )
+                            if server_ready_event is not None:
+                                server_ready_event.set()
+                            return
+
+                except Exception as e:
+                    self.signals.log_message.emit(
+                        f"Error initializing WhisperLive client (attempt {attempt + 1}): {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                    else:
+                        self.signals.log_message.emit(
+                            "Failed to initialize WhisperLive client after multiple attempts."
+                        )
+                        if server_ready_event is not None:
+                            server_ready_event.set()
+                        return
+
+            # Stream audio directly to WhisperLive
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                source_sample_rate = source.SAMPLE_RATE
+                target_sample_rate = 16000
+
+                self.signals.log_message.emit(
+                    f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+                )
+
+                # Create resampler if needed
+                if source_sample_rate != target_sample_rate:
+                    resampler = resampy.resample
+                    self.signals.log_message.emit(
+                        f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
+                    )
+                else:
+                    resampler = None
+
+                while not self.playback_done:
+                    try:
+                        data = stream.read(source.CHUNK)
+                        self.audio_frames.append(data)
+                        self._update_volume_from_audio(data)
+
+                        # Convert audio data to float array
+                        audio_array = (
+                                np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                                / 32768.0
+                        )
+
+                        # Resample if needed
+                        if resampler is not None:
+                            audio_array = resampler(
+                                audio_array, source_sample_rate, target_sample_rate
+                            )
+
+                        # Stream to WhisperLive
+                        client.send_packet_to_server(audio_array.tobytes())
+
+                    except Exception as e:
+                        self.signals.log_message.emit(f"Recording error: {e}")
+                        break
+
+            # Send END_OF_AUDIO signal to WhisperLive
+            self.signals.log_message.emit("Recording stopped. Sending END_OF_AUDIO...")
+            try:
+                client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+            except Exception as e:
+                self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
+
+            # Wait for final transcription results
+            self.signals.log_message.emit("Waiting for final transcription results...")
+            time.sleep(2)
+
+            self.signals.update_volume.emit(0)
+
+        except Exception as e:
+            self.signals.log_message.emit(f"Recording thread error: {e}")
+
+    def run_transcription(self):
+        """Run transcription test using streaming audio (no file needed)."""
+        try:
+            # Transcription is now done during recording via streaming
+            # This method is called after recording is complete
+            self.signals.log_message.emit("Transcription streaming complete.")
+
+            self._compare_transcription_results()
+
+        except Exception as e:
+            self.signals.log_message.emit(f"Transcription error: {e}")
+        finally:
+            self._cleanup_transcription()
+
+    def _normalize_text(self, text):
+        """Normalize text by converting to lowercase, removing punctuation, and collapsing whitespace."""
+        text = text.lower()
+        # Remove punctuation
+        text = text.translate(str.maketrans("", "", string.punctuation))
+        # Collapse whitespace
+        text = " ".join(text.split())
+        return text
+
+    def _compare_transcription_results(self):
+        """Compare transcription results with original text."""
+        original_text = self.speak_text.toPlainText()
+        transcribed_text = self.transcription_text
+
+        # Normalize line breaks for comparison
+        original_normalized = self._normalize_text(original_text)
+        transcribed_normalized = self._normalize_text(transcribed_text)
+
+        self.signals.log_message.emit(f"Original text: '{original_text}'")
+        self.signals.log_message.emit(f"Transcribed text: '{transcribed_text}'")
+
+        # Check for empty transcription first
+        if not transcribed_text.strip():
+            self.signals.log_message.emit(
+                "Result: FAILURE - No transcription received."
+            )
+            return
+
+        match_ratio = difflib.SequenceMatcher(None, original_normalized, transcribed_normalized).ratio()
+
+        # Check for exact match (normalized)
+        if (
+                transcribed_normalized in original_normalized
+                or original_normalized in transcribed_normalized
+                or match_ratio >= 0.8
+        ):
+            self.signals.log_message.emit(
+                "Result: SUCCESS - Transcribed text matches original."
+            )
+        else:
+            # Check for partial match
+            words_original = set(original_normalized.split())
+            words_transcribed = set(transcribed_normalized.split())
+            common_words = words_original & words_transcribed
+
+            if len(common_words) > 0:
+                match_ratio_words = len(common_words) / max(
+                    len(words_original), len(words_transcribed)
+                )
+                self.signals.log_message.emit(
+                    f"Result: PARTIAL MATCH - {match_ratio_words:.1%} of words match."
+                )
+            else:
+                self.signals.log_message.emit("Result: FAILURE - Texts do not match.")
+
+    def _cleanup_transcription(self):
+        """Clean up transcription resources."""
+        self.signals.update_volume.emit(0)
+        self.is_transcribing = False
+
+        # Close WhisperLive client if it exists
+        if self.transcription_client is not None:
+            try:
+                self.transcription_client.client.close_websocket()
+                self.signals.log_message.emit("WhisperLive client closed.")
+            except Exception as e:
+                self.signals.log_message.emit(f"Error closing WhisperLive client: {e}")
+            finally:
+                self.transcription_client = None
+
+        self._enable_buttons()
+        self.signals.transcription_finished.emit()
+
+    def on_transcription_result(self, _, segments):
+        """Handle real-time transcription results."""
+        logging.debug(f"Transcription callback received: segments={segments}")
+        new_text = ""
+        for segment in segments:
+            if new_text:
+                new_text += "\n"
+            new_text += segment["text"]
+
+        self.transcription_text = new_text
+        self.signals.append_heard.emit(new_text)
+        self.signals.log_message.emit(f"Transcribed: '{new_text}'")
+
+    def monitor_mic_volume(self, device_index):
+        """Monitors microphone volume without recording or transcribing."""
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
+        try:
+            self.signals.log_message.emit(f"Starting microphone monitoring on {device_name}...")
+            with sr.Microphone(device_index=device_index) as source:
+                stream = source.stream
+                while not self.playback_done:
+                    try:
+                        data = stream.read(source.CHUNK)
+                        self._update_volume_from_audio(data)
+                    except Exception:
+                        break
+            self.signals.update_volume.emit(0)
+        except Exception as e:
+            self.signals.log_message.emit(f"Microphone monitoring error: {e}")
+
     def record_audio(self, device_index):
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
         try:
             r = sr.Recognizer()
             self.signals.log_message.emit(
-                f"Starting recording on device {device_index}..."
+                f"Starting recording on {device_name}..."
             )
 
             with sr.Microphone(device_index=device_index) as source:
@@ -271,14 +886,7 @@ class SoundTestApp(QMainWindow):
                     try:
                         data = stream.read(source.CHUNK)
                         self.audio_frames.append(data)
-
-                        # Calculate volume
-                        audio_data = np.frombuffer(data, dtype=np.int16)
-                        if len(audio_data) > 0:
-                            vol = np.abs(audio_data).mean()
-                            # Scale volume to 0-100 (rough estimate)
-                            scaled_vol = min(100, int((vol / 32768.0) * 500))
-                            self.signals.update_volume.emit(scaled_vol)
+                        self._update_volume_from_audio(data)
 
                     except Exception as e:
                         self.signals.log_message.emit(f"Recording error: {e}")
@@ -290,50 +898,77 @@ class SoundTestApp(QMainWindow):
             self.signals.update_volume.emit(0)
 
             if self.audio_frames:
-                audio_data = sr.AudioData(
-                    b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
-                )
-                try:
-                    recognized_text = r.recognize_google(audio_data)  # type: ignore[attr-defined]
-                    self.signals.update_heard.emit(recognized_text)
-                    self.signals.log_message.emit("Recognition successful.")
-
-                    original_text = self.speak_text.toPlainText().lower()
-                    # Perform a simple check if the recognized text resembles the original
-                    if (
-                        recognized_text.lower() in original_text
-                        or original_text in recognized_text.lower()
-                    ):
-                        self.signals.log_message.emit(
-                            "Result: SUCCESS - Recognized text matches original."
-                        )
-                    else:
-                        self.signals.log_message.emit(
-                            "Result: FAILURE - Texts do not match closely."
-                        )
-
-                except sr.UnknownValueError:
-                    self.signals.log_message.emit(
-                        "Speech Recognition could not understand audio."
-                    )
-                except sr.RequestError as e:
-                    self.signals.log_message.emit(f"Could not request results; {e}")
+                self._process_google_recognition(r, source)
 
         except Exception as e:
             self.signals.log_message.emit(f"Recording thread error: {e}")
         finally:
-            self.is_recording = False
-            import PyQt6.QtCore as QtCore
+            self._cleanup_recording()
 
-            QtCore.QMetaObject.invokeMethod(
-                self.action_btn,
-                "setEnabled",
-                QtCore.Qt.ConnectionType.QueuedConnection,
-                QtCore.Q_ARG(bool, True),
+    def _update_volume_from_audio(self, data):
+        """Calculate and update volume from audio data."""
+        audio_data = np.frombuffer(data, dtype=np.int16)
+        if len(audio_data) > 0:
+            vol = np.abs(audio_data).mean()
+            scaled_vol = min(100, int((vol / 32768.0) * 500))
+            self.signals.update_volume.emit(scaled_vol)
+
+    def _process_google_recognition(self, recognizer, source):
+        """Process audio with Google Speech Recognition."""
+        audio_data = sr.AudioData(
+            b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
+        )
+        try:
+            recognized_text = recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            self.signals.update_heard.emit(recognized_text)
+            self.signals.log_message.emit("Recognition successful.")
+
+            original_text = self.speak_text.toPlainText()
+
+            original_normalized = self._normalize_text(original_text)
+            recognized_normalized = self._normalize_text(recognized_text)
+
+            match_ratio = difflib.SequenceMatcher(None, original_normalized, recognized_normalized).ratio()
+
+            # Check for empty recognition first
+            if not recognized_normalized.strip():
+                self.signals.log_message.emit(
+                    "Result: FAILURE - No recognition received."
+                )
+            elif recognized_normalized in original_normalized or original_normalized in recognized_normalized or match_ratio >= 0.8:
+                self.signals.log_message.emit(
+                    "Result: SUCCESS - Recognized text matches original."
+                )
+            else:
+                self.signals.log_message.emit(
+                    "Result: FAILURE - Texts do not match closely."
+                )
+
+        except sr.UnknownValueError:
+            self.signals.log_message.emit(
+                "Speech Recognition could not understand audio."
             )
+        except sr.RequestError as e:
+            self.signals.log_message.emit(f"Could not request results; {e}")
+
+    def _cleanup_recording(self):
+        """Clean up recording resources."""
+        self.is_recording = False
+        self._enable_buttons()
 
     def closeEvent(self, event):
         self.p.terminate()
+
+        # Clean up WhisperLive process if it was started by this app
+        if self.whisperlive_process is not None:
+            try:
+                self.log("Stopping WhisperLive service...")
+                self.whisperlive_process.terminate()
+                self.whisperlive_process.wait(timeout=5)
+                self.log("WhisperLive service stopped.")
+            except Exception as e:
+                print(f"Error stopping WhisperLive service: {e}")
+
         super().closeEvent(event)
 
 

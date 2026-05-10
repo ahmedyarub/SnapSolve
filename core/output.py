@@ -206,7 +206,7 @@ class RecordButton(QPushButton):
     start_recording = pyqtSignal(
         object
     )  # Pass enable_transcription flag (can be None or bool)
-    stop_recording = pyqtSignal()
+    stop_recording = pyqtSignal(bool) # Pass boolean flag indicating if it was a long press
 
     def __init__(self, text, style):
         super().__init__(text)
@@ -260,7 +260,27 @@ class RecordButton(QPushButton):
         self.setStyleSheet(
             self.styleSheet().replace("rgba(178, 34, 34, 0.7)", "rgba(45, 45, 45, 180)")
         )
-        self.stop_recording.emit()
+        self.stop_recording.emit(self.is_long_press)
+
+
+class SubtitleLabel(QLabel):
+    def __init__(self, text):
+        super().__init__(text)
+        self.creation_time = 0
+
+    # noinspection PyPep8Naming
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            text = self.text()
+            if "text_submit" in _app_callbacks:
+                try:
+                    threading.Thread(
+                        target=_app_callbacks["text_submit"],
+                        args=(text,),
+                        daemon=True,
+                    ).start()
+                except Exception as e:
+                    print(f"Error submitting subtitle text: {e}")
 
 
 class SubtitleWidget(QWidget):
@@ -277,7 +297,7 @@ class SubtitleWidget(QWidget):
         # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Use a more visible background for debugging
         self.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 0.8); border: 2px solid red;"
+            "background-color: transparent; border: 1px solid rgba(255, 0, 0, 0.3);"
         )
 
         self.layout = QVBoxLayout(self)
@@ -318,6 +338,13 @@ class SubtitleWidget(QWidget):
         logger.info(f"Subtitle widget positioned at ({x}, {y}) with size ({w}, {h})")
         logger.info(f"Screen size: {screen.width()}x{screen.height()}")
 
+    def get_subtitle_text(self, index: int) -> str:
+        """Get text of a subtitle by index (1-based from bottom/newest)."""
+        if not self.subtitle_labels or index < 1 or index > len(self.subtitle_labels):
+            return ""
+        # 1 means youngest, which is at the end of the list (-1)
+        return self.subtitle_labels[-index].text()
+
     def add_subtitle(self, text: str):
         """Add a new subtitle line."""
         import time
@@ -328,8 +355,14 @@ class SubtitleWidget(QWidget):
         logger.info(f"Subtitle widget visible: {self.isVisible()}")
         logger.info(f"Subtitle widget position: {self.pos()}, size: {self.size()}")
 
+        # Update the creation time of existing subtitles so they fade out relative to the newest one
+        current_time = time.time()
+        for i, existing_label in enumerate(reversed(self.subtitle_labels)):
+            # Give older subtitles an artificial age bump so they look older
+            existing_label.creation_time = current_time - (i + 1) * 2.0
+
         # Create new subtitle label
-        label = QLabel(text)
+        label = SubtitleLabel(text)
         label.setStyleSheet("""
             QLabel {
                 background-color: rgba(0, 0, 0, 0.7);
@@ -394,6 +427,11 @@ class SubtitleWidget(QWidget):
 
         # Update the last subtitle's text
         last_label = self.subtitle_labels[-1]
+        
+        # Reset the creation time of the active subtitle so it doesn't fade while being updated
+        import time
+        last_label.creation_time = time.time()
+        
         if append:
             # Append to existing text
             current_text = last_label.text()
@@ -455,6 +493,10 @@ class SubtitleWidget(QWidget):
 
             # Combine factors, but ensure minimum visibility
             opacity = min(0.95, max(0.4, position_factor * age_factor))
+            
+            # The newest subtitle should always be fully visible if it's less than fade_start old
+            if i == len(self.subtitle_labels) - 1 and age < fade_start:
+                opacity = 0.95
 
             # Update label style with new opacity
             label.setStyleSheet(f"""
@@ -541,7 +583,9 @@ class PanelWidget(QWidget):
                 "start_record", enable_transcription
             )
         )
-        self.btn_record.stop_recording.connect(lambda: call_action("stop_record"))
+        self.btn_record.stop_recording.connect(
+            lambda is_long_press: call_action("stop_record", is_long_press)
+        )
         self.layout.addWidget(self.btn_record)
         self.buttons["record"] = self.btn_record
 
@@ -740,6 +784,11 @@ class UIManager(QObject):
         assert self.subtitle is not None
         self.subtitle.clear_subtitles()
 
+    def get_subtitle_text(self, index: int) -> str:
+        if self.subtitle is not None:
+            return self.subtitle.get_subtitle_text(index)
+        return ""
+
 
 # Global instance for UI Manager. Will be initialized in main.py after QApplication.
 ui_manager: UIManager | None = None
@@ -815,6 +864,14 @@ def update_subtitle(text: str, append: bool = False):
 def clear_subtitles():
     """Clear all subtitle lines."""
     ui_signals.clear_subtitles.emit()
+
+
+def get_subtitle_text(index: int) -> str:
+    """Get the text of a subtitle by index (1 is newest)."""
+    global ui_manager
+    if ui_manager is not None:
+        return ui_manager.get_subtitle_text(index)
+    return ""
 
 
 def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):

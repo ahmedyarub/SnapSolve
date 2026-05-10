@@ -25,6 +25,7 @@
   "warmup_ocr": false,
   "warmup_llm": false,
   "warmup_tts": false,
+  "warmup_realtime_transcription": false,
   "realtime_transcription": true,
   "ocr_config": {
     "remote_ocr_host": "127.0.0.1",
