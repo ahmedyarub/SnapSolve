@@ -159,8 +159,9 @@ class SoundSource(Source):
                 status_callback("Error: Transcription client not found.")
             return
 
+        device_name = self.config.get("audio_input_device_name", "Default Device")
         if status_callback:
-            status_callback("Starting recording...")
+            status_callback(f"Starting recording on {device_name}...")
 
         if self.realtime_transcription:
             self._record_thread = threading.Thread(target=self._record_and_transcribe_worker, daemon=True)

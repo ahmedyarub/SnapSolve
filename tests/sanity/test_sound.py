@@ -214,7 +214,7 @@ class SoundTestApp(QMainWindow):
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
         self.speak_text.setText(
-            "this is a test of the audio system\nand this is a second line"
+            "What is the 5th largest country in the world?\ngive me a brief answer."
         )
         self.speak_text.setMaximumHeight(80)
         layout.addWidget(self.speak_text)
@@ -588,9 +588,10 @@ class SoundTestApp(QMainWindow):
 
     def record_audio_to_file(self, device_index, server_ready_event=None):
         """Records audio from microphone and streams it directly to WhisperLive."""
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
         try:
             self.signals.log_message.emit(
-                f"Starting recording on device {device_index} for transcription..."
+                f"Starting recording on {device_name} for transcription..."
             )
 
             # Initialize WhisperLive client for streaming with retry logic
@@ -870,10 +871,11 @@ class SoundTestApp(QMainWindow):
             self.signals.log_message.emit(f"Microphone monitoring error: {e}")
 
     def record_audio(self, device_index):
+        device_name = self.p.get_device_info_by_index(device_index).get("name", "Unknown Device")
         try:
             r = sr.Recognizer()
             self.signals.log_message.emit(
-                f"Starting recording on device {device_index}..."
+                f"Starting recording on {device_name}..."
             )
 
             with sr.Microphone(device_index=device_index) as source:
