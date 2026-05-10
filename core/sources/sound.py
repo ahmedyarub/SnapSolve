@@ -1,16 +1,17 @@
 import logging
 import os
-import queue
 import subprocess
-import sys
+import tempfile
 import threading
-import time
+import wave
 from typing import Callable, Optional
 
 import numpy as np
 import pyaudio
 import resampy
 import speech_recognition as sr
+import sys
+import time
 
 from core.output import show_subtitle, update_subtitle, clear_subtitles
 from .base import Source
@@ -57,7 +58,8 @@ def start_whisperlive_service():
         logger.error(f"WhisperLive server script not found at {server_script}")
         return None
 
-    venv_python = os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe") if os.name == 'nt' else os.path.join(whisperlive_path, ".venv", "bin", "python")
+    venv_python = os.path.join(whisperlive_path, ".venv", "Scripts", "python.exe") if os.name == 'nt' else os.path.join(
+        whisperlive_path, ".venv", "bin", "python")
     python_exec = venv_python if os.path.exists(venv_python) else sys.executable
 
     try:
@@ -133,9 +135,9 @@ class SoundSource(Source):
         raise ValueError("SoundSource does not support image retrieval.")
 
     def start_recording(
-        self,
-        status_callback: Callable[[str], None] = None,
-        enable_transcription: bool = None,
+            self,
+            status_callback: Callable[[str], None] = None,
+            enable_transcription: bool = None,
     ):
         if self.is_recording:
             return
@@ -146,7 +148,7 @@ class SoundSource(Source):
         self._last_transcription_text = ""
         self._current_utterance_text = ""
         self._last_segment_start = -1.0
-        
+
         # Override transcription setting if explicitly provided
         if enable_transcription is not None:
             self.realtime_transcription = enable_transcription
@@ -167,7 +169,7 @@ class SoundSource(Source):
             self._record_thread = threading.Thread(target=self._record_and_transcribe_worker, daemon=True)
         else:
             self._record_thread = threading.Thread(target=self._record_only_worker, daemon=True)
-            
+
         self._record_thread.start()
 
     def _record_only_worker(self):
@@ -183,21 +185,40 @@ class SoundSource(Source):
                     break
             p.terminate()
 
+        # Temporary file creation
+        fd, temp_wav_path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+
         try:
             with sr.Microphone(device_index=device_index) as source:
                 self._sample_rate = source.SAMPLE_RATE
                 self._sample_width = source.SAMPLE_WIDTH
                 stream = source.stream
-                logger.info(f"Microphone opened for simple recording. Sample rate: {self._sample_rate}Hz.")
+                logger.info(
+                    f"Microphone {device_name} opened for simple recording. Sample rate: {self._sample_rate}Hz.")
 
-                while not self._stop_event.is_set():
-                    data = stream.read(source.CHUNK)
-                    self.audio_frames.append(data)
+                with wave.open(temp_wav_path, "wb") as wf:
+                    wf.setnchannels(1)  # Assuming mono recording
+                    wf.setsampwidth(self._sample_width)
+                    wf.setframerate(self._sample_rate)
+
+                    while not self._stop_event.is_set():
+                        data = stream.read(source.CHUNK)
+                        self.audio_frames.append(data)
+                        wf.writeframes(data)
+
+            logger.info(f"Audio recorded and saved to temporary file: {temp_wav_path}")
         except Exception as e:
             logger.error(f"Recording error: {e}")
         finally:
             logger.info("Simple recording loop stopped.")
             self.is_recording = False
+            # Clean up the temporary file
+            try:
+                os.remove(temp_wav_path)
+                logger.info(f"Temporary file deleted: {temp_wav_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary file {temp_wav_path}: {e}")
 
     def _record_and_transcribe_worker(self):
         """Connects to WhisperLive and streams microphone audio for transcription."""
@@ -220,12 +241,12 @@ class SoundSource(Source):
                 transcription_callback=self._on_transcription_result,
                 no_speech_thresh=0.4,  # Lower value -> more sensitive to silence
             )
-            
+
             # Wait for client to be ready, similar to test_sound.py
             client = self.transcription_client.client
             timeout = 15
             start_time = time.time()
-            
+
             while not client.recording:
                 if getattr(client, "server_error", False):
                     logger.error(f"WhisperLive server error: {getattr(client, 'error_message', 'Unknown error')}")
@@ -234,22 +255,23 @@ class SoundSource(Source):
                     logger.error("Timeout waiting for WhisperLive server to be ready.")
                     break
                 time.sleep(0.1)
-                
+
             if not client.recording:
                 logger.error("Failed to connect to WhisperLive server.")
                 self.is_recording = False
                 return
-                
+
             logger.info("WhisperLive client initialized and recording.")
-            
+
             # Print initial UI separator
-            if self.session_manager and getattr(self.session_manager, 'save_transcriptions', False) and getattr(self.session_manager, 'transcription_file', None):
+            if self.session_manager and getattr(self.session_manager, 'save_transcriptions', False) and getattr(
+                    self.session_manager, 'transcription_file', None):
                 try:
                     with open(self.session_manager.transcription_file, "a", encoding="utf-8") as f:
                         f.write(f"\n--- User ---\n")
                 except Exception as e:
                     logger.error(f"Failed to write initial transcription separator: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Failed to initialize WhisperLive client: {e}")
             self.is_recording = False
@@ -272,7 +294,7 @@ class SoundSource(Source):
                 stream = source.stream
                 source_sample_rate = source.SAMPLE_RATE
                 target_sample_rate = 16000
-                logger.info(f"Microphone opened. Sample rate: {source_sample_rate}Hz.")
+                logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
 
                 while not self._stop_event.is_set():
                     data = stream.read(source.CHUNK)
@@ -289,7 +311,7 @@ class SoundSource(Source):
                 try:
                     self.transcription_client.client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
                     logger.info("END_OF_AUDIO signal sent.")
-                    time.sleep(1) # Give it a moment to process final audio
+                    time.sleep(1)  # Give it a moment to process final audio
                     self.transcription_client.client.close_websocket()
                     logger.info("WhisperLive client closed.")
                 except Exception as e:
@@ -304,11 +326,11 @@ class SoundSource(Source):
             if self._current_utterance_text:
                 # Mark as finalized
                 self._last_transcription_text += self._current_utterance_text + " "
-                
+
                 # Appending finalized segment to session manager
                 if self.session_manager:
                     self.session_manager.append_transcription_segment(self._current_utterance_text)
-                    
+
                 self._current_utterance_text = ""
             return
 
@@ -326,7 +348,7 @@ class SoundSource(Source):
                     # Appending finalized segment to session manager
                     if self.session_manager:
                         self.session_manager.append_transcription_segment(self._current_utterance_text)
-                
+
                 # Show the new segment and update tracking state.
                 show_subtitle(text)
                 self._last_segment_start = start
@@ -358,10 +380,10 @@ class SoundSource(Source):
                 # Appending finalized segment to session manager
                 if self.session_manager:
                     self.session_manager.append_transcription_segment(self._current_utterance_text)
-            
+
             # Let subtitles fade out naturally, but clear any empty ones
             if not self._current_utterance_text:
-                 # Small delay to allow fade out animation to be noticeable
+                # Small delay to allow fade out animation to be noticeable
                 threading.Timer(5.0, clear_subtitles).start()
 
             return self._last_transcription_text.strip()

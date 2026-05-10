@@ -1,4 +1,7 @@
-import numpy as np
+import os
+import tempfile
+import wave
+
 import pyaudio
 import speech_recognition as sr
 from piper import PiperVoice
@@ -23,7 +26,7 @@ def get_microphone_index(target_name: str) -> int | None:
 def record_audio_in_background(stop_event, audio_queue, device_index):
     """Records audio continuously in the background."""
     frames = []
-    
+
     device_name = "Unknown Device"
     if device_index is not None:
         try:
@@ -32,7 +35,7 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
             p.terminate()
         except Exception:
             pass
-            
+
     try:
         print(f"[Recorder] Background audio recording started on {device_name}.")
         with sr.Microphone(device_index=device_index) as source:
@@ -61,13 +64,16 @@ def record_audio_in_background(stop_event, audio_queue, device_index):
 
 
 def speak(text: str, output_device: str):
+    """
+    Synthesizes text to a temporary WAV file and plays it on the specified output device.
+    This implementation mirrors the known-working method from test_sound.py.
+    """
     voice = PiperVoice.load(
         "../en_US-lessac-high.onnx", config_path="../en_US-lessac-high.onnx.json"
     )
 
     print(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
 
-    # Stream audio directly without creating a .wav file
     p = pyaudio.PyAudio()
 
     target_device_index: int | None = None
@@ -75,7 +81,6 @@ def speak(text: str, output_device: str):
         info = p.get_device_info_by_index(i)
         host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))["name"]
 
-        # Hardcode "MME" for comparison
         if info["name"] == output_device and host_api_name == "MME":
             target_device_index = int(info["index"])
             print(
@@ -87,36 +92,41 @@ def speak(text: str, output_device: str):
             f"Configured audio device '{output_device}' (MME) not found. Attempting playback with default device."
         )
 
-    # Get the first chunk to determine audio format
-    first_chunk = None
-    for chunk in voice.synthesize(text):
-        first_chunk = chunk
-        break
+    # Use a temporary file for robust playback
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
+        wav_file_path = tmpfile.name
 
-    if first_chunk is None:
-        print("No audio chunks generated.")
+    try:
+        # Synthesize directly to the WAV file
+        print(f"Synthesizing to temporary file: {wav_file_path}")
+        with wave.open(wav_file_path, "wb") as wav:
+            voice.synthesize_wav(text, wav)
+        print("Synthesis complete.")
+
+        # Play the audio using PyAudio
+        wf = wave.open(wav_file_path, "rb")
+
+        stream = p.open(
+            format=p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True,
+            output_device_index=target_device_index,
+        )
+
+        device_name = output_device if target_device_index is not None else 'Default Device'
+        print(f"Playing audio on {device_name}")
+
+        data = wf.readframes(1024)
+        while data:
+            stream.write(data)
+            data = wf.readframes(1024)
+
+        stream.stop_stream()
+        stream.close()
+        wf.close()
+
+    finally:
         p.terminate()
-        return
-
-    # Open stream with the audio format from the first chunk
-    stream = p.open(
-        format=p.get_format_from_width(first_chunk.sample_width),
-        channels=first_chunk.sample_channels,
-        rate=first_chunk.sample_rate,
-        output=True,
-        output_device_index=target_device_index,
-    )
-    device_name = output_device if target_device_index is not None else 'Default Device'
-    print(f"Playing audio on {device_name}")
-
-    # Stream all audio chunks
-    for chunk in voice.synthesize(text):
-        # Convert float array to bytes for PyAudio
-        audio_bytes = chunk.audio_float_array.astype(np.int16).tobytes()
-        stream.write(audio_bytes)
-
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
 
     print("Audio playback completed.")
