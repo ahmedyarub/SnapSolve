@@ -1,12 +1,12 @@
 import os
 import queue
 import threading
-import time
 
 import keyboard
 import pyautogui
 import pyperclip
 import speech_recognition as sr
+import time
 
 from audio_utils import get_microphone_index, record_audio_in_background, speak
 from config import (
