@@ -213,12 +213,6 @@ class SoundSource(Source):
         finally:
             logger.info("Simple recording loop stopped.")
             self.is_recording = False
-            # Clean up the temporary file
-            try:
-                os.remove(temp_wav_path)
-                logger.info(f"Temporary file deleted: {temp_wav_path}")
-            except Exception as e:
-                logger.warning(f"Failed to delete temporary file {temp_wav_path}: {e}")
 
     def _record_and_transcribe_worker(self):
         """Connects to WhisperLive and streams microphone audio for transcription."""
