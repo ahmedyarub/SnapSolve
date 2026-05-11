@@ -16,28 +16,47 @@ logging.basicConfig(
 
 
 # Helper function to parse OCR results consistently, based on local_paddleocr_engine.py
+def _parse_json_result(data):
+    """Parse JSON result format."""
+    text_lines = []
+    if "res" in data and "rec_texts" in data["res"]:
+        texts = data["res"]["rec_texts"]
+        scores = data["res"]["rec_scores"]
+        for text, score in zip(texts, scores):
+            if score >= 0.5:
+                text_lines.append(text)
+    return text_lines
+
+
+def _parse_list_result(res):
+    """Parse list result format."""
+    text_lines = []
+    for line in res:
+        text = line[1][0]
+        confidence = line[1][1]
+        if confidence >= 0.5:
+            text_lines.append(text)
+    return text_lines
+
+
+def _parse_ocr_result(res):
+    """Parse single OCR result."""
+    if hasattr(res, "json"):
+        data = res.json
+        return _parse_json_result(data)
+    elif isinstance(res, list):
+        return _parse_list_result(res)
+    return []
+
+
 def parse_ocr_results(results):
+    """Parse OCR results and extract text."""
     text_lines = []
     if results:
         for res in results:
             if not res:
                 continue
-            # This handles a specific output format that might be used by some PaddleOCR versions
-            if hasattr(res, "json"):
-                data = res.json
-                if "res" in data and "rec_texts" in data["res"]:
-                    texts = data["res"]["rec_texts"]
-                    scores = data["res"]["rec_scores"]
-                    for text, score in zip(texts, scores):
-                        if score >= 0.5:
-                            text_lines.append(text)
-            # This is the more common list-based format
-            elif isinstance(res, list):
-                for line in res:
-                    text = line[1][0]
-                    confidence = line[1][1]
-                    if confidence >= 0.5:
-                        text_lines.append(text)
+            text_lines.extend(_parse_ocr_result(res))
 
     return " ".join(text_lines)
 

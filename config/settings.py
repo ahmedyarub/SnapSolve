@@ -117,9 +117,10 @@ def get_audio_input_devices():
     return input_devices
 
 
-def load_config():
-    config = {
-        "output_mode": ["popup"],  # Can be 'popup', 'audio', or both
+def _get_default_config():
+    """Get default configuration."""
+    return {
+        "output_mode": ["popup"],
         "hotkeys": [
             {"action": "capture", "key": "ctrl+alt+shift+c"},
             {"action": "reselect", "key": "ctrl+alt+shift+s"},
@@ -132,9 +133,9 @@ def load_config():
         ],
         "save_images": False,
         "save_transcriptions": True,
-        "coordinates": None,  # [x1, y1, x2, y2]
+        "coordinates": None,
         "background": False,
-        "piper_model": "en_US-lessac-medium.onnx",  # Path to piper model
+        "piper_model": "en_US-lessac-medium.onnx",
         "active_profile_id": "prof1",
         "ollama_url": "http://localhost:11434",
         "google_genai_api_key": "",
@@ -150,67 +151,77 @@ def load_config():
         "tts_output_device_name": None,
         "audio_input_device_name": None,
         "realtime_transcription": True,
-        "transcription_pause_threshold": 1.0,  # seconds of silence to trigger transcription
+        "transcription_pause_threshold": 1.0,
     }
 
-    # Ensure config directory exists
-    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
 
-    # Legacy config loading from root if it exists
+def _migrate_legacy_config():
+    """Migrate legacy config if it exists."""
     legacy_config = "config.json"
     if os.path.exists(legacy_config) and not os.path.exists(CONFIG_FILE):
         import shutil
 
         shutil.move(legacy_config, CONFIG_FILE)
 
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                file_config = json.load(f)
 
-                # Migrate old "hotkey" to "hotkeys" format
-                if "hotkey" in file_config and "hotkeys" not in file_config:
-                    file_config["hotkeys"] = [
-                        {"action": "capture", "key": file_config["hotkey"]},
-                        {"action": "reselect", "key": "ctrl+alt+shift+r"},
-                    ]
-                    del file_config["hotkey"]
-                elif "hotkeys" in file_config:
-                    # Merge existing actions carefully so we don't overwrite user settings
-                    current_actions = {
-                        hk["action"]: hk["key"] for hk in file_config["hotkeys"]
-                    }
+def _migrate_hotkey_format(file_config):
+    """Migrate old hotkey format to new format."""
+    if "hotkey" in file_config and "hotkeys" not in file_config:
+        file_config["hotkeys"] = [
+            {"action": "capture", "key": file_config["hotkey"]},
+            {"action": "reselect", "key": "ctrl+alt+shift+r"},
+        ]
+        del file_config["hotkey"]
 
-                    if "capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "capture", "key": "ctrl+alt+shift+s"}
-                        )
-                    if "reselect" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "reselect", "key": "ctrl+alt+shift+r"}
-                        )
-                    if "multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "multi_capture", "key": "ctrl+alt+shift+m"}
-                        )
-                    if "end_multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "end_multi_capture", "key": "ctrl+alt+shift+n"}
-                        )
-                    if "cancel_multi_capture" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "cancel_multi_capture", "key": "ctrl+alt+t"}
-                        )
-                    if "toggle_panel" not in current_actions:
-                        file_config["hotkeys"].append(
-                            {"action": "toggle_panel", "key": "ctrl+alt+p"}
-                        )
 
-                config.update(file_config)
-        except json.JSONDecodeError:
-            print(
-                f"Warning: {CONFIG_FILE} is not a valid JSON. Using default settings."
-            )
+def _ensure_hotkey_actions(file_config):
+    """Ensure all required hotkey actions exist."""
+    if "hotkeys" not in file_config:
+        return
+
+    current_actions = {hk["action"]: hk["key"] for hk in file_config["hotkeys"]}
+
+    required_actions = {
+        "capture": "ctrl+alt+shift+s",
+        "reselect": "ctrl+alt+shift+r",
+        "multi_capture": "ctrl+alt+shift+m",
+        "end_multi_capture": "ctrl+alt+shift+n",
+        "cancel_multi_capture": "ctrl+alt+t",
+        "toggle_panel": "ctrl+alt+p",
+    }
+
+    for action, default_key in required_actions.items():
+        if action not in current_actions:
+            file_config["hotkeys"].append({"action": action, "key": default_key})
+
+
+def _load_config_from_file():
+    """Load config from file."""
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            file_config = json.load(f)
+
+        _migrate_hotkey_format(file_config)
+        _ensure_hotkey_actions(file_config)
+
+        return file_config
+    except json.JSONDecodeError:
+        print(f"Warning: {CONFIG_FILE} is not a valid JSON. Using default settings.")
+        return {}
+
+
+def load_config():
+    config = _get_default_config()
+
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+    _migrate_legacy_config()
+
+    file_config = _load_config_from_file()
+    config.update(file_config)
 
     return config
 
@@ -350,24 +361,27 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_config():
-    config = load_config()
-    args = parse_args()
-
+def _apply_output_mode_config(config, args):
+    """Apply output mode configuration from command line args."""
     if args.output_mode:
         if "both" in args.output_mode:
             config["output_mode"] = ["popup", "audio"]
         else:
             config["output_mode"] = args.output_mode
 
+
+def _apply_hotkey_config(config, args):
+    """Apply hotkey configuration from command line args."""
     if args.hotkey_capture or args.hotkey_reselect:
-        # Update specific hotkey actions
         for hk in config["hotkeys"]:
             if hk["action"] == "capture" and args.hotkey_capture:
                 hk["key"] = args.hotkey_capture
             if hk["action"] == "reselect" and args.hotkey_reselect:
                 hk["key"] = args.hotkey_reselect
 
+
+def _apply_basic_config(config, args):
+    """Apply basic configuration options from command line args."""
     if args.coords:
         config["coordinates"] = args.coords
 
@@ -410,6 +424,9 @@ def get_config():
     if args.default_source:
         config["default_source"] = args.default_source
 
+
+def _apply_warmup_config(config, args):
+    """Apply warmup configuration options from command line args."""
     if args.disable_warmup_ocr:
         config["warmup_ocr"] = False
 
@@ -425,19 +442,37 @@ def get_config():
     if args.disable_warmup_realtime_transcription:
         config["warmup_realtime_transcription"] = False
 
-    if args.disable_save_transcriptions:
-        config["save_transcriptions"] = False
 
+def _apply_audio_config(config, args):
+    """Apply audio configuration options from command line args."""
     if args.tts_output_device_name is not None:
         config["tts_output_device_name"] = args.tts_output_device_name
 
     if args.audio_input_device_name is not None:
         config["audio_input_device_name"] = args.audio_input_device_name
 
+
+def _apply_transcription_config(config, args):
+    """Apply transcription configuration options from command line args."""
+    if args.disable_save_transcriptions:
+        config["save_transcriptions"] = False
+
     if args.disable_realtime_transcription:
         config["realtime_transcription"] = False
 
     if args.transcription_pause_threshold is not None:
         config["transcription_pause_threshold"] = args.transcription_pause_threshold
+
+
+def get_config():
+    config = load_config()
+    args = parse_args()
+
+    _apply_output_mode_config(config, args)
+    _apply_hotkey_config(config, args)
+    _apply_basic_config(config, args)
+    _apply_warmup_config(config, args)
+    _apply_audio_config(config, args)
+    _apply_transcription_config(config, args)
 
     return config

@@ -62,6 +62,38 @@ class GoogleGenAIEngine(LLMEngine):
 
         return contents
 
+    @staticmethod
+    def _check_cancelled(cancel_event: threading.Event):
+        """Check if operation is cancelled."""
+        return cancel_event and cancel_event.is_set()
+
+    @staticmethod
+    def _process_stream_chunk(chunk, _sink, _is_main, _cancel_event):
+        """Process stream chunk."""
+        if chunk.text is None:
+            return None
+
+        return chunk.text
+
+    def _process_buffer_lines(self, buffer, sink, is_main, cancel_event):
+        """Process buffer lines."""
+        if "\n" not in buffer:
+            return buffer
+
+        last_newline_idx = buffer.rindex("\n")
+        complete_lines = buffer[: last_newline_idx + 1]
+        remaining_buffer = buffer[last_newline_idx + 1 :]
+
+        if sink and not self._check_cancelled(cancel_event):
+            sink.process_chunk(complete_lines, is_main=is_main)
+
+        return remaining_buffer
+
+    def _process_remaining_buffer(self, buffer, sink, is_main, cancel_event):
+        """Process remaining buffer."""
+        if buffer and sink and not self._check_cancelled(cancel_event):
+            sink.process_chunk(buffer, is_main=is_main)
+
     def _execute_stream(
         self,
         client,
@@ -70,7 +102,7 @@ class GoogleGenAIEngine(LLMEngine):
         is_main: bool,
         cancel_event: threading.Event = None,
     ) -> str:
-        if cancel_event and cancel_event.is_set():
+        if self._check_cancelled(cancel_event):
             return "Cancelled"
 
         print("[GoogleGenAIEngine] Calling generate_content_stream...")
@@ -83,27 +115,22 @@ class GoogleGenAIEngine(LLMEngine):
         ans_chunks = []
         buffer = ""
         for i, chunk in enumerate(response_stream):
-            if cancel_event and cancel_event.is_set():
+            if self._check_cancelled(cancel_event):
                 return "Cancelled"
 
             print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
 
-            if chunk.text is None:
+            chunk_text = self._process_stream_chunk(chunk, sink, is_main, cancel_event)
+            if chunk_text is None:
                 continue
 
-            ans_chunks.append(chunk.text)
-            buffer += chunk.text
-            if "\n" in buffer:
-                last_newline_idx = buffer.rindex("\n")
-                complete_lines = buffer[: last_newline_idx + 1]
-                buffer = buffer[last_newline_idx + 1 :]
-                if sink and not (cancel_event and cancel_event.is_set()):
-                    sink.process_chunk(complete_lines, is_main=is_main)
+            ans_chunks.append(chunk_text)
+            buffer += chunk_text
+            buffer = self._process_buffer_lines(buffer, sink, is_main, cancel_event)
 
-        if buffer and sink and not (cancel_event and cancel_event.is_set()):
-            sink.process_chunk(buffer, is_main=is_main)
+        self._process_remaining_buffer(buffer, sink, is_main, cancel_event)
 
-        if cancel_event and cancel_event.is_set():
+        if self._check_cancelled(cancel_event):
             return "Cancelled"
 
         ans = "".join(ans_chunks)

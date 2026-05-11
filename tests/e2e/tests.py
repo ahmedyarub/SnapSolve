@@ -1,12 +1,12 @@
 import os
 import queue
 import threading
+import time
 
 import keyboard
 import pyautogui
 import pyperclip
 import speech_recognition as sr
-import time
 
 from audio_utils import get_microphone_index, record_audio_in_background, speak
 from config import (
@@ -126,10 +126,9 @@ def run_tests():
         cleanup(app_process, service_process)
 
 
-def test_text_source():
+def _setup_recording_thread():
+    """Setup recording thread for TTS test."""
     global _stop_recording_event, _recorded_audio_queue, _recording_thread
-    test_results["test_text_source"] = "FAILED"
-    test_results["test_tts"] = "FAILED"
 
     _stop_recording_event.clear()
     while not _recorded_audio_queue.empty():
@@ -137,8 +136,6 @@ def test_text_source():
             _recorded_audio_queue.get_nowait()
         except queue.Empty:
             pass
-
-    r: sr.Recognizer = sr.Recognizer()
 
     mic_index = get_microphone_index(TTS_INPUT_DEVICE_NAME)
 
@@ -152,6 +149,9 @@ def test_text_source():
     _recording_thread.start()
     print("Started background recording thread for TTS test.")
 
+
+def _perform_text_input_test():
+    """Perform text input test."""
     print(f"Clicking specific position ({PROMPT_X}, {PROMPT_Y})...")
     pyautogui.click(x=PROMPT_X, y=PROMPT_Y)
 
@@ -168,24 +168,14 @@ def test_text_source():
 
     time.sleep(3)
 
-    _stop_recording_event.set()
-    if _recording_thread and _recording_thread.is_alive():
-        print("Waiting for background recording thread to finish...")
-        _recording_thread.join(timeout=5)
-        if _recording_thread.is_alive():
-            print("Warning: Background recording thread did not terminate in time.")
-    print("Signaled background recording thread to stop.")
+    return found_target_word
 
-    if found_target_word:
-        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
-        test_results["test_text_source"] = "PASSED"
-    else:
-        print(
-            f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."
-        )
-        return
 
-    print("\n--- Starting TTS Recognition Test (Processing recorded audio) ---")
+def _process_recorded_audio():
+    """Process recorded audio for TTS recognition."""
+    global _recorded_audio_queue
+
+    r: sr.Recognizer = sr.Recognizer()
     audio_filename = "recorded_tts_output.wav"
 
     try:
@@ -226,9 +216,46 @@ def test_text_source():
     except Exception as e:
         print(f"\n❌ FAILURE (TTS): An error occurred during speech recognition: {e}")
 
+
+def _cleanup_test():
+    """Cleanup test resources."""
+    global _stop_recording_event, _recording_thread
+
+    _stop_recording_event.set()
+    if _recording_thread and _recording_thread.is_alive():
+        print("Waiting for background recording thread to finish...")
+        _recording_thread.join(timeout=5)
+        if _recording_thread.is_alive():
+            print("Warning: Background recording thread did not terminate in time.")
+    print("Signaled background recording thread to stop.")
+
     click_button(CANCEL_SOURCE, True)
     poll_button(CANCEL_SOURCE, visible=False)
     time.sleep(1)
+
+
+def test_text_source():
+    global _stop_recording_event, _recorded_audio_queue, _recording_thread
+    test_results["test_text_source"] = "FAILED"
+    test_results["test_tts"] = "FAILED"
+
+    _setup_recording_thread()
+
+    found_target_word = _perform_text_input_test()
+
+    _cleanup_test()
+
+    if found_target_word:
+        print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the text!")
+        test_results["test_text_source"] = "PASSED"
+    else:
+        print(
+            f"\n❌ FAILURE: The word '{TARGET_WORD_BASIC}' was NOT found after multiple retries."
+        )
+        return
+
+    print("\n--- Starting TTS Recognition Test (Processing recorded audio) ---")
+    _process_recorded_audio()
 
 
 def test_image_source():

@@ -34,10 +34,8 @@ def generate_audio_piper(text, output_wav, piper_model="en_US-lessac-medium.onnx
         return False
 
 
-def test_whisperlive_warmup():
-    print("Testing WhisperLive warmup process...")
-
-    # 1. Start WhisperLive if not online
+def _setup_whisperlive_service():
+    """Setup and start WhisperLive service if needed."""
     process = None
     if not is_whisperlive_service_online():
         print("Starting WhisperLive service...")
@@ -48,15 +46,14 @@ def test_whisperlive_warmup():
         print("Failed to start WhisperLive service.")
         if process:
             process.terminate()
-        return False
+        return None
 
     print("WhisperLive service is online.")
+    return process
 
-    # 2. Generate test audio using Piper
-    test_text = "This is a test of the whisper live real time transcription system."
-    test_wav = "test_whisperlive_warmup.wav"
 
-    # Read piper model from config if possible
+def _get_piper_model():
+    """Get Piper model from config or use default."""
     piper_model = "en_US-lessac-medium.onnx"
     try:
         with open("config/config.json", "r") as f:
@@ -64,6 +61,115 @@ def test_whisperlive_warmup():
             piper_model = config.get("piper_model", piper_model)
     except Exception:
         pass
+    return piper_model
+
+
+def _setup_transcription_client():
+    """Setup WhisperLive transcription client."""
+    from whisper_live.client import TranscriptionClient
+
+    transcription_result = []
+
+    def on_transcription(x, segments):
+        if segments:
+            for seg in segments:
+                text = seg.get("text", "").strip()
+                if text:
+                    transcription_result.append(text)
+
+    print("Connecting to WhisperLive client...")
+    client = TranscriptionClient(
+        host="localhost",
+        port=9090,
+        lang="en",
+        use_vad=True,
+        transcription_callback=on_transcription,
+    )
+
+    return client, transcription_result
+
+
+def _wait_for_client_ready(client, timeout=15):
+    """Wait for WhisperLive client to be ready."""
+    c = client.client
+    start_time = time.time()
+    while not getattr(c, "recording", False):
+        if time.time() - start_time > timeout:
+            print("Timeout waiting for WhisperLive client.")
+            return False
+        time.sleep(0.5)
+
+    return getattr(c, "recording", False)
+
+
+def _send_audio_to_client(client, test_wav):
+    """Send audio file to WhisperLive client."""
+    import resampy
+    import numpy as np
+
+    c = client.client
+    print("Sending audio file...")
+    with wave.open(test_wav, "rb") as wf:
+        sample_rate = wf.getframerate()
+        target_rate = 16000
+
+        chunk_size = 4096
+        data = wf.readframes(chunk_size)
+
+        while data:
+            audio_array = (
+                np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            )
+            if sample_rate != target_rate:
+                audio_array = resampy.resample(audio_array, sample_rate, target_rate)
+
+            c.send_packet_to_server(audio_array.tobytes())
+            time.sleep(len(audio_array) / target_rate)  # Send in real time roughly
+            data = wf.readframes(chunk_size)
+
+    print("Finished sending audio. Waiting for final transcription...")
+    c.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+    time.sleep(5)  # Wait for final transcription
+    c.close_websocket()
+
+
+def _compare_transcription_results(test_text, transcription_result):
+    """Compare original text with transcribed text."""
+    final_transcription = " ".join(transcription_result)
+    print(f"\nOriginal text: {test_text}")
+    print(f"Transcribed text: {final_transcription}")
+
+    # Simple comparison
+    test_words = set(test_text.lower().replace(".", "").split())
+    transcribed_words = set(final_transcription.lower().replace(".", "").split())
+
+    intersection = test_words.intersection(transcribed_words)
+    match_ratio = len(intersection) / len(test_words) if test_words else 0
+
+    print(f"Match ratio: {match_ratio:.2f}")
+
+    success = match_ratio > 0.5  # Arbitrary threshold
+
+    if success:
+        print("Warmup and test successful!")
+    else:
+        print("Warmup and test failed: Transcription mismatch.")
+
+    return success
+
+
+def test_whisperlive_warmup():
+    print("Testing WhisperLive warmup process...")
+
+    # 1. Start WhisperLive if not online
+    process = _setup_whisperlive_service()
+    if process is None:
+        return False
+
+    # 2. Generate test audio using Piper
+    test_text = "This is a test of the whisper live real time transcription system."
+    test_wav = "test_whisperlive_warmup.wav"
+    piper_model = _get_piper_model()
 
     if not generate_audio_piper(test_text, test_wav, piper_model):
         print("Failed to generate test audio.")
@@ -73,90 +179,18 @@ def test_whisperlive_warmup():
 
     # 3. Send audio to WhisperLive and wait for response
     try:
-        from whisper_live.client import TranscriptionClient
-        import resampy
-        import numpy as np
+        client, transcription_result = _setup_transcription_client()
 
-        transcription_result = []
-
-        def on_transcription(x, segments):
-            if segments:
-                for seg in segments:
-                    text = seg.get("text", "").strip()
-                    if text:
-                        transcription_result.append(text)
-
-        print("Connecting to WhisperLive client...")
-        client = TranscriptionClient(
-            host="localhost",
-            port=9090,
-            lang="en",
-            use_vad=True,
-            transcription_callback=on_transcription,
-        )
-
-        # Wait for client to be ready
-        c = client.client
-        timeout = 15
-        start_time = time.time()
-        while not getattr(c, "recording", False):
-            if time.time() - start_time > timeout:
-                print("Timeout waiting for WhisperLive client.")
-                break
-            time.sleep(0.5)
-
-        if not getattr(c, "recording", False):
+        if not _wait_for_client_ready(client):
             print("Failed to connect to WhisperLive client.")
             if process:
                 process.terminate()
             return False
 
-        print("Sending audio file...")
-        with wave.open(test_wav, "rb") as wf:
-            sample_rate = wf.getframerate()
-            target_rate = 16000
-
-            chunk_size = 4096
-            data = wf.readframes(chunk_size)
-
-            while data:
-                audio_array = (
-                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                )
-                if sample_rate != target_rate:
-                    audio_array = resampy.resample(
-                        audio_array, sample_rate, target_rate
-                    )
-
-                c.send_packet_to_server(audio_array.tobytes())
-                time.sleep(len(audio_array) / target_rate)  # Send in real time roughly
-                data = wf.readframes(chunk_size)
-
-        print("Finished sending audio. Waiting for final transcription...")
-        c.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
-        time.sleep(5)  # Wait for final transcription
-        c.close_websocket()
+        _send_audio_to_client(client, test_wav)
 
         # 4. Compare texts
-        final_transcription = " ".join(transcription_result)
-        print(f"\nOriginal text: {test_text}")
-        print(f"Transcribed text: {final_transcription}")
-
-        # Simple comparison
-        test_words = set(test_text.lower().replace(".", "").split())
-        transcribed_words = set(final_transcription.lower().replace(".", "").split())
-
-        intersection = test_words.intersection(transcribed_words)
-        match_ratio = len(intersection) / len(test_words) if test_words else 0
-
-        print(f"Match ratio: {match_ratio:.2f}")
-
-        success = match_ratio > 0.5  # Arbitrary threshold
-
-        if success:
-            print("Warmup and test successful!")
-        else:
-            print("Warmup and test failed: Transcription mismatch.")
+        success = _compare_transcription_results(test_text, transcription_result)
 
         if os.path.exists(test_wav):
             os.remove(test_wav)

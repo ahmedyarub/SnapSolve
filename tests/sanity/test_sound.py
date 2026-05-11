@@ -492,71 +492,113 @@ class SoundTestApp(QMainWindow):
 
         threading.Thread(target=record_and_transcribe, daemon=True).start()
 
+    def _check_piper_model_exists(self):
+        """Check if Piper model and config exist."""
+        if not os.path.exists(self.piper_model):
+            self.signals.log_message.emit(
+                f"Piper model not found at {self.piper_model}"
+            )
+            return False
+
+        piper_config_path = self.piper_model + ".json"
+        if not os.path.exists(piper_config_path):
+            self.signals.log_message.emit(
+                f"Piper config not found at {piper_config_path}"
+            )
+            return False
+
+        return True
+
+    def _load_piper_voice(self):
+        """Load Piper voice model."""
+        from piper import PiperVoice
+
+        self.signals.log_message.emit("Loading Piper voice model...")
+        piper_config_path = self.piper_model + ".json"
+        return PiperVoice.load(self.piper_model, config_path=piper_config_path)
+
+    def _synthesize_audio_lines(self, voice, text):
+        """Synthesize audio lines."""
+        import io
+
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        if not lines:
+            return None
+
+        audio_buffers = []
+        sample_rate = voice.config.sample_rate
+
+        for i, line in enumerate(lines):
+            line_buffer = io.BytesIO()
+            with wave.open(line_buffer, "wb") as wav:
+                voice.synthesize_wav(line, wav)
+            line_buffer.seek(0)
+
+            with wave.open(line_buffer, "rb") as wav:
+                frames = wav.readframes(wav.getnframes())
+                audio_buffers.append(frames)
+
+            if i < len(lines) - 1:
+                silence_samples = int(2 * sample_rate)
+                silence = np.zeros(silence_samples, dtype=np.int16)
+                audio_buffers.append(silence.tobytes())
+
+        return audio_buffers, sample_rate
+
+    def _write_combined_audio(self, audio_buffers, sample_rate):
+        """Write combined audio to file."""
+        wav_file = "test_output.wav"
+        with wave.open(wav_file, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            for buffer in audio_buffers:
+                wav.writeframes(buffer)
+        return wav_file
+
+    def _play_audio_file(self, wav_file, device_index):
+        """Play audio file."""
+        wf = wave.open(wav_file, "rb")
+        stream = self.p.open(
+            format=self.p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True,
+            output_device_index=device_index,
+        )
+
+        time.sleep(1.0)
+
+        data = wf.readframes(1024)
+        while data and not self.playback_done:
+            stream.write(data)
+            data = wf.readframes(1024)
+
+        stream.stop_stream()
+        stream.close()
+        wf.close()
+
+        time.sleep(2.0)
+
     def play_audio(self, text, device_index, server_ready_event=None):
         try:
-            from piper import PiperVoice
-            import io
-
-            if not os.path.exists(self.piper_model):
-                self.signals.log_message.emit(
-                    f"Piper model not found at {self.piper_model}"
-                )
+            if not self._check_piper_model_exists():
                 self.signals.playback_finished.emit()
                 if server_ready_event is not None:
                     server_ready_event.set()
                 return
 
-            piper_config_path = self.piper_model + ".json"
-            if not os.path.exists(piper_config_path):
-                self.signals.log_message.emit(
-                    f"Piper config not found at {piper_config_path}"
-                )
+            voice = self._load_piper_voice()
+
+            result = self._synthesize_audio_lines(voice, text)
+            if result is None:
                 self.signals.playback_finished.emit()
                 if server_ready_event is not None:
                     server_ready_event.set()
                 return
 
-            self.signals.log_message.emit("Loading Piper voice model...")
-            voice = PiperVoice.load(self.piper_model, config_path=piper_config_path)
-
-            # Split text by newlines and synthesize each line separately
-            lines = [line.strip() for line in text.split("\n") if line.strip()]
-            if not lines:
-                self.signals.playback_finished.emit()
-                if server_ready_event is not None:
-                    server_ready_event.set()
-                return
-
-            # Synthesize each line to a buffer and combine with silence
-            audio_buffers = []
-            sample_rate = voice.config.sample_rate
-
-            for i, line in enumerate(lines):
-                # Synthesize line to a buffer
-                line_buffer = io.BytesIO()
-                with wave.open(line_buffer, "wb") as wav:
-                    voice.synthesize_wav(line, wav)
-                line_buffer.seek(0)
-
-                # Read the WAV data
-                with wave.open(line_buffer, "rb") as wav:
-                    frames = wav.readframes(wav.getnframes())
-                    audio_buffers.append(frames)
-
-                # Add 2 seconds of silence between lines (except after last line)
-                if i < len(lines) - 1:
-                    silence_samples = int(2 * sample_rate)
-                    silence = np.zeros(silence_samples, dtype=np.int16)
-                    audio_buffers.append(silence.tobytes())
-
-            # Write combined audio to file
-            wav_file = "test_output.wav"
-            with wave.open(wav_file, "wb") as wav:
-                wav.setnchannels(1)
-                wav.setsampwidth(2)
-                wav.setframerate(sample_rate)
-                for buffer in audio_buffers:
-                    wav.writeframes(buffer)
+            audio_buffers, sample_rate = result
+            wav_file = self._write_combined_audio(audio_buffers, sample_rate)
 
             if server_ready_event is not None:
                 self.signals.log_message.emit(
@@ -566,34 +608,172 @@ class SoundTestApp(QMainWindow):
 
             self.signals.log_message.emit("Audio synthesized. Starting playback...")
 
-            wf = wave.open(wav_file, "rb")
-            stream = self.p.open(
-                format=self.p.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True,
-                output_device_index=device_index,
-            )
-
-            # Add a slight delay before playing audio
-            time.sleep(1.0)
-
-            data = wf.readframes(1024)
-            while data and not self.playback_done:
-                stream.write(data)
-                data = wf.readframes(1024)
-
-            stream.stop_stream()
-            stream.close()
-            wf.close()
-
-            # Add a slight delay after playing audio to allow the transcriber to catch up
-            time.sleep(2.0)
+            self._play_audio_file(wav_file, device_index)
 
         except Exception as e:
             self.signals.log_message.emit(f"Playback error: {e}")
         finally:
             self.signals.playback_finished.emit()
+
+    def _initialize_whisperlive_client(self, max_retries=3, retry_delay=2):
+        """Initialize WhisperLive client with retry logic."""
+        self.signals.log_message.emit("Initializing WhisperLive client...")
+
+        for attempt in range(max_retries):
+            try:
+                self.transcription_client = WhisperLiveTranscriptionClient(
+                    host="localhost",
+                    port=9090,
+                    lang="en",
+                    model="large-v3",
+                    use_vad=True,
+                    mute_audio_playback=True,
+                    enable_translation=False,
+                    display_segments=1,
+                    send_last_n_segments=3,
+                    transcription_callback=self.on_transcription_result,
+                    no_speech_thresh=0.9,
+                    clip_audio=False,
+                    same_output_threshold=5,
+                )
+                return True, None
+            except Exception as e:
+                error_msg = f"Error initializing WhisperLive client (attempt {attempt + 1}): {e}"
+                self.signals.log_message.emit(error_msg)
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                else:
+                    return (
+                        False,
+                        "Failed to initialize WhisperLive client after multiple attempts.",
+                    )
+
+        return False, "Failed to initialize WhisperLive client."
+
+    def _wait_for_client_ready(self, client, timeout=15):
+        """Wait for WhisperLive client to be ready."""
+        self.signals.log_message.emit("Waiting for WhisperLive server to be ready...")
+        start_time = time.time()
+
+        while not client.recording:
+            if client.server_error:
+                error_msg = getattr(client, "error_message", "Unknown error")
+                self.signals.log_message.emit(f"WhisperLive server error: {error_msg}")
+                try:
+                    client.close_websocket()
+                except Exception:
+                    pass
+                return False, "Server error"
+
+            if client.waiting:
+                self.signals.log_message.emit(
+                    "WhisperLive server is full. Waiting for slot..."
+                )
+
+            if time.time() - start_time > timeout:
+                self.signals.log_message.emit(
+                    "Timeout waiting for WhisperLive server to be ready."
+                )
+                try:
+                    client.close_websocket()
+                except Exception:
+                    pass
+                return False, "Timeout"
+
+            time.sleep(0.1)
+
+        return True, None
+
+    def _connect_to_whisperlive_server(self, max_retries=3, retry_delay=2):
+        """Connect to WhisperLive server with retry logic."""
+        for attempt in range(max_retries):
+            success, error = self._initialize_whisperlive_client(
+                max_retries, retry_delay
+            )
+            if not success:
+                if attempt < max_retries - 1:
+                    self.signals.log_message.emit(
+                        f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds..."
+                    )
+                    time.sleep(retry_delay)
+                else:
+                    self.signals.log_message.emit(error)
+                    return False
+                continue
+
+            client = self.transcription_client.client
+            success, error = self._wait_for_client_ready(client)
+
+            if success:
+                self.signals.log_message.emit(
+                    "WhisperLive server ready. Starting streaming..."
+                )
+                return True
+            else:
+                if attempt < max_retries - 1:
+                    self.signals.log_message.emit(
+                        f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds..."
+                    )
+                    time.sleep(retry_delay)
+                else:
+                    self.signals.log_message.emit(error)
+                    return False
+
+        return False
+
+    def _setup_audio_stream(self, device_index):
+        """Setup audio stream and resampling."""
+        with sr.Microphone(device_index=device_index) as source:
+            stream = source.stream
+            source_sample_rate = source.SAMPLE_RATE
+            target_sample_rate = 16000
+
+            self.signals.log_message.emit(
+                f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+            )
+
+            if source_sample_rate != target_sample_rate:
+                resampler = resampy.resample
+                self.signals.log_message.emit(
+                    f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
+                )
+            else:
+                resampler = None
+
+            return stream, source_sample_rate, target_sample_rate, resampler
+
+    def _stream_audio_to_whisperlive(
+        self, stream, source_sample_rate, target_sample_rate, resampler, client
+    ):
+        """Stream audio to WhisperLive."""
+        while not self.playback_done:
+            try:
+                data = stream.read(sr.CHUNK)
+                self.audio_frames.append(data)
+                self._update_volume_from_audio(data)
+
+                audio_array = (
+                    np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                )
+
+                if resampler is not None:
+                    audio_array = resampler(
+                        audio_array, source_sample_rate, target_sample_rate
+                    )
+
+                client.send_packet_to_server(audio_array.tobytes())
+
+            except Exception as e:
+                self.signals.log_message.emit(f"Recording error: {e}")
+                break
+
+    def _send_end_of_audio_signal(self, client):
+        """Send END_OF_AUDIO signal to WhisperLive."""
+        self.signals.log_message.emit("Recording stopped. Sending END_OF_AUDIO...")
+        try:
+            client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+        except Exception as e:
+            self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
 
     def record_audio_to_file(self, device_index, server_ready_event=None):
         """Records audio from microphone and streams it directly to WhisperLive."""
@@ -605,158 +785,27 @@ class SoundTestApp(QMainWindow):
                 f"Starting recording on {device_name} for transcription..."
             )
 
-            # Initialize WhisperLive client for streaming with retry logic
-            self.signals.log_message.emit("Initializing WhisperLive client...")
-            max_retries = 3
-            retry_delay = 2
+            if not self._connect_to_whisperlive_server():
+                if server_ready_event is not None:
+                    server_ready_event.set()
+                return
 
-            for attempt in range(max_retries):
-                try:
-                    self.transcription_client = WhisperLiveTranscriptionClient(
-                        host="localhost",
-                        port=9090,
-                        lang="en",
-                        model="large-v3",
-                        use_vad=True,
-                        mute_audio_playback=True,
-                        enable_translation=False,
-                        display_segments=1,
-                        send_last_n_segments=3,
-                        transcription_callback=self.on_transcription_result,
-                        no_speech_thresh=0.9,  # Higher threshold to be less aggressive
-                        clip_audio=False,  # Don't clip audio
-                        same_output_threshold=5,  # Lower threshold for valid segments
-                    )
+            if server_ready_event is not None:
+                server_ready_event.set()
 
-                    # Wait for client to be ready
-                    self.signals.log_message.emit(
-                        "Waiting for WhisperLive server to be ready..."
-                    )
-                    timeout = 15
-                    start_time = time.time()
-                    client = self.transcription_client.client
+            client = self.transcription_client.client
 
-                    while not client.recording:
-                        # Check for errors or waiting state
-                        if client.server_error:
-                            error_msg = getattr(
-                                client, "error_message", "Unknown error"
-                            )
-                            self.signals.log_message.emit(
-                                f"WhisperLive server error: {error_msg}"
-                            )
-                            # Close the client and retry
-                            try:
-                                client.close_websocket()
-                            except Exception:
-                                pass
-                            break
-                        if client.waiting:
-                            self.signals.log_message.emit(
-                                "WhisperLive server is full. Waiting for slot..."
-                            )
-                            # Continue waiting
-                        if time.time() - start_time > timeout:
-                            self.signals.log_message.emit(
-                                "Timeout waiting for WhisperLive server to be ready."
-                            )
-                            # Close the client and retry
-                            try:
-                                client.close_websocket()
-                            except Exception:
-                                pass
-                            break
-                        time.sleep(0.1)
-
-                    if client.recording:
-                        # Connection successful, break out of retry loop
-                        self.signals.log_message.emit(
-                            "WhisperLive server ready. Starting streaming..."
-                        )
-                        if server_ready_event is not None:
-                            server_ready_event.set()
-                        break
-                    else:
-                        # Connection failed, retry
-                        if attempt < max_retries - 1:
-                            self.signals.log_message.emit(
-                                f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds..."
-                            )
-                            time.sleep(retry_delay)
-                        else:
-                            self.signals.log_message.emit(
-                                "Failed to connect to WhisperLive server after multiple attempts."
-                            )
-                            if server_ready_event is not None:
-                                server_ready_event.set()
-                            return
-
-                except Exception as e:
-                    self.signals.log_message.emit(
-                        f"Error initializing WhisperLive client (attempt {attempt + 1}): {e}"
-                    )
-                    if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                    else:
-                        self.signals.log_message.emit(
-                            "Failed to initialize WhisperLive client after multiple attempts."
-                        )
-                        if server_ready_event is not None:
-                            server_ready_event.set()
-                        return
-
-            # Stream audio directly to WhisperLive
-            with sr.Microphone(device_index=device_index) as source:
-                stream = source.stream
-                source_sample_rate = source.SAMPLE_RATE
-                target_sample_rate = 16000
-
-                self.signals.log_message.emit(
-                    f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+            with sr.Microphone(device_index=device_index) as _:
+                stream, source_sample_rate, target_sample_rate, resampler = (
+                    self._setup_audio_stream(device_index)
                 )
 
-                # Create resampler if needed
-                if source_sample_rate != target_sample_rate:
-                    resampler = resampy.resample
-                    self.signals.log_message.emit(
-                        f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
-                    )
-                else:
-                    resampler = None
+                self._stream_audio_to_whisperlive(
+                    stream, source_sample_rate, target_sample_rate, resampler, client
+                )
 
-                while not self.playback_done:
-                    try:
-                        data = stream.read(source.CHUNK)
-                        self.audio_frames.append(data)
-                        self._update_volume_from_audio(data)
+            self._send_end_of_audio_signal(client)
 
-                        # Convert audio data to float array
-                        audio_array = (
-                            np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                            / 32768.0
-                        )
-
-                        # Resample if needed
-                        if resampler is not None:
-                            audio_array = resampler(
-                                audio_array, source_sample_rate, target_sample_rate
-                            )
-
-                        # Stream to WhisperLive
-                        client.send_packet_to_server(audio_array.tobytes())
-
-                    except Exception as e:
-                        self.signals.log_message.emit(f"Recording error: {e}")
-                        break
-
-            # Send END_OF_AUDIO signal to WhisperLive
-            self.signals.log_message.emit("Recording stopped. Sending END_OF_AUDIO...")
-            try:
-                client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
-            except Exception as e:
-                self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
-
-            # Wait for final transcription results
             self.signals.log_message.emit("Waiting for final transcription results...")
             time.sleep(2)
 

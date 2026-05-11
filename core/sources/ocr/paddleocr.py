@@ -49,14 +49,72 @@ class LocalPaddleOCREngine(OCREngine):
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
             raise RuntimeError(f"Error during OCR initialization: {str(e)}") from e
 
+    @staticmethod
+    def _check_cancelled(cancel_event: threading.Event):
+        """Check if operation is cancelled."""
+        if cancel_event and cancel_event.is_set():
+            raise ValueError("OCR cancelled.")
+
+    @staticmethod
+    def _process_json_result(data):
+        """Process JSON result format."""
+        text_lines = []
+        if "res" in data and "rec_texts" in data["res"]:
+            texts = data["res"]["rec_texts"]
+            scores = data["res"]["rec_scores"]
+
+            for text, score in zip(texts, scores):
+                if score >= 0.5:
+                    text_lines.append(text)
+        return text_lines
+
+    @staticmethod
+    def _process_list_result(res):
+        """Process list result format."""
+        text_lines = []
+        for line in res:
+            text = line[1][0]
+            confidence = line[1][1]
+            if confidence >= 0.5:
+                text_lines.append(text)
+        return text_lines
+
+    def _process_ocr_results(self, results):
+        """Process OCR results and extract text lines."""
+        text_lines = []
+        if not results:
+            return text_lines
+
+        for res in results:
+            if not res:
+                continue
+
+            if hasattr(res, "json"):
+                data = res.json
+                text_lines.extend(self._process_json_result(data))
+            elif isinstance(res, list):
+                text_lines.extend(self._process_list_result(res))
+
+        return text_lines
+
+    @staticmethod
+    def _extract_text_from_results(text_lines):
+        """Extract final text from text lines."""
+        if text_lines:
+            extracted_text = " ".join(text_lines)
+            print(f"Extracted Text: {extracted_text}")
+            return extracted_text
+        else:
+            print("PaddleOCR found no text.")
+            return None
+
     def extract_text(
         self,
         image_path: str,
         status_callback=None,
         cancel_event: threading.Event = None,
     ) -> str:
-        if cancel_event and cancel_event.is_set():
-            raise ValueError("OCR cancelled.")
+        self._check_cancelled(cancel_event)
 
         print("Using local PaddleOCR engine.")
         if status_callback:
@@ -67,37 +125,10 @@ class LocalPaddleOCREngine(OCREngine):
 
             results = self.ocr.ocr(image_path)
 
-            if cancel_event and cancel_event.is_set():
-                raise ValueError("OCR cancelled.")
+            self._check_cancelled(cancel_event)
 
-            text_lines = []
-            if results:
-                for res in results:
-                    if not res:
-                        continue
-                    if hasattr(res, "json"):
-                        data = res.json
-                        if "res" in data and "rec_texts" in data["res"]:
-                            texts = data["res"]["rec_texts"]
-                            scores = data["res"]["rec_scores"]
-
-                            for text, score in zip(texts, scores):
-                                if score >= 0.5:
-                                    text_lines.append(text)
-
-                    elif isinstance(res, list):
-                        for line in res:
-                            text = line[1][0]
-                            confidence = line[1][1]
-                            if confidence >= 0.5:
-                                text_lines.append(text)
-
-            extracted_text = None
-            if text_lines:
-                extracted_text = " ".join(text_lines)
-                print(f"Extracted Text: {extracted_text}")
-            else:
-                print("PaddleOCR found no text.")
+            text_lines = self._process_ocr_results(results)
+            extracted_text = self._extract_text_from_results(text_lines)
 
             elapsed_ms = (time.time() - start_time) * 1000
             print(f"PaddleOCR took {elapsed_ms:.2f} ms")

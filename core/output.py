@@ -670,24 +670,38 @@ class TextInputWidget(QWidget):
 
         self.is_processing = False
 
+    @staticmethod
+    def _is_return_key_event(event):
+        """Check if event is return key event."""
+        return event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter
+
+    @staticmethod
+    def _is_shift_modifier_pressed(event):
+        """Check if shift modifier is pressed."""
+        return event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+
+    def _handle_text_submission(self):
+        """Handle text submission."""
+        text = self.text_edit.toPlainText().strip()
+        if text:
+            self.text_edit.clear()
+            if "text_submit" in _app_callbacks:
+                threading.Thread(
+                    target=_app_callbacks["text_submit"],
+                    args=(text,),
+                    daemon=True,
+                ).start()
+
     # noinspection PyPep8Naming
     def eventFilter(self, obj, event):
         if obj is self.text_edit and event.type() == event.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    return False  # Allow new line
+            if self._is_return_key_event(event):
+                if self._is_shift_modifier_pressed(event):
+                    return False
                 else:
                     if not self.is_processing:
-                        text = self.text_edit.toPlainText().strip()
-                        if text:
-                            self.text_edit.clear()
-                            if "text_submit" in _app_callbacks:
-                                threading.Thread(
-                                    target=_app_callbacks["text_submit"],
-                                    args=(text,),
-                                    daemon=True,
-                                ).start()
-                    return True  # Consume event
+                        self._handle_text_submission()
+                    return True
         return super().eventFilter(obj, event)
 
     def update_position(self):

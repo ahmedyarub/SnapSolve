@@ -10,6 +10,9 @@ from .base import Sink
 
 logger = logging.getLogger(__name__)
 
+# Constant for file extension
+PIPER_CONFIG_EXTENSION = ".json"
+
 
 def clean_text(text: str) -> str:
     """
@@ -68,6 +71,129 @@ class AudioSink(Sink):
         self.voice = None
         # Warmup is now handled asynchronously from main.py, so no direct call here.
 
+    def _check_piper_model_exists(self):
+        """Check if Piper model and config exist."""
+        if not os.path.exists(self.piper_model):
+            logger.warning(
+                f"Piper model not found at {self.piper_model}. Audio TTS will be skipped."
+            )
+            return False
+
+        piper_config_path = self.piper_model + PIPER_CONFIG_EXTENSION
+        if not os.path.exists(piper_config_path):
+            logger.warning(
+                f"Piper config file not found at {piper_config_path}. Audio TTS will be skipped."
+            )
+            return False
+
+        return True
+
+    def _load_piper_voice(self):
+        """Load Piper voice model."""
+        if not self.voice:
+            logger.info("Loading Piper voice model for speaking...")
+            piper_config_path = self.piper_model + PIPER_CONFIG_EXTENSION
+            from piper import PiperVoice
+
+            self.voice = PiperVoice.load(
+                self.piper_model, config_path=piper_config_path
+            )
+            logger.info("Piper voice model loaded.")
+
+    def _synthesize_audio_to_wav(self, text: str) -> str:
+        """Synthesize audio to WAV file."""
+        wav_file = "temp_output.wav"
+
+        with wave.open(wav_file, "wb") as wav:
+            self.voice.synthesize_wav(text, wav)
+
+        logger.info(f"Audio synthesized to {wav_file}.")
+        return wav_file
+
+    def _find_audio_device_index(self, p):
+        """Find audio device index by name."""
+        target_device_index = None
+        if self.tts_output_device_name:
+            for i in range(p.get_device_count()):
+                info = p.get_device_info_by_index(i)
+                host_api_name = p.get_host_api_info_by_index(int(info["hostApi"]))[
+                    "name"
+                ]
+
+                if (
+                    info["name"] == self.tts_output_device_name
+                    and host_api_name == "MME"
+                ):
+                    target_device_index = int(info["index"])
+                    logger.info(
+                        f"Found configured audio device: {self.tts_output_device_name} (MME) at index {target_device_index}"
+                    )
+                    break
+            if target_device_index is None:
+                logger.warning(
+                    f"Configured audio device '{self.tts_output_device_name}' (MME) not found. Attempting playback with default device."
+                )
+
+        return target_device_index
+
+    def _play_audio_file(self, wav_file: str):
+        """Play audio file using PyAudio."""
+        if not os.path.exists(wav_file):
+            logger.warning(f"Audio file {wav_file} not found.")
+            return
+
+        wf = wave.open(wav_file, "rb")
+        p = pyaudio.PyAudio()
+
+        target_device_index = self._find_audio_device_index(p)
+
+        try:
+            stream = p.open(
+                format=p.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                output_device_index=target_device_index,
+            )
+            device_name = (
+                self.tts_output_device_name
+                if target_device_index is not None
+                else "Default Device"
+            )
+            logger.info(f"Playing audio on {device_name}")
+
+        except Exception as e:
+            device_name = (
+                self.tts_output_device_name
+                if target_device_index is not None
+                else "Default Device"
+            )
+            logger.error(
+                f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
+                exc_info=True,
+            )
+            target_device_index = None
+            stream = p.open(
+                format=p.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                output_device_index=target_device_index,
+            )
+            logger.info("Playing audio on default output device.")
+
+        data = wf.readframes(1024)
+        while data:
+            stream.write(data)
+            data = wf.readframes(1024)
+
+        stream.stop_stream()
+        stream.close()
+        wf.close()
+        p.terminate()
+
+        logger.info(f"Playback of {wav_file} completed.")
+
     def _speak(self, text: str):
         if not text.strip():
             logger.debug("AudioSink._speak called with empty text, skipping.")
@@ -76,118 +202,18 @@ class AudioSink(Sink):
         text = clean_text(text)
 
         try:
-            from piper import PiperVoice
-
-            if not os.path.exists(self.piper_model):
-                logger.warning(
-                    f"Piper model not found at {self.piper_model}. Audio TTS will be skipped."
-                )
+            if not self._check_piper_model_exists():
                 return
 
-            # Ensure the config file exists alongside the model
-            piper_config_path = self.piper_model + ".json"
-            if not os.path.exists(piper_config_path):
-                logger.warning(
-                    f"Piper config file not found at {piper_config_path}. Audio TTS will be skipped."
-                )
-                return
-
-            if not self.voice:
-                logger.info("Loading Piper voice model for speaking...")
-                self.voice = PiperVoice.load(
-                    self.piper_model, config_path=piper_config_path
-                )
-                logger.info("Piper voice model loaded.")
+            self._load_piper_voice()
 
             logger.info(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
 
-            wav_file = "temp_output.wav"
+            wav_file = self._synthesize_audio_to_wav(text)
 
-            # Synthesize directly to a WAV file
-            with wave.open(wav_file, "wb") as wav:
-                self.voice.synthesize_wav(text, wav)
+            self._play_audio_file(wav_file)
 
-            logger.info(f"Audio synthesized to {wav_file}. Attempting playback.")
-
-            # Play the audio using PyAudio
-            if os.path.exists(wav_file):
-                wf = wave.open(wav_file, "rb")
-                p = pyaudio.PyAudio()
-
-                target_device_index = None
-                if self.tts_output_device_name:
-                    for i in range(p.get_device_count()):
-                        info = p.get_device_info_by_index(i)
-                        host_api_name = p.get_host_api_info_by_index(
-                            int(info["hostApi"])
-                        )["name"]
-
-                        # Hardcode "MME" for comparison
-                        if (
-                            info["name"] == self.tts_output_device_name
-                            and host_api_name == "MME"
-                        ):
-                            target_device_index = int(info["index"])
-                            logger.info(
-                                f"Found configured audio device: {self.tts_output_device_name} (MME) at index {target_device_index}"
-                            )
-                            break
-                    if target_device_index is None:
-                        logger.warning(
-                            f"Configured audio device '{self.tts_output_device_name}' (MME) not found. Attempting playback with default device."
-                        )
-
-                try:
-                    # Attempt to open stream with the target device index
-                    stream = p.open(
-                        format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True,
-                        output_device_index=target_device_index,
-                    )
-                    device_name = (
-                        self.tts_output_device_name
-                        if target_device_index is not None
-                        else "Default Device"
-                    )
-                    logger.info(f"Playing audio on {device_name}")
-
-                except Exception as e:
-                    device_name = (
-                        self.tts_output_device_name
-                        if target_device_index is not None
-                        else "Default Device"
-                    )
-                    logger.error(
-                        f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
-                        exc_info=True,
-                    )
-                    # Fallback to default device if opening the specific device fails
-                    target_device_index = None
-                    stream = p.open(
-                        format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True,
-                        output_device_index=target_device_index,
-                    )  # None will use default
-                    logger.info("Playing audio on default output device.")
-
-                # Playback loop
-                data = wf.readframes(1024)
-                while data:
-                    stream.write(data)
-                    data = wf.readframes(1024)
-
-                stream.stop_stream()
-                stream.close()
-                wf.close()
-                p.terminate()
-
-                logger.info(f"Playback of {wav_file} completed.")
-
-                os.remove(wav_file)
+            os.remove(wav_file)
 
         except ImportError:
             logger.error(
@@ -207,7 +233,7 @@ class AudioSink(Sink):
                 )
                 return
 
-            piper_config_path = self.piper_model + ".json"
+            piper_config_path = self.piper_model + PIPER_CONFIG_EXTENSION
             if not os.path.exists(piper_config_path):
                 logger.warning(
                     f"Piper config file not found at {piper_config_path}. TTS warmup skipped."
