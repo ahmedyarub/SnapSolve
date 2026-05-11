@@ -114,22 +114,148 @@ The `_on_transcription_result` callback handles the text streams:
 
 ---
 
-## Sanity Testing (`test_sound.py`)
+## E2E Testing (`tests/e2e/`)
 
-The `tests/sanity/test_sound.py` script provides an isolated environment to verify that both normal recording and WhisperLive transcription work correctly.
+The end-to-end tests provide comprehensive validation of the real-time transcription system through automated UI interaction.
 
-### Features
-It creates a standalone PyQt6 window with:
-- Dropdowns to select Input and Output audio devices.
-- Volume level monitoring.
-- "Recording Test" (standard Google Speech Recognition).
-- "Transcription Test" (Real-time WhisperLive).
+### Test Structure
 
-### How it tests WhisperLive
-When the "Transcription Test" button is clicked, it verifies the full pipeline:
-1.  **Service Setup:** Similar to the main app, it checks if the service is running (`is_whisperlive_service_online()`) and starts it if necessary via a subprocess.
-2.  **Audio Generation:** It reads a text block from the UI ("Text to Speak"). It uses `Piper TTS` to convert this text into an audio file (`test_output.wav`), ensuring consistent test data.
-3.  **Synchronization:** It uses a `threading.Event` (`server_ready_event`) to ensure the WhisperLive client is fully connected and ready to receive data *before* it begins playing the generated audio.
-4.  **Recording/Streaming:** It opens the selected microphone, reads the audio (which picks up the TTS playback from the speakers), resamples it if necessary, and streams it to the server.
-5.  **Transcription Processing:** The `on_transcription_result` callback appends the recognized text to a string and displays it in the UI in real-time.
-6.  **Verification:** Once playback finishes and the recording loop completes, `_compare_transcription_results()` is called. It normalizes both the original input text and the transcribed text, checking for an exact or partial match. This proves the system end-to-end: Audio Out -> Microphone In -> WhisperLive Server -> Parsed Result.
+The E2E test suite consists of several key components:
+
+#### Main Test File (`tests.py`)
+- `test_audio_record()` - Tests basic audio recording with speech recognition
+- `test_audio_transcription()` - Tests real-time WhisperLive transcription
+- `test_text_source()` - Tests text input and TTS functionality
+- `test_image_source()` - Tests image capture and OCR integration
+
+#### Utility Modules
+- `audio_utils.py` - Audio recording and TTS synthesis utilities
+- `config.py` - Centralized configuration for test parameters
+- `ui_utils.py` - UI interaction utilities using PyAutoGUI
+- `network_utils.py` - Network and port checking utilities
+- `process_utils.py` - Process management and cleanup
+
+### How E2E Tests Test WhisperLive
+
+#### 1. Audio Recording Test (`test_audio_record`)
+This test validates the basic audio recording functionality:
+
+**Test Flow:**
+1. **UI Navigation**: Cycles through input sources until the record button is visible
+2. **Recording Start**: Holds down the record button to begin audio capture
+3. **Audio Input**: Uses TTS to speak a test question ("What is the fifth largest country in the world?")
+4. **Recording Stop**: Releases the record button to end audio capture
+5. **Verification**: Checks if the expected target word ("Brazil") appears in the transcribed text
+
+**Key Features Tested:**
+- Audio device selection and initialization
+- Real-time audio capture from microphone
+- Speech recognition accuracy
+- UI integration and feedback
+
+#### 2. Audio Transcription Test (`test_audio_transcription`)
+This test specifically validates the real-time WhisperLive transcription system:
+
+**Test Flow:**
+1. **Service Activation**: Clicks the record button to start WhisperLive transcription
+2. **Audio Generation**: Uses TTS to speak a test question with specific instructions
+3. **Real-time Processing**: The system streams audio to WhisperLive and displays live transcription
+4. **Result Verification**: Checks if the expected target word appears in the transcribed text
+5. **Cleanup**: Stops the recording and verifies proper cleanup
+
+**Key Features Tested:**
+- WhisperLive service availability and connectivity
+- Real-time audio streaming to transcription server
+- Live subtitle display and updates
+- Transcription accuracy and completeness
+- Proper service shutdown and cleanup
+
+#### 3. Audio Utilities (`audio_utils.py`)
+
+**TTS Synthesis (`speak` function):**
+- Uses PiperVoice for high-quality text-to-speech synthesis
+- Supports custom output device selection (e.g., virtual audio cables)
+- Creates temporary WAV files for robust playback
+- Handles device discovery and fallback to default devices
+
+**Audio Recording (`record_audio_in_background` function):**
+- Continuous background audio recording using threading
+- Supports custom device selection by name
+- Captures audio data in real-time for later processing
+- Integrates with speech recognition for validation
+
+**Device Discovery (`get_microphone_index` function):**
+- Searches available audio devices by name
+- Returns device index for programmatic access
+- Provides detailed error messages for device not found scenarios
+
+### Configuration
+
+The E2E tests use centralized configuration in `config.py`:
+
+**Audio Devices:**
+- `TTS_INPUT_DEVICE_NAME` - Virtual cable output for TTS testing
+- `TTS_OUTPUT_DEVICE_NAME` - Virtual cable input for TTS playback
+- `AUDIO_INPUT_DEVICE_NAME` - Input device for speech recognition
+
+**Test Parameters:**
+- `BASIC_QUESTION` - Test question for basic functionality
+- `TARGET_WORD_BASIC` - Expected answer ("Brazil")
+- `TARGET_WORD_PROGRAMMING` - Expected programming answer ("class")
+
+**UI Coordinates:**
+- `PROMPT_X, PROMPT_Y` - Position for text input
+- `POPUP_X, POPUP_Y` - Position for response verification
+
+### Running E2E Tests
+
+```bash
+cd tests/e2e
+python tests.py
+```
+
+**Emergency Exit:** Press `Ctrl+Shift+Alt+Q` at any time to stop tests and clean up processes.
+
+### Test Results Tracking
+
+The E2E test suite maintains detailed test results:
+
+- `test_text_source` - Text input and basic functionality
+- `test_tts` - Text-to-speech synthesis
+- `test_audio_record` - Audio recording with speech recognition
+- `test_audio_transcription` - Real-time WhisperLive transcription
+- `test_capture` - Single image capture
+- `test_multi_capture` - Multi-select image capture
+
+Results are displayed with status indicators (✅ PASSED, ❌ FAILED, ❓ NOT_RUN) and summary statistics.
+
+---
+
+## Feature Comparison: test_sound.py vs E2E Tests
+
+### test_sound.py Features
+- **Isolated Testing**: Standalone PyQt6 window for focused testing
+- **Manual Control**: User-initiated tests with visual feedback
+- **Device Selection**: Dropdowns for input/output device selection
+- **Volume Monitoring**: Real-time audio level visualization
+- **TTS Integration**: Piper TTS for consistent test audio generation
+- **Synchronization**: Threading events for precise timing control
+- **Detailed Verification**: Text normalization and comparison algorithms
+
+### E2E Test Features
+- **Automated UI**: PyAutoGUI for automated application interaction
+- **Integration Testing**: Full application workflow validation
+- **Background Recording**: Threading for non-blocking audio capture
+- **Service Management**: Automatic service startup and health checks
+- **Result Tracking**: Comprehensive test result tracking and reporting
+- **Emergency Controls**: Keyboard shortcuts for test interruption
+- **Multi-modal Testing**: Tests text, audio, and image input sources
+
+### Complementary Testing
+
+Both test suites serve complementary purposes:
+
+- **test_sound.py**: Ideal for development, debugging, and feature validation
+- **E2E tests**: Essential for integration testing, regression testing, and CI/CD
+
+The combination ensures both individual component reliability and overall system integrity.
