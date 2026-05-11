@@ -52,6 +52,9 @@ audio_sink_instance: AudioSink | None = None  # Global AudioSink instance
 is_multi_capturing = False
 multi_capture_texts = []
 
+# Default model name
+DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
+
 # Enable Windows DPI awareness to fix coordinate scaling issues
 if platform.system() == "Windows":
     import ctypes
@@ -116,7 +119,7 @@ def handle_text_submit(config, active_profile, text):
                 audio_sink_instance
             show_headers = False
             fallback_model = active_profile.get("fallback_model", "None")
-            main_model = active_profile.get("model", "gemini-2.5-flash-lite")
+            main_model = active_profile.get("model", DEFAULT_MODEL_NAME)
             prompt_id = active_profile.get("prompt_id", "default")
 
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
@@ -482,7 +485,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
 
             show_headers = False
             fallback_model = active_profile.get("fallback_model", "None")
-            main_model = active_profile.get("model", "gemini-2.5-flash-lite")
+            main_model = active_profile.get("model", DEFAULT_MODEL_NAME)
             prompt_id = active_profile.get("prompt_id", "default")
 
             if fallback_model and fallback_model != "None" and prompt_id != "quick":
@@ -792,7 +795,7 @@ def load_models_data():
 
 def validate_config(active_profile):
     llm_type = active_profile.get("llm_engine", "gemini")
-    model_id = active_profile.get("model", "gemini-2.5-flash-lite")
+    model_id = active_profile.get("model", DEFAULT_MODEL_NAME)
     fallback_model_id = active_profile.get("fallback_model", "None")
     ocr_type = active_profile.get("ocr_engine", "none")
 
@@ -1027,7 +1030,7 @@ def main():
         set_active_source_instance(active_source)
 
     llm_type = active_profile.get("llm_engine", "gemini")
-    model = active_profile.get("model", "gemini-2.5-flash-lite")
+    model = active_profile.get("model", DEFAULT_MODEL_NAME)
     fallback_model = active_profile.get("fallback_model", "None")
 
     if llm_type == "ollama":

@@ -8,6 +8,7 @@ from .ocr.base import OCREngine
 
 CAPTURE_CANCELLED_MSG = "Capture cancelled."
 
+
 class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
         self.ocr_engine = ocr_engine

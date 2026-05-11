@@ -170,6 +170,8 @@ class SoundTestApp(QMainWindow):
         # Hardcoded model
         self.piper_model = "en_US-lessac-high.onnx"
         self.settings_file = "sound_test_settings.json"
+        self.DEVICE_SELECTION_ERROR = "Please select both input and output devices."
+        self.UNKNOWN_DEVICE_NAME = "Unknown Device"
 
         self.is_recording = False
         self.is_transcribing = False
@@ -385,7 +387,7 @@ class SoundTestApp(QMainWindow):
         text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
-            self.log("Please select both input and output devices.")
+            self.log(self.DEVICE_SELECTION_ERROR)
             self._enable_buttons()
             return
 
@@ -413,7 +415,7 @@ class SoundTestApp(QMainWindow):
         text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
-            self.log("Please select both input and output devices.")
+            self.log(self.DEVICE_SELECTION_ERROR)
             self._enable_buttons()
             return
 
@@ -442,7 +444,7 @@ class SoundTestApp(QMainWindow):
         text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
-            self.log("Please select both input and output devices.")
+            self.log(self.DEVICE_SELECTION_ERROR)
             self._enable_buttons()
             return
 
@@ -596,7 +598,7 @@ class SoundTestApp(QMainWindow):
     def record_audio_to_file(self, device_index, server_ready_event=None):
         """Records audio from microphone and streams it directly to WhisperLive."""
         device_name = self.p.get_device_info_by_index(device_index).get(
-            "name", "Unknown Device"
+            "name", self.UNKNOWN_DEVICE_NAME
         )
         try:
             self.signals.log_message.emit(
@@ -868,7 +870,7 @@ class SoundTestApp(QMainWindow):
     def monitor_mic_volume(self, device_index):
         """Monitors microphone volume without recording or transcribing."""
         device_name = self.p.get_device_info_by_index(device_index).get(
-            "name", "Unknown Device"
+            "name", self.UNKNOWN_DEVICE_NAME
         )
         try:
             self.signals.log_message.emit(
@@ -888,7 +890,7 @@ class SoundTestApp(QMainWindow):
 
     def record_audio(self, device_index):
         device_name = self.p.get_device_info_by_index(device_index).get(
-            "name", "Unknown Device"
+            "name", self.UNKNOWN_DEVICE_NAME
         )
         try:
             r = sr.Recognizer()
