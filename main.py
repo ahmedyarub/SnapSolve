@@ -25,6 +25,10 @@ from core.output import (
     set_app_processing_state,
     get_subtitle_text,
 )
+from core.remote_control_server import (
+    start_remote_control_server,
+    stop_remote_control_server,
+)
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
 from core.sinks import PopupSink, AudioSink, CompositeSink
@@ -823,6 +827,9 @@ def exit_app():
     is_running = False
     print("Exiting...")
 
+    # Stop remote control server
+    stop_remote_control_server()
+
     if session_manager:
         session_manager.cleanup()
 
@@ -1329,6 +1336,15 @@ def main():
     audio_sink_instance = _initialize_audio_components(
         config, session_manager, cancel_event
     )
+
+    # Start remote control server if enabled
+    if config.get("enable_remote_control", False):
+        remote_host = config.get("remote_control_host", "0.0.0.0")
+        remote_port = config.get("remote_control_port", 8080)
+        try:
+            start_remote_control_server(remote_host, remote_port)
+        except Exception as remote_error:
+            print(f"Failed to start remote control server: {remote_error}")
 
     _register_keyboard_shortcuts(config, active_profile, active_prompt_text)
 
