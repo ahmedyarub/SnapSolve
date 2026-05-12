@@ -41,22 +41,22 @@ class GoogleGenAIEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True
 
-    def _prepare_contents(self, _prompt: str, enable_stitching: bool, types):
+    def _prepare_contents(self, _prompt: str, enable_stitching: bool, genai_types):
         contents = []
 
         if self.session_manager and enable_stitching:
             history = self.session_manager.get_history()
             for h in history:
                 contents.append(
-                    types.Content(
+                    genai_types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text=h.get("prompt", ""))],
+                        parts=[genai_types.Part.from_text(text=h.get("prompt", ""))],
                     )
                 )
                 contents.append(
-                    types.Content(
+                    genai_types.Content(
                         role="model",
-                        parts=[types.Part.from_text(text=h.get("response", ""))],
+                        parts=[genai_types.Part.from_text(text=h.get("response", ""))],
                     )
                 )
 

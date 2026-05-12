@@ -225,7 +225,6 @@ def _process_capture_result(
     output_result(
         final_result,
         config.get("output_mode"),
-        None,
         auto_close=config.get("auto_close_results", False),
         opacity=config.get("popup_opacity", 0.8),
     )
@@ -505,7 +504,6 @@ def _process_multi_capture_result(
     output_result(
         final_result,
         config.get("output_mode"),
-        None,
         auto_close=config.get("auto_close_results", False),
         opacity=config.get("popup_opacity", 0.8),
     )

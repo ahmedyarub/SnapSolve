@@ -891,7 +891,7 @@ def get_subtitle_text(index: int) -> str:
     return ""
 
 
-def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):
+def output_result(text, output_modes, auto_close=False, opacity=0.8):
     if not output_modes:
         output_modes = ["popup"]
 
