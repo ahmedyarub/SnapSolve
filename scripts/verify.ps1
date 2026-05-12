@@ -57,55 +57,29 @@ try
 
     try
     {
-        # Query for all open issues on this project
-        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&statuses=OPEN"
-        $Response = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
+        # Query for issues
+        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY"
+        $IssuesResponse = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
 
-        if ($Response.issues.Count -eq 0)
+        if ($IssuesResponse.issues.Count -eq 0)
         {
-            Write-Host "No open issues found!" -ForegroundColor Green
+            Write-Host "No issues found!" -ForegroundColor Green
         }
         else
         {
-            foreach ($issue in $Response.issues)
-            {
-                # Format: [Rule] File:Line - Message
-                $filePath = $issue.component.Replace("${ProjectKey}:", "")
-                Write-Host "[$( $issue.rule )] $( $filePath ):$( $issue.line ) - $( $issue.message )" -ForegroundColor Red
-            }
-        }
-    }
-    catch
-    {
-        Write-Host "Failed to fetch open issues from SonarQube API." -ForegroundColor DarkRed
-    }
-
-    Write-Host "`n--- SonarQube Security Issues Report ---" -ForegroundColor Cyan
-
-    try
-    {
-        # Query for security issues
-        $SecurityApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY"
-        $SecurityResponse = Invoke-RestMethod -Uri $SecurityApiUrl -Headers $Headers -Method Get
-
-        if ($SecurityResponse.issues.Count -eq 0)
-        {
-            Write-Host "No security issues found!" -ForegroundColor Green
-        }
-        else
-        {
-            foreach ($issue in $SecurityResponse.issues)
+            foreach ($issue in $IssuesResponse.issues)
             {
                 # Format: [Rule] File:Line - Message (Severity)
                 $filePath = $issue.component.Replace("${ProjectKey}:", "")
+                $line = if ($issue.textRange) { $issue.textRange.startLine } else { "N/A" }
                 $severity = $issue.severity
-                Write-Host "[$( $issue.rule )] $( $filePath ):$( $issue.line ) - $( $issue.message ) [$severity]" -ForegroundColor Red
+                Write-Host "[$( $issue.rule )] $( $filePath ):$( $line ) - $( $issue.message ) [$severity]" -ForegroundColor Red
             }
         }
     }
     catch
     {
-        Write-Host "Failed to fetch security issues from SonarQube API: $_" -ForegroundColor DarkRed
+        Write-Host "Failed to fetch issues from SonarQube API: $_" -ForegroundColor DarkRed
     }
 
     Write-Host "-------------------------------`n" -ForegroundColor Cyan

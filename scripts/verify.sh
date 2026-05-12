@@ -49,47 +49,26 @@ PROJECT_KEY="SnapSolve" # Update this to your exact sonar.projectKey
 
 echo -e "\n\e[36m--- SonarQube Issues Report ---\e[0m"
 
-# Query for all open issues on this project using curl with Basic Auth (-u)
-API_URL="${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&statuses=OPEN"
-RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$API_URL")
+# Query for issues
+API_URL="${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&types=CODE_SMELL,BUG,VULNERABILITY"
+ISSUES_RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$API_URL")
 
-# Check if the curl request succeeded and jq can parse the issue count
-if [ -z "$RESPONSE" ]; then
-    echo -e "\e[31mFailed to fetch open issues from SonarQube API.\e[0m"
-else
-    ISSUE_COUNT=$(echo "$RESPONSE" | jq '.issues | length')
-
-    if [ "$ISSUE_COUNT" -eq 0 ] || [ "$ISSUE_COUNT" == "null" ]; then
-        echo -e "\e[32mNo open issues found!\e[0m"
-    else
-        # Parse the JSON and format it as: [Rule] File:Line - Message
-        echo "$RESPONSE" | jq -r --arg prefix "${PROJECT_KEY}:" '.issues[] | "[\(.rule)] \(.component | sub($prefix; "")):\(.line // "N/A") - \(.message)"' | while read -r line; do
-            echo -e "\e[31m$line\e[0m"
-        done
-    fi
-fi
-
-echo -e "\n\e[36m--- SonarQube Security Issues Report ---\e[0m"
-
-# Query for security issues (VULNERABILITY and SECURITY_HOTSPOT types)
-SECURITY_API_URL="${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&types=CODE_SMELL,BUG,VULNERABILITY"
-SECURITY_RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$SECURITY_API_URL")
-
-if [ -z "$SECURITY_RESPONSE" ]; then
-    echo -e "\e[31mFailed to fetch security issues from SonarQube API (empty response).\e[0m"
+if [ -z "$ISSUES_RESPONSE" ]; then
+    echo -e "\e[31mFailed to fetch issues from SonarQube API (empty response).\e[0m"
 else
     # Check if response is valid JSON
-    if ! echo "$SECURITY_RESPONSE" | jq empty 2>/dev/null; then
-        echo -e "\e[31mFailed to fetch security issues from SonarQube API (invalid JSON response).\e[0m"
-        echo -e "\e[31mResponse: $SECURITY_RESPONSE\e[0m"
+    if ! echo "$ISSUES_RESPONSE" | jq empty 2>/dev/null; then
+        echo -e "\e[31mFailed to fetch issues from SonarQube API (invalid JSON response).\e[0m"
+        echo -e "\e[31mResponse: $ISSUES_RESPONSE\e[0m"
     else
-    SECURITY_ISSUE_COUNT=$(echo "$SECURITY_RESPONSE" | jq '.issues | length')
+        ISSUE_COUNT=$(echo "$ISSUES_RESPONSE" | jq '.issues | length')
+    fi
 
-    if [ "$SECURITY_ISSUE_COUNT" -eq 0 ] || [ "$SECURITY_ISSUE_COUNT" == "null" ]; then
-        echo -e "\e[32mNo security issues found!\e[0m"
+    if [ "$ISSUE_COUNT" -eq 0 ] || [ "$ISSUE_COUNT" == "null" ]; then
+        echo -e "\e[32mNo issues found!\e[0m"
     else
         # Parse the JSON and format it as: [Rule] File:Line - Message [Severity]
-        echo "$SECURITY_RESPONSE" | jq -r --arg prefix "${PROJECT_KEY}:" '.issues[] | "[\(.rule)] \(.component | sub($prefix; "")):\(.line // "N/A") - \(.message) [\(.severity)]"' | while read -r line; do
+        echo "$ISSUES_RESPONSE" | jq -r --arg prefix "${PROJECT_KEY}:" '.issues[] | "[\(.rule)] \(.component | sub($prefix; "")):\(.textRange.startLine // "N/A") - \(.message) [\(.severity)]"' | while read -r line; do
             echo -e "\e[31m$line\e[0m"
         done
     fi
