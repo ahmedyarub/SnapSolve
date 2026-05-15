@@ -21,7 +21,9 @@
       "Edit",
       "Bash(New-BurntToastNotification *)",
       "PowerShell(Out-File *)",
-      "Bash(Get-Content *)"
+      "Bash(Get-Content *)",
+      "Bash(verify.ps1 *)",
+      "PowerShell(./scripts/verify.ps1)"
     ]
   }
 }
