@@ -10,7 +10,9 @@ exclude:
     -   name: All
         paths:
             - services/whisperlive
+            - android_remote_control/app
             - android_remote_control/build
+            - android_remote_control/gradle
 include:
     -   name: DuplicatedCode
     -   name: PyUnresolvedReferences
