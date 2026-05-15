@@ -15,7 +15,7 @@ if [ "$RUFF_CHECK_EXIT_CODE" -ne 0 ]; then
 fi
 
 # Check formatting without modifying files (forces AI to run the fix command if it fails)
-ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build" --exclude "android_remote_control/app" --exclude "android_remote_control/gradle"
+ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build" --exclude "android_remote_control/app/build" --exclude "android_remote_control/gradle"
 RUFF_FORMAT_EXIT_CODE=$?
 if [ "$RUFF_FORMAT_EXIT_CODE" -ne 0 ]; then
     echo -e "\e[31mRuff format check failed. Run 'ruff format .' to fix formatting issues.\e[0m"
