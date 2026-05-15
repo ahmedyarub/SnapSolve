@@ -43,7 +43,7 @@ class LocalPaddleOCREngine(OCREngine):
             raise ImportError(
                 "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
             )
-        except (ImportError, OSError, RuntimeError) as e:
+        except (OSError, RuntimeError) as e:
             import traceback
 
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
@@ -139,7 +139,7 @@ class LocalPaddleOCREngine(OCREngine):
             raise ImportError(
                 "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
             )
-        except (ImportError, OSError, RuntimeError, ValueError) as e:
+        except (OSError, RuntimeError, ValueError) as e:
             if "cancelled" in str(e).lower():
                 raise
             import traceback
