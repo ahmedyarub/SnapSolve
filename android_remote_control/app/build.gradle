@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.snapsolve.remotecontrol'
+    namespace = 'com.snapsolve.remotecontrol'
     compileSdk 37
 
     defaultConfig {
@@ -34,6 +34,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.gridlayout:gridlayout:1.0.0'
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
