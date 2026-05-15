@@ -39,15 +39,15 @@ class LocalPaddleOCREngine(OCREngine):
                     img.save(temp_file.name)
                     self.ocr.ocr(temp_file.name)
 
-        except ImportError:
-            raise ImportError(
-                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
-            )
         except (OSError, RuntimeError) as e:
             import traceback
 
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
             raise RuntimeError(f"Error during OCR initialization: {str(e)}") from e
+        except ImportError:
+            raise ImportError(
+                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
+            )
 
     @staticmethod
     def _check_cancelled(cancel_event: threading.Event):
@@ -135,10 +135,6 @@ class LocalPaddleOCREngine(OCREngine):
 
             return extracted_text
 
-        except ImportError:
-            raise ImportError(
-                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
-            )
         except (OSError, RuntimeError, ValueError) as e:
             if "cancelled" in str(e).lower():
                 raise

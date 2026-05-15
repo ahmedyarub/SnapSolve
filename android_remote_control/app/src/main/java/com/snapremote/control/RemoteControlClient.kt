@@ -7,11 +7,10 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+private const val CONTENT_TYPE = "Content-Type"
+private const val APPLICATION_JSON = "application/json"
+
 class RemoteControlClient {
-    companion object {
-        private const val CONTENT_TYPE = "Content-Type"
-        private const val APPLICATION_JSON = "application/json"
-    }
     private var serverIp: String = "192.168.1.100"
     private var serverPort: Int = 8080
 

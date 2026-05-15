@@ -10,6 +10,7 @@ import android.view.View
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.core.graphics.toColorInt
 
 class TouchpadView @JvmOverloads constructor(
     context: Context,
@@ -32,7 +33,7 @@ class TouchpadView @JvmOverloads constructor(
     private var doubleClickTimeout = 300L // milliseconds
 
     init {
-        paint.color = Color.parseColor("#2C2C2C")
+        paint.color = "#2C2C2C".toColorInt()
         paint.style = Paint.Style.FILL
     }
 
@@ -50,9 +51,9 @@ class TouchpadView @JvmOverloads constructor(
 
         // Draw touch indicator
         if (isDragging) {
-            paint.color = Color.parseColor("#4CAF50")
+            paint.color = "#4CAF50".toColorInt()
             canvas.drawCircle(startX, startY, 20f, paint)
-            paint.color = Color.parseColor("#2C2C2C")
+            paint.color = "#2C2C2C".toColorInt()
         }
     }
 
@@ -167,19 +168,19 @@ class TouchpadView @JvmOverloads constructor(
         }
     }
 
-    // Long press for drag start
-    private var longPressRunnable: Runnable? = null
-    private var isLongPress = false
+    // Long press for drag start - TODO: Implement properly
+    // private var longPressRunnable: Runnable? = null
+    // private var isLongPress = false
 
-    override fun onLongPress() {
-        isLongPress = true
-        val relativeX = (startX / width).coerceIn(0f, 1f)
-        val relativeY = (startY / height).coerceIn(0f, 1f)
+    // override fun onLongPress() {
+    //     isLongPress = true
+    //     val relativeX = (startX / width).coerceIn(0f, 1f)
+    //     val relativeY = (startY / height).coerceIn(0f, 1f)
 
-        remoteControlClient?.let { client ->
-            CoroutineScope(Dispatchers.IO).launch {
-                client.startDrag(relativeX, relativeY)
-            }
-        }
-    }
+    //     remoteControlClient?.let { client ->
+    //         CoroutineScope(Dispatchers.IO).launch {
+    //             client.startDrag(relativeX, relativeY)
+    //         }
+    //     }
+    // }
 }

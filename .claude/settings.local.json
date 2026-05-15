@@ -23,7 +23,9 @@
       "PowerShell(Out-File *)",
       "Bash(Get-Content *)",
       "Bash(verify.ps1 *)",
-      "PowerShell(./scripts/verify.ps1)"
+      "PowerShell(./scripts/verify.ps1)",
+      "Bash(findstr *)",
+      "Bash(gradle --version)"
     ]
   }
 }
