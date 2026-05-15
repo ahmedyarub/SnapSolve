@@ -12,7 +12,7 @@ try
     {
         throw "Ruff check failed."
     }
-    ruff format --check . --exclude "services/whisperlive"
+    ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Ruff format check failed."
