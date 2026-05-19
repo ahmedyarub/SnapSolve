@@ -2,15 +2,16 @@ package com.snapsolve.remotecontrol
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.core.graphics.toColorInt
+import kotlinx.coroutines.Job
+import kotlin.math.absoluteValue
 
 class TouchpadView @JvmOverloads constructor(
     context: Context,
@@ -31,6 +32,11 @@ class TouchpadView @JvmOverloads constructor(
     // Configuration
     private var sensitivity = 1.5f
     private var doubleClickTimeout = 300L // milliseconds
+
+    // Long press for drag start
+    private var longPressCheckJob: Job? = null
+    private var isLongPress = false
+    private var hasMoved = false
 
     init {
         paint.color = "#2C2C2C".toColorInt()
@@ -58,100 +64,148 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                startX = event.x
-                startY = event.y
-                isDragging = true
-                touchCount = 1
-                lastTouchTime = System.currentTimeMillis()
-                invalidate()
-                return true
-            }
+        return handleTouchEvent(event)
+    }
 
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                touchCount++
-                if (touchCount == 2) {
-                    // Two-finger tap for right click
-                    handleRightClick()
-                } else if (touchCount == 3) {
-                    // Three-finger tap for middle click
-                    handleMiddleClick()
-                }
-                return true
-            }
+    private fun handleTouchEvent(event: MotionEvent): Boolean {
+        return when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> handleActionDown(event)
+            MotionEvent.ACTION_POINTER_DOWN -> handleActionPointerDown()
+            MotionEvent.ACTION_MOVE -> handleActionMove(event)
+            MotionEvent.ACTION_UP -> handleActionUp()
+            MotionEvent.ACTION_POINTER_UP -> handleActionPointerUp()
+            MotionEvent.ACTION_CANCEL -> handleActionCancel()
+            else -> super.onTouchEvent(event)
+        }
+    }
 
-            MotionEvent.ACTION_MOVE -> {
-                if (isDragging && touchCount == 1) {
-                    val dx = (event.x - startX) * sensitivity
-                    val dy = (event.y - startY) * sensitivity
+    private fun handleActionDown(event: MotionEvent): Boolean {
+        startX = event.x
+        startY = event.y
+        isDragging = true
+        touchCount = 1
+        lastTouchTime = System.currentTimeMillis()
+        hasMoved = false
+        isLongPress = false
+        // Cancel any existing long press check
+        longPressCheckJob?.cancel()
+        // Start a new long press check
+        startLongPressCheck()
+        invalidate()
+        return true
+    }
 
-                    // Convert to relative coordinates (0-1)
-                    val relativeX = (event.x / width).coerceIn(0f, 1f)
-                    val relativeY = (event.y / height).coerceIn(0f, 1f)
-
-                    // Send mouse move
-                    remoteControlClient?.let { client ->
-                        CoroutineScope(Dispatchers.IO).launch {
-                            client.moveMouse(relativeX, relativeY)
-                        }
+    private fun startLongPressCheck() {
+        longPressCheckJob = CoroutineScope(Dispatchers.Main).launch {
+            delay(500) // 500 milliseconds
+            if (!hasMoved && isDragging && touchCount == 1) {
+                isLongPress = true
+                // Calculate relative coordinates
+                val relativeX = (startX / width).coerceIn(0f, 1f)
+                val relativeY = (startY / height).coerceIn(0f, 1f)
+                remoteControlClient?.let { client ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        client.startDrag(relativeX, relativeY)
                     }
-
-                    startX = event.x
-                    startY = event.y
                 }
-                return true
             }
+        }
+    }
 
-            MotionEvent.ACTION_UP -> {
-                val currentTime = System.currentTimeMillis()
-                val timeDiff = currentTime - lastTouchTime
+    private fun handleActionPointerDown(): Boolean {
+        touchCount++
+        if (touchCount == 2) {
+            // Two-finger tap for right click
+            handleRightClick()
+        } else if (touchCount == 3) {
+            // Three-finger tap for middle click
+            handleMiddleClick()
+        }
+        return true
+    }
 
-                if (touchCount == 1 && timeDiff < doubleClickTimeout) {
-                    // Double click detected
-                    handleDoubleClick()
-                } else if (touchCount == 1) {
-                    // Single click
-                    handleClick()
+    private fun handleActionMove(event: MotionEvent): Boolean {
+        // Check if we have moved beyond a threshold
+        val dx = (event.x - startX).absoluteValue
+        val dy = (event.y - startY).absoluteValue
+        if (dx > 5f || dy > 5f) {
+            hasMoved = true
+        }
+        // If we have moved, cancel the long press check
+        if (hasMoved) {
+            longPressCheckJob?.cancel()
+            longPressCheckJob = null
+        }
+
+        if (isDragging && touchCount == 1) {
+            val dx = (event.x - startX) * sensitivity
+            val dy = (event.y - startY) * sensitivity
+
+            // Convert to relative coordinates (0-1)
+            val relativeX = (event.x / width).coerceIn(0f, 1f)
+            val relativeY = (event.y / height).coerceIn(0f, 1f)
+
+            // Send mouse move
+            remoteControlClient?.let { client ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    client.moveMouse(relativeX, relativeY)
                 }
-
-                isDragging = false
-                touchCount = 0
-                invalidate()
-                return true
             }
 
-            MotionEvent.ACTION_POINTER_UP -> {
-                touchCount--
-                return true
-            }
-
-            MotionEvent.ACTION_CANCEL -> {
-                isDragging = false
-                touchCount = 0
-                invalidate()
-                return true
-            }
+            startX = event.x
+            startY = event.y
         }
-        return super.onTouchEvent(event)
+        return true
     }
 
-    private fun handleClick() {
-        remoteControlClient?.let { client ->
-            CoroutineScope(Dispatchers.IO).launch {
-                client.clickMouse("left")
+    private fun handleActionUp(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        val timeDiff = currentTime - lastTouchTime
+
+        // Cancel long press check
+        longPressCheckJob?.cancel()
+        longPressCheckJob = null
+
+        if (touchCount == 1 && timeDiff < doubleClickTimeout) {
+            // Double click detected
+            remoteControlClient?.let { client ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    client.doubleClickMouse("left")
+                }
+            }
+        } else if (touchCount == 1) {
+            // Single click
+            remoteControlClient?.let { client ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    client.clickMouse("left")
+                }
             }
         }
+
+        isDragging = false
+        touchCount = 0
+        isLongPress = false
+        invalidate()
+        return true
     }
 
-    private fun handleDoubleClick() {
-        remoteControlClient?.let { client ->
-            CoroutineScope(Dispatchers.IO).launch {
-                client.doubleClickMouse("left")
-            }
-        }
+    private fun handleActionPointerUp(): Boolean {
+        touchCount--
+        return true
     }
 
+    private fun handleActionCancel(): Boolean {
+        // Cancel long press check
+        longPressCheckJob?.cancel()
+        longPressCheckJob = null
+        isDragging = false
+        touchCount = 0
+        isLongPress = false
+        invalidate()
+        return true
+    }
+
+    
     private fun handleRightClick() {
         remoteControlClient?.let { client ->
             CoroutineScope(Dispatchers.IO).launch {
@@ -167,20 +221,4 @@ class TouchpadView @JvmOverloads constructor(
             }
         }
     }
-
-    // Long press for drag start - TODO: Implement properly
-    // private var longPressRunnable: Runnable? = null
-    // private var isLongPress = false
-
-    // override fun onLongPress() {
-    //     isLongPress = true
-    //     val relativeX = (startX / width).coerceIn(0f, 1f)
-    //     val relativeY = (startY / height).coerceIn(0f, 1f)
-
-    //     remoteControlClient?.let { client ->
-    //         CoroutineScope(Dispatchers.IO).launch {
-    //             client.startDrag(relativeX, relativeY)
-    //         }
-    //     }
-    // }
 }

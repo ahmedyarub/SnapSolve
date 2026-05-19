@@ -2,6 +2,7 @@ from typing import Optional
 import threading
 import time
 from core.sources.base import Source
+from core.sources.ocr.exceptions import OCRCancelledError
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 
@@ -65,7 +66,7 @@ def _retrieve_data_from_source(
         )
         print(f"Retrieved text from source: {extracted_text}")
         return extracted_text, image_path, is_image
-    except ValueError as e:
+    except (ValueError, OCRCancelledError) as e:
         return _handle_text_retrieval_error(source, coords, text, cancel_event, str(e))
     except Exception as e:
         raise RuntimeError(f"Error retrieving data from source: {str(e)}")
