@@ -11,7 +11,7 @@ private const val CONTENT_TYPE = "Content-Type"
 private const val APPLICATION_JSON = "application/json"
 
 class RemoteControlClient {
-    private var serverIp: String = "192.168.1.100"
+    private var serverIp: String = ""
     private var serverPort: Int = 8080
 
     fun setServerConfig(ip: String, port: Int) {

@@ -47,8 +47,8 @@ class MainActivity : AppCompatActivity() {
         newChatButton = findViewById(R.id.newChatButton)
         cancelButton = findViewById(R.id.cancelButton)
 
-        // Set default values
-        ipAddressEditText.setText("192.168.1.100") // Default IP
+        // Set default values (user must configure their server IP)
+        ipAddressEditText.setText("") // No default IP — user must enter their server address
         portEditText.setText("8080") // Default port
 
         // Initialize remote control client
