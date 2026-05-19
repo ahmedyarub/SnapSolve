@@ -1,6 +1,5 @@
 package com.snapremote.control
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.View
@@ -225,6 +224,8 @@ class MainActivity : AppCompatActivity() {
      *
      * @param connected `true` after a successful connection, `false` otherwise.
      */
+    // The MotionEvent is part of the required onTouchEvent dispatch signature; the pointer
+    // index is not needed here because we only decrement the global touchCount counter.
     private fun setConnected(connected: Boolean) {
         isConnected = connected
 

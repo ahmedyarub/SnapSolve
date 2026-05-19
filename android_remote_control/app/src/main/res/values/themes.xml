@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Base application theme. Uses Material Components with a dark action bar so the app
+        can leverage MaterialButton, Chip, and other Material widgets out of the box.
+    -->
+    <style name="Theme.SnapSolveRemote" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/btn_connect</item>
+        <item name="colorPrimaryVariant">@color/surface_elevated</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="android:windowBackground">@color/background_dark</item>
+    </style>
+</resources>

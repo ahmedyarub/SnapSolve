@@ -322,7 +322,9 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     // — Additional finger lifts (multitouch) —
-    private fun handlePointerUp(event: MotionEvent): Boolean {
+    // The MotionEvent is part of the required onTouchEvent dispatch signature; the pointer
+    // index is not needed here because we only decrement the global touchCount counter.
+    private fun handlePointerUp(@Suppress("UNUSED_PARAMETER") event: MotionEvent): Boolean {
         if (touchCount > 0) touchCount--
         return true
     }
