@@ -4,7 +4,7 @@ import json
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 import pyautogui
@@ -373,12 +373,12 @@ class RemoteControlServer:
     """
 
     def __init__(
-        self, host: str = "0.0.0.0", port: int = 8080, config: dict | None = None
+        self, host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
     ):
         self.host = host
         self.port = port
-        self.server: HTTPServer | None = None
-        self.server_thread: threading.Thread | None = None
+        self.server: Optional[HTTPServer] = None
+        self.server_thread: Optional[threading.Thread] = None
         self.is_running = False
 
         # Inject the live config into the handler class so each request can use it
@@ -439,11 +439,11 @@ class RemoteControlServer:
 # ---------------------------------------------------------------------------
 
 # Global singleton — one server per process.
-remote_control_server: RemoteControlServer | None = None
+remote_control_server: Optional[RemoteControlServer] = None
 
 
 def start_remote_control_server(
-    host: str = "0.0.0.0", port: int = 8080, config: dict | None = None
+    host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
 ) -> RemoteControlServer:
     """Create (if needed) and start the global remote control server.
 
