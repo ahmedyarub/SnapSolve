@@ -486,8 +486,12 @@ class ConfigUI(QDialog):
 
         # Remote Control settings
         self.config["enable_remote_control"] = self.enable_remote_control.isChecked()
-        self.config["remote_control_host"] = self.remote_control_host.text().strip() or "0.0.0.0"
-        self.config["remote_control_port"] = int(self.remote_control_port.text().strip() or "8080")
+        self.config["remote_control_host"] = (
+            self.remote_control_host.text().strip() or "0.0.0.0"
+        )
+        self.config["remote_control_port"] = int(
+            self.remote_control_port.text().strip() or "8080"
+        )
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:

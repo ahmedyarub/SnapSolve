@@ -71,7 +71,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
 
         if parsed_path.path == "/status":
-            self._send_json_response(200, {"status": "running", "server": "SnapSolve Remote Control"})
+            self._send_json_response(
+                200, {"status": "running", "server": "SnapSolve Remote Control"}
+            )
         elif parsed_path.path == "/":
             self._send_json_response(
                 200,
@@ -169,15 +171,23 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
                 (p for p in prompts if p.get("id") == prompt_id),
                 prompts[0] if prompts else {},
             )
-            active_prompt_text = active_prompt.get("text", "answer the following question quickly and briefly")
+            active_prompt_text = active_prompt.get(
+                "text", "answer the following question quickly and briefly"
+            )
 
             action_map = {
-                "capture": lambda: handle_capture(config, active_profile, active_prompt_text),
+                "capture": lambda: handle_capture(
+                    config, active_profile, active_prompt_text
+                ),
                 "reselect": lambda: handle_reselect(config),
                 "multi_capture": lambda: handle_multi_capture(config, active_profile),
-                "end_multi_capture": lambda: handle_end_multi_capture(config, active_profile, active_prompt_text),
+                "end_multi_capture": lambda: handle_end_multi_capture(
+                    config, active_profile, active_prompt_text
+                ),
                 "cancel": handle_cancel,
-                "toggle_stitching": lambda: handle_toggle_stitching(config, active_profile),
+                "toggle_stitching": lambda: handle_toggle_stitching(
+                    config, active_profile
+                ),
                 "cycle_source": lambda: handle_cycle_source(config, active_profile),
                 "toggle_panel": handle_toggle_panel,
                 "new_chat_session": lambda: handle_new_chat_session(config),
@@ -218,7 +228,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             abs_x = int(x * screen_width)
             abs_y = int(y * screen_height)
             pyautogui.moveTo(abs_x, abs_y)
-            self._send_json_response(200, {"status": "success", "position": {"x": abs_x, "y": abs_y}})
+            self._send_json_response(
+                200, {"status": "success", "position": {"x": abs_x, "y": abs_y}}
+            )
 
         except Exception as exc:
             logger.error("Error moving mouse: %s", exc)
@@ -237,7 +249,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             else:
                 self._send_error_response(400, f"Unknown button: {button}")
                 return
-            self._send_json_response(200, {"status": "success", "action": "click", "button": button})
+            self._send_json_response(
+                200, {"status": "success", "action": "click", "button": button}
+            )
 
         except Exception as exc:
             logger.error("Error clicking mouse: %s", exc)
@@ -258,7 +272,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             else:
                 self._send_error_response(400, f"Unknown button: {button}")
                 return
-            self._send_json_response(200, {"status": "success", "action": "double_click", "button": button})
+            self._send_json_response(
+                200, {"status": "success", "action": "double_click", "button": button}
+            )
 
         except Exception as exc:
             logger.error("Error double-clicking mouse: %s", exc)
@@ -277,7 +293,14 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             abs_x = int(x * screen_width)
             abs_y = int(y * screen_height)
             pyautogui.mouseDown(abs_x, abs_y)
-            self._send_json_response(200, {"status": "success", "action": "drag_start", "position": {"x": abs_x, "y": abs_y}})
+            self._send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "action": "drag_start",
+                    "position": {"x": abs_x, "y": abs_y},
+                },
+            )
 
         except Exception as exc:
             logger.error("Error starting drag: %s", exc)
@@ -296,7 +319,14 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             abs_x = int(x * screen_width)
             abs_y = int(y * screen_height)
             pyautogui.mouseUp(abs_x, abs_y)
-            self._send_json_response(200, {"status": "success", "action": "drag_end", "position": {"x": abs_x, "y": abs_y}})
+            self._send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "action": "drag_end",
+                    "position": {"x": abs_x, "y": abs_y},
+                },
+            )
 
         except Exception as exc:
             logger.error("Error ending drag: %s", exc)
@@ -314,7 +344,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         try:
             delta = data.get("delta", 1)
             pyautogui.scroll(delta)
-            self._send_json_response(200, {"status": "success", "action": "scroll", "delta": delta})
+            self._send_json_response(
+                200, {"status": "success", "action": "scroll", "delta": delta}
+            )
 
         except Exception as exc:
             logger.error("Error scrolling mouse: %s", exc)
@@ -338,7 +370,9 @@ class RemoteControlServer:
         server.stop()
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080, config: dict | None = None):
+    def __init__(
+        self, host: str = "0.0.0.0", port: int = 8080, config: dict | None = None
+    ):
         self.host = host
         self.port = port
         self.server: HTTPServer | None = None
@@ -358,9 +392,13 @@ class RemoteControlServer:
         try:
             self.server = HTTPServer((self.host, self.port), RemoteControlHandler)
             self.is_running = True
-            self.server_thread = threading.Thread(target=self._run_server, daemon=True, name="RemoteControlServer")
+            self.server_thread = threading.Thread(
+                target=self._run_server, daemon=True, name="RemoteControlServer"
+            )
             self.server_thread.start()
-            logger.info("Remote control server started on http://%s:%s", self.host, self.port)
+            logger.info(
+                "Remote control server started on http://%s:%s", self.host, self.port
+            )
             print(f"Remote control server started on http://{self.host}:{self.port}")
 
         except Exception as exc:
@@ -402,7 +440,9 @@ class RemoteControlServer:
 remote_control_server: RemoteControlServer | None = None
 
 
-def start_remote_control_server(host: str = "0.0.0.0", port: int = 8080, config: dict | None = None) -> RemoteControlServer:
+def start_remote_control_server(
+    host: str = "0.0.0.0", port: int = 8080, config: dict | None = None
+) -> RemoteControlServer:
     """Create (if needed) and start the global remote control server.
 
     Parameters
