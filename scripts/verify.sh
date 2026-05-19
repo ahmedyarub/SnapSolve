@@ -49,6 +49,21 @@ PROJECT_KEY="SnapSolve" # Update this to your exact sonar.projectKey
 
 echo -e "\n\e[36m--- SonarQube Issues Report ---\e[0m"
 
+# Parse sonar.exclusions from sonar-project.properties to filter out stale issues
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROPS_FILE="$SCRIPT_DIR/../sonar-project.properties"
+EXCLUSION_PATTERNS=""
+if [ -f "$PROPS_FILE" ]; then
+    EXCLUSION_LINE=$(grep "^sonar\.exclusions=" "$PROPS_FILE" | sed 's/^sonar\.exclusions=//')
+    if [ -n "$EXCLUSION_LINE" ]; then
+        # Convert sonar glob patterns to grep-compatible regex, one per line
+        EXCLUSION_PATTERNS=$(echo "$EXCLUSION_LINE" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | while read -r pat; do
+            pat=$(echo "$pat" | sed 's/\./\\./g; s|\*\*/|(.+/)?|g; s/\*/[^/]*/g')
+            echo "^$pat"
+        done)
+    fi
+fi
+
 # Query for issues
 API_URL="${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&types=CODE_SMELL,BUG,VULNERABILITY"
 ISSUES_RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$API_URL")
@@ -61,14 +76,28 @@ else
         echo -e "\e[31mFailed to fetch issues from SonarQube API (invalid JSON response).\e[0m"
         echo -e "\e[31mResponse: $ISSUES_RESPONSE\e[0m"
     else
-        ISSUE_COUNT=$(echo "$ISSUES_RESPONSE" | jq '.issues | length')
+        # Filter out issues from excluded paths
+        if [ -n "$EXCLUSION_PATTERNS" ]; then
+            FILTERED_RESPONSE=$(echo "$ISSUES_RESPONSE" | jq --arg prefix "${PROJECT_KEY}:" --arg patterns "$EXCLUSION_PATTERNS" '
+                .issues | map(
+                    select(
+                        (.component | sub($prefix; "")) as $path |
+                        ($patterns | split("\n") | map(select(length > 0)) | all(. as $pat | $path | test($pat) | not))
+                    )
+                )
+            ')
+        else
+            FILTERED_RESPONSE=$(echo "$ISSUES_RESPONSE" | jq '.issues')
+        fi
+
+        ISSUE_COUNT=$(echo "$FILTERED_RESPONSE" | jq 'length')
     fi
 
     if [ "$ISSUE_COUNT" -eq 0 ] || [ "$ISSUE_COUNT" == "null" ]; then
         echo -e "\e[32mNo issues found!\e[0m"
     else
         # Parse the JSON and format it as: [Rule] File:Line - Message [Severity]
-        echo "$ISSUES_RESPONSE" | jq -r --arg prefix "${PROJECT_KEY}:" '.issues[] | "[\(.rule)] \(.component | sub($prefix; "")):\(.textRange.startLine // "N/A") - \(.message) [\(.severity)]"' | while read -r line; do
+        echo "$FILTERED_RESPONSE" | jq -r --arg prefix "${PROJECT_KEY}:" '.[] | "[\(.rule)] \(.component | sub($prefix; "")):\(.textRange.startLine // "N/A") - \(.message) [\(.severity)]"' | while read -r line; do
             echo -e "\e[31m$line\e[0m"
         done
     fi

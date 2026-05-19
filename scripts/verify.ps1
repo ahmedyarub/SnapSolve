@@ -57,17 +57,51 @@ try
 
     try
     {
+        # Parse sonar.exclusions from sonar-project.properties to filter out stale issues
+        $ExclusionPatterns = @()
+        $PropsFile = Join-Path $PSScriptRoot "..\sonar-project.properties"
+        if (Test-Path $PropsFile)
+        {
+            $ExclusionLine = (Get-Content $PropsFile | Where-Object { $_ -match "^sonar\.exclusions=" }) -replace "^sonar\.exclusions=", ""
+            if ($ExclusionLine)
+            {
+                # Convert sonar glob patterns (e.g. **/build/**) to regex patterns
+                $ExclusionPatterns = $ExclusionLine -split "," | ForEach-Object {
+                    $pattern = $_.Trim()
+                    $pattern = $pattern -replace "\.", "\."
+                    $pattern = $pattern -replace "\*\*/", "(.+/)?"
+                    $pattern = $pattern -replace "\*", "[^/]*"
+                    "^$pattern"
+                }
+            }
+        }
+
         # Query for issues
         $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY"
         $IssuesResponse = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
 
-        if ($IssuesResponse.issues.Count -eq 0)
+        # Filter out issues from excluded paths
+        $filteredIssues = $IssuesResponse.issues | Where-Object {
+            $filePath = $_.component.Replace("${ProjectKey}:", "")
+            $excluded = $false
+            foreach ($pattern in $ExclusionPatterns)
+            {
+                if ($filePath -match $pattern)
+                {
+                    $excluded = $true
+                    break
+                }
+            }
+            -not $excluded
+        }
+
+        if ($filteredIssues.Count -eq 0)
         {
             Write-Host "No issues found!" -ForegroundColor Green
         }
         else
         {
-            foreach ($issue in $IssuesResponse.issues)
+            foreach ($issue in $filteredIssues)
             {
                 # Format: [Rule] File:Line - Message (Severity)
                 $filePath = $issue.component.Replace("${ProjectKey}:", "")
