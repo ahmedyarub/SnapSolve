@@ -20,43 +20,56 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        android:background="@color/surface_dark"
-        android:layout_marginBottom="4dp">
+        android:orientation="vertical"
+        android:background="#1565C0"
+        android:padding="12dp"
+        android:layout_marginBottom="6dp">
 
-        <EditText
-            android:id="@+id/ipAddressEditText"
-            android:layout_width="0dp"
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="@string/hint_server_ip"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_hint"
-            android:background="@color/surface_elevated"
-            android:padding="8dp"
-            android:inputType="textNoSuggestions"
-            android:layout_marginEnd="8dp" />
+            android:text="Server Connection"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
 
-        <EditText
-            android:id="@+id/portEditText"
-            android:layout_width="80dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_port"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_hint"
-            android:background="@color/surface_elevated"
-            android:padding="8dp"
-            android:layout_marginEnd="8dp"
-            android:inputType="number" />
+            android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/connectButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/btn_connect"
-            android:backgroundTint="@color/btn_connect"
-            android:textColor="@color/text_primary" />
+            <EditText
+                android:id="@+id/ipAddressEditText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Server IP (e.g. 192.168.1.100)"
+                android:textColor="#000000"
+                android:textColorHint="#666666"
+                android:textSize="14sp"
+                android:inputType="textNoSuggestions"
+                android:singleLine="true"
+                android:layout_marginEnd="8dp" />
+
+            <EditText
+                android:id="@+id/portEditText"
+                android:layout_width="72dp"
+                android:layout_height="wrap_content"
+                android:hint="Port"
+                android:textColor="#000000"
+                android:textColorHint="#666666"
+                android:textSize="14sp"
+                android:inputType="number"
+                android:singleLine="true"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/connectButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- ===== Connection Status Row ===== -->

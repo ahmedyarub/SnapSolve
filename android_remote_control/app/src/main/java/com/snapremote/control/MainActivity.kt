@@ -1,8 +1,10 @@
 package com.snapremote.control
 
+import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.View
+import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -39,7 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var ipAddressEditText: EditText
     private lateinit var portEditText: EditText
-    private lateinit var connectButton: MaterialButton
+    private lateinit var connectButton: Button
     private lateinit var statusTextView: TextView
     private lateinit var touchpadView: TouchpadView
 
@@ -226,7 +228,7 @@ class MainActivity : AppCompatActivity() {
     private fun setConnected(connected: Boolean) {
         isConnected = connected
 
-        connectButton.text = getString(if (connected) R.string.btn_disconnect else R.string.btn_connect)
+        connectButton.text = if (connected) getString(R.string.btn_disconnect) else getString(R.string.btn_connect)
 
         statusTextView.text = getString(if (connected) R.string.status_connected else R.string.status_disconnected)
         statusTextView.setTextColor(
