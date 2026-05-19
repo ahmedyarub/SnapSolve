@@ -12,8 +12,10 @@ class RemotePaddleOCREngine(OCREngine):
         if config is None:
             config = {}
         self.config = config
-        # noinspection HttpUrlsUsage
-        self.url = f"http://{config.get('remote_ocr_host', '127.0.0.1')}:{config.get('port', 8000)}/ocr"
+        protocol = config.get("remote_ocr_protocol", "http")
+        host = config.get("remote_ocr_host", "127.0.0.1")
+        port = config.get("port", 8000)
+        self.url = f"{protocol}://{host}:{port}/ocr"
         if status_callback:
             status_callback("Remote PaddleOCR Engine Initialized")
 
