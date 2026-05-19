@@ -7,3 +7,6 @@ sessions/
 *.onnx.json
 tests/sound_test_settings.json
 /.scannerwork/
+android_remote_control/build/
+android_remote_control/app/build/
+android_remote_control/.gradle/
