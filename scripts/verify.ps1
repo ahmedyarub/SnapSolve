@@ -76,8 +76,48 @@ try
             }
         }
 
-        # Query for issues
-        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY"
+        # Wait for SonarQube analysis to complete on the server
+        $ScannerWorkDir = Join-Path $PSScriptRoot "../.scannerwork"
+        $ReportTaskFile = Join-Path $ScannerWorkDir "report-task.txt"
+        $AnalysisDate = $null
+        if (Test-Path $ReportTaskFile)
+        {
+            $CeTaskUrl = (Get-Content $ReportTaskFile | Where-Object { $_ -match "^ceTaskUrl=" }) -replace "^ceTaskUrl=", ""
+            if ($CeTaskUrl)
+            {
+                Write-Host "Waiting for server-side analysis to complete..." -ForegroundColor Yellow
+                $maxWait = 60
+                $waited = 0
+                while ($waited -lt $maxWait)
+                {
+                    try
+                    {
+                        $TaskResponse = Invoke-RestMethod -Uri $CeTaskUrl -Headers $Headers -Method Get
+                        $TaskStatus = $TaskResponse.task.status
+                        if ($TaskStatus -eq "SUCCESS")
+                        {
+                            $AnalysisDate = $TaskResponse.task.startedAt
+                            Write-Host "Analysis completed." -ForegroundColor Green
+                            break
+                        }
+                        elseif ($TaskStatus -eq "FAILED" -or $TaskStatus -eq "CANCELED")
+                        {
+                            Write-Host "Analysis task $TaskStatus." -ForegroundColor Red
+                            break
+                        }
+                    }
+                    catch
+                    {
+                        Write-Host "Waiting for analysis..." -ForegroundColor Yellow
+                    }
+                    Start-Sleep -Seconds 2
+                    $waited += 2
+                }
+            }
+        }
+
+        # Query for issues (only open/confirmed/reopened)
+        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED"
         $IssuesResponse = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
 
         # Filter out issues from excluded paths
@@ -114,6 +154,56 @@ try
     catch
     {
         Write-Host "Failed to fetch issues from SonarQube API: $_" -ForegroundColor DarkRed
+    }
+
+    # 4. Fetch Security Hotspots
+    Write-Host "`n--- Security Hotspots Report ---" -ForegroundColor Cyan
+
+    try
+    {
+        $HotspotsUrl = "$SonarUrl/api/hotspots/search?projectKey=$ProjectKey&status=TO_REVIEW"
+        $HotspotsResponse = Invoke-RestMethod -Uri $HotspotsUrl -Headers $Headers -Method Get
+
+        # Filter out hotspots from excluded paths
+        $filteredHotspots = $HotspotsResponse.hotspots | Where-Object {
+            $filePath = $_.component.Replace("${ProjectKey}:", "")
+            $excluded = $false
+            foreach ($pattern in $ExclusionPatterns)
+            {
+                if ($filePath -match $pattern)
+                {
+                    $excluded = $true
+                    break
+                }
+            }
+            -not $excluded
+        }
+
+        if ($filteredHotspots.Count -eq 0)
+        {
+            Write-Host "No security hotspots to review!" -ForegroundColor Green
+        }
+        else
+        {
+            foreach ($hotspot in $filteredHotspots)
+            {
+                $filePath = $hotspot.component.Replace("${ProjectKey}:", "")
+                $line = if ($hotspot.textRange) { $hotspot.textRange.startLine } else { "N/A" }
+                $vulnerability = $hotspot.vulnerabilityProbability
+                Write-Host "[$( $hotspot.securityCategory )] $( $filePath ):$( $line ) - $( $hotspot.message ) [$vulnerability]" -ForegroundColor Magenta
+            }
+        }
+    }
+    catch
+    {
+        if ($_.ToString() -match "Insufficient privileges" -or $_.Exception.Response.StatusCode -eq 403)
+        {
+            Write-Host "Skipped: Token lacks 'Browse' permission for hotspots. Grant it at: $SonarUrl/project/permissions?id=$ProjectKey" -ForegroundColor DarkYellow
+        }
+        else
+        {
+            Write-Host "Failed to fetch security hotspots from SonarQube API: $_" -ForegroundColor DarkRed
+        }
     }
 
     Write-Host "-------------------------------`n" -ForegroundColor Cyan
