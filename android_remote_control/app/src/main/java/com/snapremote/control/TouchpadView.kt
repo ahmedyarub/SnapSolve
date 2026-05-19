@@ -64,10 +64,6 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        return handleTouchEvent(event)
-    }
-
-    private fun handleTouchEvent(event: MotionEvent): Boolean {
         return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> handleActionDown(event)
             MotionEvent.ACTION_POINTER_DOWN -> handleActionPointerDown()
@@ -125,68 +121,67 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     private fun handleActionMove(event: MotionEvent): Boolean {
-        // Check if we have moved beyond a threshold
+        updateMoveState(event)
+        sendMouseMoveIfDragging(event)
+        return true
+    }
+
+    private fun updateMoveState(event: MotionEvent) {
         val dx = (event.x - startX).absoluteValue
         val dy = (event.y - startY).absoluteValue
         if (dx > 5f || dy > 5f) {
             hasMoved = true
         }
-        // If we have moved, cancel the long press check
         if (hasMoved) {
             longPressCheckJob?.cancel()
             longPressCheckJob = null
         }
+    }
 
-        if (isDragging && touchCount == 1) {
-            val dx = (event.x - startX) * sensitivity
-            val dy = (event.y - startY) * sensitivity
+    private fun sendMouseMoveIfDragging(event: MotionEvent) {
+        if (!isDragging || touchCount != 1) return
 
-            // Convert to relative coordinates (0-1)
-            val relativeX = (event.x / width).coerceIn(0f, 1f)
-            val relativeY = (event.y / height).coerceIn(0f, 1f)
+        val relativeX = (event.x / width).coerceIn(0f, 1f)
+        val relativeY = (event.y / height).coerceIn(0f, 1f)
 
-            // Send mouse move
-            remoteControlClient?.let { client ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    client.moveMouse(relativeX, relativeY)
-                }
+        remoteControlClient?.let { client ->
+            CoroutineScope(Dispatchers.IO).launch {
+                client.moveMouse(relativeX, relativeY)
             }
-
-            startX = event.x
-            startY = event.y
         }
-        return true
+
+        startX = event.x
+        startY = event.y
     }
 
     private fun handleActionUp(): Boolean {
-        val currentTime = System.currentTimeMillis()
-        val timeDiff = currentTime - lastTouchTime
+        val timeDiff = System.currentTimeMillis() - lastTouchTime
 
-        // Cancel long press check
         longPressCheckJob?.cancel()
         longPressCheckJob = null
 
-        if (touchCount == 1 && timeDiff < doubleClickTimeout) {
-            // Double click detected
-            remoteControlClient?.let { client ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    client.doubleClickMouse("left")
-                }
-            }
-        } else if (touchCount == 1) {
-            // Single click
-            remoteControlClient?.let { client ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    client.clickMouse("left")
-                }
-            }
-        }
+        handleClickOnRelease(timeDiff)
 
         isDragging = false
         touchCount = 0
         isLongPress = false
         invalidate()
         return true
+    }
+
+    private fun handleClickOnRelease(timeDiff: Long) {
+        if (touchCount != 1) return
+
+        val clickType = if (timeDiff < doubleClickTimeout) "double" else "single"
+        remoteControlClient?.let { client ->
+            CoroutineScope(Dispatchers.IO).launch {
+                if (clickType == "double") {
+                    client.doubleClickMouse("left")
+                } else {
+                    client.clickMouse("left")
+                }
+            }
+        }
     }
 
     private fun handleActionPointerUp(): Boolean {
@@ -205,7 +200,6 @@ class TouchpadView @JvmOverloads constructor(
         return true
     }
 
-    
     private fun handleRightClick() {
         remoteControlClient?.let { client ->
             CoroutineScope(Dispatchers.IO).launch {
