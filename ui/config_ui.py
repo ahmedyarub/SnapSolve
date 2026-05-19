@@ -95,6 +95,16 @@ class ConfigUI(QDialog):
         self.warmup_realtime_transcription = QCheckBox("Warmup Real-time Transcription")
         self._current_profile_data = None
 
+        # Remote Control tab widgets
+        self.remote_control_tab = QWidget()
+        self.enable_remote_control = QCheckBox("Enable Remote Control Server")
+        self.remote_control_host = QLineEdit(
+            self.config.get("remote_control_host", "0.0.0.0")
+        )
+        self.remote_control_port = QLineEdit(
+            str(self.config.get("remote_control_port", 8080))
+        )
+
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
 
@@ -120,11 +130,13 @@ class ConfigUI(QDialog):
         self.tabs.addTab(self.profile_tab, "Profile Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
+        self.tabs.addTab(self.remote_control_tab, "Remote Control")
 
         self.setup_app_tab()
         self.setup_profile_tab()
         self.setup_warmup_tab()
         self.setup_shortcuts_tab()
+        self.setup_remote_control_tab()
 
         # Buttons
         self.button_box = QDialogButtonBox()
@@ -376,6 +388,35 @@ class ConfigUI(QDialog):
         layout.addRow("Speech Recognition:", self.warmup_sr)
         layout.addRow("Real-time Transcription:", self.warmup_realtime_transcription)
 
+    def setup_remote_control_tab(self):
+        """Build the Remote Control settings tab.
+
+        Allows the user to enable the Android remote control server, set the
+        network interface it binds to, and choose the TCP port.
+        Restart required for changes to take effect.
+        """
+        layout = QFormLayout(self.remote_control_tab)
+
+        self.enable_remote_control.setChecked(
+            self.config.get("enable_remote_control", False)
+        )
+        layout.addRow("Enable Remote Control:", self.enable_remote_control)
+
+        self.remote_control_host.setPlaceholderText("e.g. 0.0.0.0 (all interfaces)")
+        layout.addRow("Host / Interface:", self.remote_control_host)
+
+        self.remote_control_port.setPlaceholderText("e.g. 8080")
+        layout.addRow("Port:", self.remote_control_port)
+
+        hint = QLabel(
+            "When enabled, SnapSolve listens for connections from the Android remote "
+            "control app on the specified port.\n"
+            "Make sure your firewall allows inbound TCP traffic on that port.\n"
+            "A restart is required for changes to take effect."
+        )
+        hint.setWordWrap(True)
+        layout.addRow(hint)
+
     def setup_shortcuts_tab(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -442,6 +483,11 @@ class ConfigUI(QDialog):
         self.config["audio_input_device_name"] = (
             self.audio_input_device_combo.currentData()
         )
+
+        # Remote Control settings
+        self.config["enable_remote_control"] = self.enable_remote_control.isChecked()
+        self.config["remote_control_host"] = self.remote_control_host.text().strip() or "0.0.0.0"
+        self.config["remote_control_port"] = int(self.remote_control_port.text().strip() or "8080")
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:

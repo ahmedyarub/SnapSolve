@@ -152,6 +152,10 @@ def _get_default_config():
         "audio_input_device_name": None,
         "realtime_transcription": True,
         "transcription_pause_threshold": 1.0,
+        # Remote control server (Android app integration)
+        "enable_remote_control": False,
+        "remote_control_host": "0.0.0.0",
+        "remote_control_port": 8080,
     }
 
 

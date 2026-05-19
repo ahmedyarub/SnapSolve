@@ -1342,7 +1342,7 @@ def main():
         remote_host = config.get("remote_control_host", "0.0.0.0")
         remote_port = config.get("remote_control_port", 8080)
         try:
-            start_remote_control_server(remote_host, remote_port)
+            start_remote_control_server(remote_host, remote_port, config)
         except Exception as remote_error:
             print(f"Failed to start remote control server: {remote_error}")
 
