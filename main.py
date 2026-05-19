@@ -1196,7 +1196,9 @@ def _register_test_hotkeys(config, active_profile):
         import secrets
         from core.output import show_subtitle
 
-        test_text = f"Transcription test with random number: {secrets.randbelow(1000) + 1}"
+        test_text = (
+            f"Transcription test with random number: {secrets.randbelow(1000) + 1}"
+        )
         print(f"Testing transcription display: {test_text}")
         show_subtitle(test_text)
 
