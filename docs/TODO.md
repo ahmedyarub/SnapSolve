@@ -13,7 +13,7 @@ This document tracks planned features, enhancements, and known issues that need 
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
-- [ ] **Migrate to Qt**: Full transition to Qt to enable native Markdown and LaTeX (MathJax) support in the UI.
+- [x] **Migrate to Qt**: Completed. The UI now uses PyQt6 with QWebEngineView, rendering Markdown via marked.js, LaTeX via KaTeX, and diagrams via Mermaid.js.
 - [ ] **Asynchronous Remote OCR Service**: When the remote OCR source is enabled, start the service asynchronously. Disable the capture and multi-select buttons until the service port is successfully polled. Ensure that if the app starts the service, it correctly kills it upon exiting.
 - [ ] **Application Initialization State**: Introduce a "Ready" popup indicating that initialization has finished. Prevent showing the control panel or accepting keyboard shortcuts until the application is fully loaded.
 

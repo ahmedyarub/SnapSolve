@@ -256,6 +256,6 @@ Results are displayed with status indicators (✅ PASSED, ❌ FAILED, ❓ NOT_RU
 Both test suites serve complementary purposes:
 
 - **test_sound.py**: Ideal for development, debugging, and feature validation
-- **E2E tests**: Essential for integration testing, regression testing, and CI/CD
+- **E2E tests**: Essential for integration testing and regression testing on developer machines
 
 The combination ensures both individual component reliability and overall system integrity.

@@ -1,4 +1,4 @@
-### VB-Audio Virtual Audio Cable
+# VB-Audio Virtual Audio Cable
 
 VB-Audio Virtual Audio Cable is a virtual audio device that allows you to route audio between applications. This is particularly useful for:
 
@@ -65,7 +65,7 @@ The test suite uses VB-Audio for automated audio testing:
 3. **End-to-End Audio Testing:**
    - Some tests route audio from CABLE Output to CABLE Input to create a complete audio loop
    - This allows testing of the entire audio pipeline (TTS → recording → speech recognition) without external audio hardware
-   - This is particularly useful for CI/CD environments and automated testing
+   - This is particularly useful for developer machine automated testing
 
 **Benefits for Development and Testing:**
 

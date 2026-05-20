@@ -7,30 +7,74 @@ and codebase specific conventions to ensure your modifications are safe and perf
 
 This application relies on a strictly decoupled architecture:
 
-1.  **`core/`**: The main business logic. Includes:
-    *   `sources/`: For extracting text or images (Text, Screen capture, Audio/Sound).
-    *   `llm/`: LLM Engines (`GoogleGenAIEngine`, `OllamaEngine`, `GeminiCLIEngine`).
-    *   `sinks/`: Where data is sent (`PopupSink`, `AudioSink`, `CompositeSink`).
-    *   `pipeline/`: Orchestrates the flow from Source -> LLM -> Sink.
-2.  **`ui/`**: All PyQt6-related code. Do not mix heavy I/O or LLM requests directly inside UI event handlers.
+1.  **`core/`**: The main business logic.
+    *   `sources/`: Input sources for extracting text or images.
+        *   `text.py`: `TextSource` — direct text pass-through.
+        *   `screenshot.py`: `ScreenshotSource` — screen capture via `PIL.ImageGrab` with OCR support.
+        *   `sound.py`: `SoundSource` — audio recording with Google Speech-to-Text and WhisperLive real-time
+          transcription, subtitle display, and server management.
+        *   `manager.py`: Global active source singleton (`get_active_source_instance()`,
+          `set_active_source_instance()`).
+    *   `sources/ocr/`: OCR engine implementations.
+        *   `paddleocr.py`: `LocalPaddleOCREngine` — local PaddleOCR with warmup and confidence filtering.
+        *   `remote_paddle.py`: `RemotePaddleOCREngine` — remote PaddleOCR via HTTP POST.
+        *   `none.py`: `NoOCREngine` — no-op OCR.
+        *   `exceptions.py`: Custom exception hierarchy (`OCRError`, `OCRInitializationError`, etc.).
+    *   `llm/`: LLM Engine implementations.
+        *   `google_genai.py`: `GoogleGenAIEngine` — Google GenAI SDK with streaming and multi-turn history.
+        *   `ollama.py`: `OllamaEngine` — Ollama REST API with base64 image encoding.
+        *   `gemini_cli.py`: `GeminiCLIEngine` — wraps the `gemini` CLI tool via subprocess.
+    *   `sinks/`: Output sinks for presenting results to the user.
+        *   `popup.py`: `PopupSink` — accumulates text chunks, renders via `show_popup()` from `core/output.py`.
+        *   `audio.py`: `AudioSink` — Piper TTS synthesis with Markdown stripping and configurable output device.
+        *   `composite.py`: `CompositeSink` — fan-out to multiple sinks (e.g., popup + audio simultaneously).
+    *   `pipeline/`: Pipeline orchestration.
+        *   `pipeline.py`: `process_pipeline()` orchestrates Source → LLM → Sink. Also contains
+          `ConcurrentSinkWrapper` for main + fallback model concurrency.
+    *   `output.py`: **Central UI module** (928 lines) — contains `PopupWidget`, `PanelWidget`,
+      `TextInputWidget`, `SubtitleWidget`, `RecordButton`, `UIManager`, and `UISignals` for thread-safe
+      signal-based communication. This is the largest single file in the project.
+    *   `session_manager.py`: `SessionManager` — chat session persistence, history management, transcription
+      file storage.
+    *   `remote_control_server.py`: HTTP server for Android remote control — mouse control, app action dispatch.
+2.  **`ui/`**: PyQt6 dialog and overlay components. Do not mix heavy I/O or LLM requests directly inside UI event
+    handlers.
+    *   `config_ui.py`: `ConfigUI(QDialog)` — full configuration dialog with tabs for settings, profiles,
+      shortcuts, warmup, and remote control.
+    *   `selector.py`: `CoordinateSelector(QWidget)` — screen region selector overlay with DPI-aware coordinates.
 3.  **`config/`**: Configuration parsing and profile management.
-4.  `services/`: Service implementations like the remote OCR service.
-5.  `sessions/`: Local storage for chat session history.
-6.  `tests/`: Contains the tests.
-    *   `e2e/`: Contains the end-to-end tests that should only run on the developer's machine. Don't run or modify the
-      files inside without understanding the full test infrastructure.
-    *   `sanity/`: Contains standalone sanity check scripts for component verification.
+    *   `settings.py`: Config loading/saving, profile management, argument parsing, audio device helpers.
+    *   `config.json` / `config.sample.json`: Active and sample configuration files.
+    *   `profiles.json`: Named profiles with engine, model, OCR, and prompt settings.
+    *   `prompts.json`: System prompt definitions.
+    *   `llm_models.json`: Model registry with capability flags (e.g., `supports_ocr`).
+4.  **`services/`**: External services.
+    *   `ocr_service.py`: FastAPI microservice for remote PaddleOCR (POST `/ocr` endpoint).
+    *   `whisperlive/`: Git submodule — WhisperLive real-time transcription server.
+5.  **`sessions/`**: Local storage for chat session history (JSON files), captured images, and transcriptions.
+6.  **`tests/`**: Contains the tests.
+    *   `e2e/`: End-to-end tests with image-recognition-based UI automation. Only run on the developer's machine.
+      Don't run or modify the files inside without understanding the full test infrastructure.
+    *   `sanity/`: Standalone sanity check scripts (OCR, audio, WhisperLive warmup) for component verification.
+7.  **`scripts/`**: Verification scripts.
+    *   `verify.ps1` / `verify.sh`: Linting (Ruff), formatting, Qodana, SonarQube, and Kotlin/Android lint.
+8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via HTTP.
+9.  **`docs/`**: Additional documentation (architecture, features, setup guides, roadmap).
+10. **`main.py`**: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI,
+    hotkeys, and runs the event loop. Contains all handler functions (`handle_capture()`, `handle_text_submit()`,
+    `handle_start_record()`, etc.) and global state management.
 
 ## Crucial Technical Constraints
 
 ### PyQt6 & Thread Safety
 
-* The PyQt6 GUI uses a persistent event loop (`QApplication.exec()`).
+* The PyQt6 GUI runs on the **main thread** via `QApplication.exec()`. All UI widgets must be accessed from this thread.
 * **Global Hotkeys:** The `keyboard` module captures hotkeys in a blocking fashion. Any callback triggered by
   `keyboard.read_hotkey()` **must not** perform long-running blocking operations or attempt to update PyQt6 UI
   elements directly.
 * **UI Updates:** All updates to the UI from background threads (like LLM streaming chunks or hotkey callbacks) must be
-  dispatched to the main UI thread using `QTimer.singleShot()` or Qt signals/slots.
+  dispatched to the main UI thread using `UISignals` (Qt signals/slots defined in `core/output.py`) or
+  `QTimer.singleShot()`.
 * **Qt Event Handlers:** When implementing Qt event handlers (e.g., `mousePressEvent`, `keyPressEvent`, `paintEvent`, etc.),
   you must add `# noinspection PyPep8Naming` before the method definition. Qt requires camelCase naming for
   event handlers, which conflicts with PEP 8 naming conventions. Example:
@@ -43,13 +87,14 @@ This application relies on a strictly decoupled architecture:
 
 ### Windows DPI & Coordinates
 
-* Because the app uses `PIL.ImageGrab` alongside Tkinter overlays, Windows DPI scaling can cause coordinate mismatches.
+* Because the app uses `PIL.ImageGrab` alongside PyQt6 overlays, Windows DPI scaling can cause coordinate mismatches.
 * Ensure that DPI awareness is enabled (e.g., `ctypes.windll.shcore.SetProcessDpiAwareness(2)`) early in the application
   lifecycle before UI initialization so physical pixels match logical coordinates.
 
 ### Concurrent LLM Execution
 
-* The app supports running a main model and a fallback model concurrently via `ConcurrentSinkWrapper`.
+* The app supports running a main model and a fallback model concurrently via `ConcurrentSinkWrapper` (located in
+  `core/pipeline/pipeline.py`, not in `core/sinks/`).
 * When testing modifications to LLM engines or sinks, ensure that your changes handle the abrupt replacement of fallback
   text with main model text correctly.
 * Engines implement a `warmup()` method. When dealing with engine instantiation, remember to call this method to
@@ -57,12 +102,17 @@ This application relies on a strictly decoupled architecture:
 
 ### Audio Processing
 
-* **Audio Recording:** The `SoundSource` uses background threading for audio recording to avoid blocking the UI.
+* **Audio Recording:** The `SoundSource` (`core/sources/sound.py`, 489 lines) uses background threading for audio
+  recording to avoid blocking the UI.
 * **Speech Recognition:** Google Speech-to-Text is used for transcription. Ensure proper error handling for network issues
   or unrecognized speech.
+* **Real-time Transcription:** WhisperLive integration in `SoundSource` manages the server process lifecycle (health
+  check, startup, warmup, cleanup) and streams audio to a local WhisperLive server for real-time subtitles via
+  `SubtitleWidget` in `core/output.py`.
 * **Audio Devices:** The application supports configurable audio input and output devices. Always validate device names
   and handle cases where specified devices are not available.
-* **TTS Integration:** Piper TTS runs in a separate daemon thread. Ensure proper cleanup and resource management.
+* **TTS Integration:** Piper TTS (`AudioSink` in `core/sinks/audio.py`) runs in a separate daemon thread. It strips
+  Markdown from text via `clean_text()` before synthesis. Ensure proper cleanup and resource management.
 
 ### File Handling & OCR
 
@@ -74,9 +124,11 @@ This application relies on a strictly decoupled architecture:
 
 ### Output & Rendering
 
-* The `PopupSink` features a custom, lightweight Markdown parser native to Tkinter's `Text` widget tags.
-* If you need to add new Markdown features (e.g., blockquotes), modify the parser in `core/output.py` or the sink
-  directly, utilizing Tkinter text tags rather than pulling in external HTML rendering libraries.
+* The `PopupSink` delegates rendering to `PopupWidget` in `core/output.py`, which uses a PyQt6 `QWebEngineView`
+  powered by `marked.js`, `KaTeX`, and `Mermaid.js`.
+* This enables rich Markdown, LaTeX math, syntax-highlighted code blocks, and diagram rendering with streaming updates.
+* If you need to add new rendering features, modify `core/output.py` (specifically the `PopupWidget` class and its
+  HTML/JS template). Do **not** introduce additional rendering libraries without good reason.
 
 ## General Practices
 

@@ -112,7 +112,7 @@ Before sending data to the LLM, the application enriches the prompt:
 
 ## 3. LLM Engine (`core/llm/`)
 The Engine layer handles communication with the AI models.
-*   **Supported Engines:** `GoogleGenAIEngine`, `GeminiCLIEngine`, and `OllamaEngine`.
+*   **Supported Engines:** `GoogleGenAIEngine` (`google_genai.py`), `GeminiCLIEngine` (`gemini_cli.py`), and `OllamaEngine` (`ollama.py`).
 *   **Concurrency (`ConcurrentSinkWrapper`):** The architecture supports running a primary model and a fallback model concurrently using threading.
     *   Both models are warmed up upon application startup.
     *   If the fallback model begins generating first, its output is streamed to the user.
@@ -121,23 +121,41 @@ The Engine layer handles communication with the AI models.
 
 ## 4. Response Sink (`core/sinks/`)
 The Sink layer is responsible for taking the generated text and presenting it to the user.
-*   **Popup Sink:** Streams the text directly into a PyQt6 QTextEdit widget (`ui/`). It implements a lightweight Markdown parser to natively render bold text, bullet points, markdown tables, and syntax-highlighted code blocks dynamically as chunks arrive.
+*   **Popup Sink:** Renders the response using a PyQt6 `QWebEngineView` powered by `marked.js`, `KaTeX`, and `Mermaid.js` (`core/output.py`). This enables rich Markdown, LaTeX math, syntax-highlighted code blocks, and diagram rendering, with streaming updates as chunks arrive.
 *   **Audio Sink:** A separate daemon thread runs Piper TTS to read the completed response aloud without blocking the UI.
 
 ## Directory Structure
-*   `core/`: Contains the main logic, including the pipeline orchestrator, sources, llm engines, and sinks.
-    *   `sources/`: Input sources (text, screenshot, sound) and OCR engines.
-    *   `llm/`: LLM engine implementations (Gemini CLI, Google GenAI, Ollama).
-    *   `sinks/`: Output sinks (popup, audio, composite).
-    *   `pipeline/`: Pipeline orchestration and processing logic.
-*   `ui/`: Contains the PyQt6 GUI logic, control panels, configuration UI, popup notifications, and coordinate selection overlays.
-*   `config/`: Manages configuration files (`config.json`, `profiles.json`, `prompts.json`), dynamic profile switching, and prompt definitions.
-*   `services/`: Contains service implementations like the remote OCR service.
-*   `sessions/`: Stores serialized JSON files representing the chat history of previous sessions.
-*   `tests/`: Contains test suites.
-    *   `e2e/`: End-to-end tests for automated UI interaction testing.
-    *   `sanity/`: Standalone sanity check scripts for component verification.
+*   `core/`: Contains the main logic.
+    *   `output.py`: Central UI module (928 lines) — `PopupWidget`, `PanelWidget`, `TextInputWidget`, `SubtitleWidget`, `RecordButton`, `UIManager`, and `UISignals` for thread-safe communication.
+    *   `session_manager.py`: Chat session persistence and history management.
+    *   `remote_control_server.py`: HTTP server for Android remote control (mouse, actions).
+    *   `sources/`: Input sources (`TextSource`, `ScreenshotSource`, `SoundSource`) and a `manager.py` singleton.
+    *   `sources/ocr/`: OCR engines (`LocalPaddleOCREngine`, `RemotePaddleOCREngine`, `NoOCREngine`) with custom exception hierarchy.
+    *   `llm/`: LLM engine implementations (`GoogleGenAIEngine`, `GeminiCLIEngine`, `OllamaEngine`).
+    *   `sinks/`: Output sinks (`PopupSink`, `AudioSink`, `CompositeSink`).
+    *   `pipeline/`: Pipeline orchestration (`process_pipeline()`) and `ConcurrentSinkWrapper` for fallback model concurrency.
+*   `ui/`: PyQt6 dialog and overlay components.
+    *   `config_ui.py`: Full configuration dialog (`ConfigUI`) with tabs for settings, profiles, shortcuts, warmup, and remote control.
+    *   `selector.py`: Screen region selector overlay (`CoordinateSelector`) with DPI-aware coordinates.
+*   `config/`: Configuration files and parsing logic.
+    *   `settings.py`: Config loading/saving, profile management, argument parsing, audio device helpers.
+    *   `config.json` / `config.sample.json`: Active and sample configuration.
+    *   `profiles.json`: Named profiles with engine, model, OCR, and prompt settings.
+    *   `prompts.json`: System prompt definitions.
+    *   `llm_models.json`: Model registry with capabilities (supports_ocr flags).
+*   `services/`: External services.
+    *   `ocr_service.py`: FastAPI microservice for remote PaddleOCR.
+    *   `whisperlive/`: Git submodule — WhisperLive real-time transcription server.
+*   `sessions/`: Serialized JSON files for chat session history, captured images, and transcriptions.
+*   `tests/`: Test suites.
+    *   `e2e/`: End-to-end tests with image-recognition-based UI automation.
+    *   `sanity/`: Standalone sanity check scripts (OCR, audio, WhisperLive warmup).
+*   `scripts/`: Verification scripts (`verify.ps1`, `verify.sh`) for linting, formatting, and static analysis.
+*   `android_remote_control/`: Companion Android app (Kotlin/Gradle) for remote control via HTTP.
+*   `docs/`: Additional documentation (architecture, features, setup guides, roadmap).
+*   `main.py`: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI, hotkeys, and runs the event loop.
 
 ## Threading & UI State
-*   **PyQt6 Event Loop:** The UI runs in a persistent background thread (`QApplication.exec()`).
-*   **Thread Safety:** Because global hotkeys (via the `keyboard` module) run in their own threads, all UI updates triggered by hotkeys or incoming LLM streams are dispatched safely back to the main UI thread using `QTimer.singleShot()` or Qt signals/slots.
+*   **PyQt6 Event Loop:** The UI runs on the **main thread** via `QApplication.exec()`. All UI widgets must be accessed from this thread.
+*   **Background Threads:** Global hotkeys (via the `keyboard` module), LLM streaming, audio recording, and OCR processing all run in background threads.
+*   **Thread Safety:** All UI updates from background threads are dispatched to the main thread using `UISignals` (Qt signals/slots defined in `core/output.py`) or `QTimer.singleShot()`.
