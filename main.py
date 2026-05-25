@@ -124,9 +124,9 @@ def _run_in_processing_thread(config, work_fn, error_label="processing"):
     def _worker():
         try:
             work_fn()
-        except Exception as e:
-            print(f"Error during {error_label}: {e}")
-            _show_status_popup(config, f"Error: {e}", auto_close=5000)
+        except Exception as err:
+            print(f"Error during {error_label}: {err}")
+            _show_status_popup(config, f"Error: {err}", auto_close=5000)
         finally:
             set_processing(False)
 
