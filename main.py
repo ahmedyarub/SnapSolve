@@ -111,13 +111,16 @@ def _show_status_popup(config, message, auto_close=None):
 
 def _make_status_callback(config):
     """Create a status callback that shows popup messages."""
+
     def status_update(msg):
         _show_status_popup(config, msg)
+
     return status_update
 
 
 def _run_in_processing_thread(config, work_fn, error_label="processing"):
     """Run work_fn in a daemon thread with standard error handling and processing state management."""
+
     def _worker():
         try:
             work_fn()
@@ -126,23 +129,30 @@ def _run_in_processing_thread(config, work_fn, error_label="processing"):
             _show_status_popup(config, f"Error: {e}", auto_close=5000)
         finally:
             set_processing(False)
+
     threading.Thread(target=_worker, daemon=True).start()
 
 
 def _ensure_ocr_engine(active_profile, status_callback=None):
     """Lazily initialize PaddleOCR engine if needed."""
     global ocr_engine_instance
-    if ocr_engine_instance is None and active_profile.get("ocr_engine", "none") == "paddleocr":
+    if (
+        ocr_engine_instance is None
+        and active_profile.get("ocr_engine", "none") == "paddleocr"
+    ):
         if status_callback:
             status_callback("Loading PaddleOCR engine...")
         else:
             print("Loading PaddleOCR engine on demand...")
         from core.sources.ocr import LocalPaddleOCREngine
+
         ocr_engine_instance = LocalPaddleOCREngine(warmup=False)
     return ocr_engine_instance
 
 
-def _execute_text_pipeline(config, active_profile, prompt_text, status_update, text=None):
+def _execute_text_pipeline(
+    config, active_profile, prompt_text, status_update, text=None
+):
     """Execute text pipeline."""
     global llm_engine_instance, fallback_llm_engine_instance, audio_sink_instance
 
@@ -452,7 +462,9 @@ def handle_multi_capture(config, active_profile):
 def _check_multi_capture_texts(config, capture_texts):
     """Check if there are multi-capture texts."""
     if not capture_texts:
-        _show_status_popup(config, "No text captured in multi-capture mode.", auto_close=3000)
+        _show_status_popup(
+            config, "No text captured in multi-capture mode.", auto_close=3000
+        )
         return False
     return True
 
@@ -487,7 +499,11 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             status_update = _make_status_callback(config)
 
             _execute_text_pipeline(
-                config, active_profile, active_prompt_text, status_update, text=combined_text
+                config,
+                active_profile,
+                active_prompt_text,
+                status_update,
+                text=combined_text,
             )
 
         except Exception as multi_error:
@@ -508,7 +524,9 @@ def handle_new_chat_session(config):
         # Visual reset and popup
         if "popup" in config.get("output_mode", ["popup"]):
             close_popup()
-        _show_status_popup(config, f"New Chat Session Started\nID: {session_id}", auto_close=3000)
+        _show_status_popup(
+            config, f"New Chat Session Started\nID: {session_id}", auto_close=3000
+        )
 
 
 def handle_toggle_stitching(config, active_profile):
@@ -643,7 +661,9 @@ def handle_cycle_source(config, active_profile):
     set_active_source_instance(new_source)
     set_active_source_ui(new_source.name, opacity=config.get("popup_opacity", 0.8))
     print(f"Source cycled to: {new_source.name}")
-    _show_status_popup(config, f"Source changed to: {new_source.name.capitalize()}", auto_close=2000)
+    _show_status_popup(
+        config, f"Source changed to: {new_source.name.capitalize()}", auto_close=2000
+    )
 
 
 def handle_reselect(config):
