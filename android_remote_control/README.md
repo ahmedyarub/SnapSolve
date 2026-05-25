@@ -41,18 +41,110 @@ An Android application that allows you to remotely control SnapSolve from your p
    }
    ```
 
-### Building the App
+### Prerequisites
 
-1. Open Android Studio
-2. Import the project from the `android_remote_control` directory
-3. Wait for Gradle sync to complete
-4. Build and run on your device or emulator
+| Tool | Minimum version | Notes |
+|------|----------------|-------|
+| **JDK** | 17+ | Android Studio / IntelliJ bundles one; verify via `java -version` |
+| **Android SDK** | API 35 (compileSdk) | Install via **SDK Manager** inside your IDE |
+| **Kotlin plugin** | 1.9.24 | Bundled with Android Studio; install separately in IntelliJ IDEA |
+| **Gradle** | 8.x | The project ships a Gradle wrapper (`gradlew.bat`), no manual install needed |
 
-### Installing APK
+### Opening the Project (JetBrains IDEs on Windows)
 
-1. Build the APK in Android Studio: Build > Build Bundle(s) / APK(s) > Build APK(s)
-2. Transfer the APK to your Android device
-3. Install the APK (you may need to enable "Install from unknown sources")
+**Android Studio** (recommended):
+
+1. **File → Open…** → navigate to the `android_remote_control` directory and click **OK**.
+2. Wait for the Gradle sync to finish (progress shown in the bottom status bar).
+3. If prompted to update the Android Gradle Plugin or Gradle wrapper, accept the defaults.
+
+**IntelliJ IDEA Ultimate / Community**:
+
+1. Make sure the **Android** plugin is installed (**File → Settings → Plugins → Marketplace** → search *Android*).
+2. **File → Open…** → select the `android_remote_control` directory.
+3. IntelliJ will detect it as a Gradle project and import it automatically.
+
+### Running on a Physical Device via USB
+
+1. **Enable Developer Options** on your Android phone:
+   *Settings → About phone → tap **Build number** 7 times.*
+2. **Enable USB Debugging**:
+   *Settings → Developer options → toggle **USB debugging** on.*
+3. Connect the phone to your PC with a USB cable and accept the "Allow USB debugging?" prompt on the phone.
+4. In your IDE, select the device from the **target device dropdown** in the toolbar.
+5. Click the **Run ▶** button (or press <kbd>Shift + F10</kbd>). The IDE builds the APK, installs it, and launches the app.
+
+### Running on a Physical Device via Wi-Fi (Android 11+)
+
+1. **Enable Wireless debugging**:
+   *Settings → Developer options → toggle **Wireless debugging** on.*
+2. Tap **Wireless debugging** → **Pair device with pairing code** to get an IP, port, and pairing code.
+3. In your IDE's **Terminal** (or a Windows terminal), run:
+   ```powershell
+   adb pair <ip>:<pairing-port> <pairing-code>
+   adb connect <ip>:<port>
+   ```
+4. The device now appears in the **target device dropdown**. Click **Run ▶** as usual.
+
+> **Tip:** After the initial pairing, the device reconnects automatically as long as both PC and phone are on the same Wi-Fi network.
+
+### Building a Release APK
+
+1. **Build → Build Bundle(s) / APK(s) → Build APK(s)** in the IDE menu.
+2. The unsigned APK is generated at:
+   ```
+   android_remote_control\app\build\outputs\apk\debug\app-debug.apk
+   ```
+3. Transfer it to your Android device (USB, cloud storage, etc.) and install it.
+   You may need to enable *Settings → Install unknown apps* for the app you used to open the file.
+
+---
+
+## Running on a Device (Same-Network Setup)
+
+Follow these steps **after** the app is installed on your phone and SnapSolve is running on your PC.
+
+### 1. Enable the Remote Control Server in SnapSolve
+
+Add (or verify) the following in `config/config.json`:
+
+```json
+{
+  "enable_remote_control": true,
+  "remote_control_host": "0.0.0.0",
+  "remote_control_port": 8080
+}
+```
+
+You can also toggle this from the SnapSolve **Config UI** (right-click the tray icon → *Settings* → *Remote Control* tab).
+
+### 2. Allow the Port Through Windows Firewall
+
+Run **once** in an elevated PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "SnapSolve Remote Control" `
+    -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+```
+
+### 3. Find Your PC's Local IP Address
+
+```powershell
+ipconfig
+```
+
+Look for the **IPv4 Address** under your active Wi-Fi or Ethernet adapter (e.g., `192.168.1.100`).
+
+### 4. Connect from the Android App
+
+1. Open **SnapSolve Remote Control** on your phone.
+2. Enter your PC's IP address and port (`8080` by default).
+3. Tap **Connect**.
+4. A successful connection enables the touchpad and all action buttons.
+
+### 5. Verify
+
+Open a browser on your phone and navigate to `http://<your-pc-ip>:8080/status`. You should see a JSON response confirming the server is running.
 
 ## Usage
 
