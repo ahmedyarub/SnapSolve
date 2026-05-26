@@ -97,6 +97,24 @@ class RemoteControlClient {
     }
 
     /**
+     * Fetch the current UI state from the server by querying `/state`.
+     *
+     * @return `JSONObject` containing the state if successful, `null` otherwise.
+     */
+    fun fetchState(): JSONObject? = try {
+        val request = Request.Builder().url("${baseUrl()}/state").get().build()
+        httpClient.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                response.body?.string()?.let { JSONObject(it) }
+            } else {
+                null
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
      * Notify the server that the Android client has connected.
      *
      * The server will block physical mouse input so that only the Android
@@ -136,17 +154,16 @@ class RemoteControlClient {
     }
 
     /**
-     * Move the mouse cursor to a position expressed as relative screen coordinates.
+     * Move the mouse cursor by relative screen coordinates.
      *
-     * The server converts the (0–1) range to absolute pixel coordinates using the
-     * host machine's screen resolution.
+     * The server scales the relative deltas using the host machine's screen resolution.
      *
-     * @param x Horizontal position in the range [0.0, 1.0].
-     * @param y Vertical position in the range [0.0, 1.0].
+     * @param dx Horizontal delta.
+     * @param dy Vertical delta.
      * @return `true` on success.
      */
-    fun moveMouse(x: Float, y: Float): Boolean = try {
-        post("/mouse/move", JSONObject().put("x", x).put("y", y))
+    fun moveMouse(dx: Float, dy: Float): Boolean = try {
+        post("/mouse/move", JSONObject().put("dx", dx).put("dy", dy))
     } catch (e: IOException) {
         false
     }
@@ -178,12 +195,10 @@ class RemoteControlClient {
     /**
      * Press and hold the mouse button to begin a drag operation.
      *
-     * @param x Relative X coordinate of the drag origin [0.0, 1.0].
-     * @param y Relative Y coordinate of the drag origin [0.0, 1.0].
      * @return `true` on success.
      */
-    fun startDrag(x: Float, y: Float): Boolean = try {
-        post("/mouse/drag_start", JSONObject().put("x", x).put("y", y))
+    fun startDrag(): Boolean = try {
+        post("/mouse/drag_start", JSONObject())
     } catch (e: IOException) {
         false
     }
@@ -191,12 +206,10 @@ class RemoteControlClient {
     /**
      * Release the mouse button to finish a drag operation.
      *
-     * @param x Relative X coordinate of the drag target [0.0, 1.0].
-     * @param y Relative Y coordinate of the drag target [0.0, 1.0].
      * @return `true` on success.
      */
-    fun endDrag(x: Float, y: Float): Boolean = try {
-        post("/mouse/drag_end", JSONObject().put("x", x).put("y", y))
+    fun endDrag(): Boolean = try {
+        post("/mouse/drag_end", JSONObject())
     } catch (e: IOException) {
         false
     }

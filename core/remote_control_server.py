@@ -161,6 +161,16 @@ class MouseBlocker:
 # Module-level singleton so the handler and server can share state.
 mouse_blocker = MouseBlocker()
 
+# Global UI state dictionary used to sync button visibility with the Android app
+ui_state: dict[str, dict[str, bool]] = {}
+
+
+def set_ui_state(state: dict[str, dict[str, bool]]) -> None:
+    """Update the global UI state broadcasted to remote clients."""
+    global ui_state
+    ui_state = state
+
+
 # Shared error message constant to avoid duplication.
 X_Y_REQUIRED_ERROR = "x and y parameters are required"
 
@@ -226,6 +236,10 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             self._send_json_response(
                 200, {"status": "running", "server": "SnapSolve Remote Control"}
             )
+        elif parsed_path.path == "/state":
+            self._send_json_response(
+                200, {"buttons": ui_state}
+            )
         elif parsed_path.path == "/":
             self._send_json_response(
                 200,
@@ -233,6 +247,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
                     "message": "SnapSolve Remote Control Server",
                     "endpoints": [
                         "/status",
+                        "/state",
                         "/action",
                         "/connect",
                         "/disconnect",
@@ -387,25 +402,24 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_mouse_move(self, data: dict) -> None:
-        """Move the cursor to relative coordinates (0–1 range).
+        """Move the cursor by relative coordinates.
 
-        The server maps the relative position to absolute screen pixels using
-        ``pyautogui.size()`` at request time so it always reflects the current
-        screen resolution.
+        The server receives normalized delta values and scales them
+        by the current screen resolution.
         """
         try:
-            x = data.get("x")
-            y = data.get("y")
-            if x is None or y is None:
-                self._send_error_response(400, X_Y_REQUIRED_ERROR)
+            dx = data.get("dx")
+            dy = data.get("dy")
+            if dx is None or dy is None:
+                self._send_error_response(400, "dx and dy parameters are required")
                 return
 
             screen_width, screen_height = pyautogui.size()
-            abs_x = int(x * screen_width)
-            abs_y = int(y * screen_height)
-            pyautogui.moveTo(abs_x, abs_y)
+            move_x = int(dx * screen_width)
+            move_y = int(dy * screen_height)
+            pyautogui.move(move_x, move_y)
             self._send_json_response(
-                200, {"status": "success", "position": {"x": abs_x, "y": abs_y}}
+                200, {"status": "success", "action": "move", "dx": move_x, "dy": move_y}
             )
 
         except Exception as exc:
@@ -457,24 +471,14 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             self._send_error_response(500, f"Error double-clicking mouse: {exc}")
 
     def _handle_mouse_drag_start(self, data: dict) -> None:
-        """Press and hold the left mouse button at the specified relative position."""
+        """Press and hold the left mouse button."""
         try:
-            x = data.get("x")
-            y = data.get("y")
-            if x is None or y is None:
-                self._send_error_response(400, X_Y_REQUIRED_ERROR)
-                return
-
-            screen_width, screen_height = pyautogui.size()
-            abs_x = int(x * screen_width)
-            abs_y = int(y * screen_height)
-            pyautogui.mouseDown(abs_x, abs_y)
+            pyautogui.mouseDown()
             self._send_json_response(
                 200,
                 {
                     "status": "success",
                     "action": "drag_start",
-                    "position": {"x": abs_x, "y": abs_y},
                 },
             )
 
@@ -483,24 +487,14 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             self._send_error_response(500, f"Error starting drag: {exc}")
 
     def _handle_mouse_drag_end(self, data: dict) -> None:
-        """Release the held mouse button at the specified relative position."""
+        """Release the held mouse button."""
         try:
-            x = data.get("x")
-            y = data.get("y")
-            if x is None or y is None:
-                self._send_error_response(400, X_Y_REQUIRED_ERROR)
-                return
-
-            screen_width, screen_height = pyautogui.size()
-            abs_x = int(x * screen_width)
-            abs_y = int(y * screen_height)
-            pyautogui.mouseUp(abs_x, abs_y)
+            pyautogui.mouseUp()
             self._send_json_response(
                 200,
                 {
                     "status": "success",
                     "action": "drag_end",
-                    "position": {"x": abs_x, "y": abs_y},
                 },
             )
 

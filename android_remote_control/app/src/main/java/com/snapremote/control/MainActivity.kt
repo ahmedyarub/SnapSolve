@@ -13,8 +13,11 @@ import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * Main (and only) Activity for SnapSolve Remote Control.
@@ -64,6 +67,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Whether the client is currently connected to the server. */
     private var isConnected = false
+
+    /** Job for polling UI state. */
+    private var statePollingJob: Job? = null
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -266,6 +272,51 @@ class MainActivity : AppCompatActivity() {
         actionButtons.forEach { it.isEnabled = connected }
 
         touchpadView.visibility = if (connected) View.VISIBLE else View.INVISIBLE
+
+        if (connected) {
+            startStatePolling()
+        } else {
+            stopStatePolling()
+        }
+    }
+
+    private fun startStatePolling() {
+        statePollingJob?.cancel()
+        statePollingJob = lifecycleScope.launch {
+            while (isConnected) {
+                val state = withContext(Dispatchers.IO) { remoteControlClient.fetchState() }
+                if (state != null) {
+                    updateButtonStates(state)
+                }
+                delay(500)
+            }
+        }
+    }
+
+    private fun stopStatePolling() {
+        statePollingJob?.cancel()
+        statePollingJob = null
+    }
+
+    private fun updateButtonStates(state: JSONObject) {
+        val buttonsObj = state.optJSONObject("buttons") ?: return
+        
+        fun updateBtn(btn: View, name: String) {
+            val btnState = buttonsObj.optJSONObject(name)
+            if (btnState != null) {
+                btn.visibility = if (btnState.optBoolean("visible", true)) View.VISIBLE else View.GONE
+                btn.isEnabled = btnState.optBoolean("enabled", true)
+            }
+        }
+
+        updateBtn(captureButton, "capture")
+        updateBtn(reselectButton, "reselect")
+        updateBtn(multiCaptureButton, "multi")
+        updateBtn(endMultiButton, "end_multi")
+        updateBtn(toggleStitchingButton, "stitching")
+        updateBtn(cycleSourceButton, "cycle")
+        updateBtn(cancelButton, "cancel")
+        // newChatButton and togglePanelButton are kept always visible.
     }
 
     /** Show an intermediate "Connecting…" status while the network call is in flight. */

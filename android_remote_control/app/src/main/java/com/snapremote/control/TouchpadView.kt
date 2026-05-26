@@ -73,6 +73,12 @@ class TouchpadView @JvmOverloads constructor(
     /** Y coordinate of the initial touch-down (updated as the finger moves). */
     private var lastY = 0f
 
+    /** X coordinate of the last mouse move sent to the server. */
+    private var lastSentX = 0f
+
+    /** Y coordinate of the last mouse move sent to the server. */
+    private var lastSentY = 0f
+
     /** Whether at least one pointer is currently pressing down. */
     private var isPointerDown = false
 
@@ -239,6 +245,8 @@ class TouchpadView @JvmOverloads constructor(
     private fun handleDown(event: MotionEvent): Boolean {
         lastX = event.x
         lastY = event.y
+        lastSentX = event.x
+        lastSentY = event.y
         scrollStartY = event.y
         scrollAccumulator = 0f
         isPointerDown = true
@@ -301,9 +309,7 @@ class TouchpadView @JvmOverloads constructor(
 
             // Double-tap drag: if in potential drag state and finger moves, begin the drag.
             if (isPotentialDrag && !isDragging) {
-                val relX = (event.x / width).coerceIn(0f, 1f)
-                val relY = (event.y / height).coerceIn(0f, 1f)
-                enqueueMouseEvent(MouseEvent.DragStart(relX, relY))
+                enqueueMouseEvent(MouseEvent.DragStart())
                 isDragging = true
                 isPotentialDrag = false
             }
@@ -314,9 +320,14 @@ class TouchpadView @JvmOverloads constructor(
             if (now - lastMoveSentMs >= MOUSE_MOVE_INTERVAL_MS) {
                 lastMoveSentMs = now
                 // Send relative delta to server for a true touchpad feel
-                val relX = (event.x / width).coerceIn(0f, 1f)
-                val relY = (event.y / height).coerceIn(0f, 1f)
-                enqueueMouseEvent(MouseEvent.Move(relX, relY))
+                val dxNorm = (event.x - lastSentX) * sensitivity / width
+                val dyNorm = (event.y - lastSentY) * sensitivity / height
+                
+                if (dxNorm != 0f || dyNorm != 0f) {
+                    enqueueMouseEvent(MouseEvent.Move(dxNorm, dyNorm))
+                    lastSentX = event.x
+                    lastSentY = event.y
+                }
             }
         }
 
@@ -350,9 +361,7 @@ class TouchpadView @JvmOverloads constructor(
             when {
                 isDragging -> {
                     // End the drag at the current position
-                    val relX = (lastX / width).coerceIn(0f, 1f)
-                    val relY = (lastY / height).coerceIn(0f, 1f)
-                    enqueueMouseEvent(MouseEvent.DragEnd(relX, relY))
+                    enqueueMouseEvent(MouseEvent.DragEnd())
                     isDragging = false
                 }
 
@@ -488,21 +497,21 @@ class TouchpadView @JvmOverloads constructor(
 
     private fun executeMouseEvent(client: RemoteControlClient, event: MouseEvent) {
         when (event) {
-            is MouseEvent.Move -> client.moveMouse(event.x, event.y)
+            is MouseEvent.Move -> client.moveMouse(event.dx, event.dy)
             is MouseEvent.Click -> client.clickMouse(event.button)
             is MouseEvent.DoubleClick -> client.doubleClickMouse(event.button)
-            is MouseEvent.DragStart -> client.startDrag(event.x, event.y)
-            is MouseEvent.DragEnd -> client.endDrag(event.x, event.y)
+            is MouseEvent.DragStart -> client.startDrag()
+            is MouseEvent.DragEnd -> client.endDrag()
             is MouseEvent.Scroll -> client.scrollMouse(event.delta)
         }
     }
 
     private sealed class MouseEvent {
-        data class Move(val x: Float, val y: Float) : MouseEvent()
+        data class Move(val dx: Float, val dy: Float) : MouseEvent()
         data class Click(val button: String) : MouseEvent()
         data class DoubleClick(val button: String) : MouseEvent()
-        data class DragStart(val x: Float, val y: Float) : MouseEvent()
-        data class DragEnd(val x: Float, val y: Float) : MouseEvent()
+        class DragStart : MouseEvent()
+        class DragEnd : MouseEvent()
         data class Scroll(val delta: Int) : MouseEvent()
     }
 }
