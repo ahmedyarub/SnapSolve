@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var togglePanelButton: MaterialButton
     private lateinit var newChatButton: MaterialButton
     private lateinit var cancelButton: MaterialButton
+    private lateinit var typeTextButton: MaterialButton
 
     // -------------------------------------------------------------------------
     // State
@@ -111,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         togglePanelButton = findViewById(R.id.togglePanelButton)
         newChatButton = findViewById(R.id.newChatButton)
         cancelButton = findViewById(R.id.cancelButton)
+        typeTextButton = findViewById(R.id.typeTextButton)
 
         touchpadView.setRemoteControlClient(remoteControlClient)
     }
@@ -220,6 +222,7 @@ class MainActivity : AppCompatActivity() {
         togglePanelButton.setOnClickListener { executeAction("toggle_panel") }
         newChatButton.setOnClickListener { executeAction("new_chat_session") }
         cancelButton.setOnClickListener { executeAction("cancel") }
+        typeTextButton.setOnClickListener { showTypeTextDialog() }
     }
 
     /**
@@ -267,7 +270,7 @@ class MainActivity : AppCompatActivity() {
         val actionButtons = listOf(
             captureButton, reselectButton, multiCaptureButton, endMultiButton,
             toggleStitchingButton, cycleSourceButton, togglePanelButton,
-            newChatButton, cancelButton,
+            newChatButton, cancelButton, typeTextButton,
         )
         actionButtons.forEach { it.isEnabled = connected }
 
@@ -323,5 +326,57 @@ class MainActivity : AppCompatActivity() {
     private fun setStatusConnecting() {
         statusTextView.text = getString(R.string.status_connecting)
         statusTextView.setTextColor(ContextCompat.getColor(this, R.color.text_hint))
+    }
+
+    private fun showTypeTextDialog() {
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+
+        val editText = EditText(this).apply {
+            hint = "Enter text to type..."
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 3
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+        }
+        container.addView(editText)
+
+        val sendButton = android.widget.Button(this).apply {
+            text = "Send"
+            setOnClickListener {
+                val text = editText.text.toString()
+                if (text.isNotEmpty()) {
+                    editText.text.clear()
+                    lifecycleScope.launch {
+                        val success = withContext(Dispatchers.IO) { remoteControlClient.typeText(text) }
+                        if (!success) {
+                            Toast.makeText(this@MainActivity, "Failed to send text", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
+        val params = android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = 16
+        }
+        container.addView(sendButton, params)
+        
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Type Text")
+            .setView(container)
+            .setNegativeButton("Close", null)
+            .create()
+
+        dialog.setOnShowListener {
+            editText.requestFocus()
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(editText, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+
+        dialog.show()
     }
 }

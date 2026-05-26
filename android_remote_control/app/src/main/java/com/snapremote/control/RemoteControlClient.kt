@@ -225,4 +225,16 @@ class RemoteControlClient {
     } catch (e: IOException) {
         false
     }
+
+    /**
+     * Send text to be typed by the main app.
+     *
+     * @param text The text to type.
+     * @return `true` on success.
+     */
+    fun typeText(text: String): Boolean = try {
+        post("/keyboard/type", JSONObject().put("text", text))
+    } catch (e: IOException) {
+        false
+    }
 }

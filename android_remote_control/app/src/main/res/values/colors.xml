@@ -20,6 +20,7 @@
     <color name="btn_toggle_panel">#607D8B</color>
     <color name="btn_new_chat">#795548</color>
     <color name="btn_cancel">#F44336</color>
+    <color name="btn_type_text">#9E9E9E</color>
     <color name="btn_connect">#4CAF50</color>
 
     <!-- Status indicator colors -->

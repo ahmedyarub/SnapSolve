@@ -10,6 +10,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import keyboard
 import pyautogui
 
 logger = logging.getLogger(__name__)
@@ -257,6 +258,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
                         "/mouse/drag_start",
                         "/mouse/drag_end",
                         "/mouse/scroll",
+                        "/keyboard/type",
                     ],
                 },
             )
@@ -285,6 +287,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             "/mouse/drag_start": self._handle_mouse_drag_start,
             "/mouse/drag_end": self._handle_mouse_drag_end,
             "/mouse/scroll": self._handle_mouse_scroll,
+            "/keyboard/type": self._handle_keyboard_type,
         }
         handler = routes.get(parsed_path.path)
         if handler:
@@ -522,6 +525,23 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.error("Error scrolling mouse: %s", exc)
             self._send_error_response(500, f"Error scrolling mouse: {exc}")
+
+    def _handle_keyboard_type(self, data: dict) -> None:
+        """Type the given text using the keyboard module to ensure correct character mapping."""
+        try:
+            text = data.get("text")
+            if text is None:
+                self._send_error_response(400, "text parameter is required")
+                return
+
+            keyboard.write(text)
+            keyboard.send("enter")
+            self._send_json_response(
+                200, {"status": "success", "action": "type_text"}
+            )
+        except Exception as exc:
+            logger.error("Error typing text: %s", exc)
+            self._send_error_response(500, f"Error typing text: {exc}")
 
     def log_message(self, fmt: str, *args) -> None:  # noqa: N802
         """Route BaseHTTPRequestHandler access logs through the standard logger."""
