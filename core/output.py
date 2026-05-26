@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 
 # --- Signal Broker ---
 class UISignals(QObject):
-    toggle_panel = pyqtSignal(bool)
+    toggle_panel = pyqtSignal(object)
     set_multi_state = pyqtSignal(bool)
     set_source = pyqtSignal(str, float)
     set_processing_state = pyqtSignal(bool)
@@ -783,6 +783,8 @@ class UIManager(QObject):
 
     def _on_toggle_panel(self, show):
         assert self.panel is not None
+        if show is None:
+            show = not self.panel.isVisible()
         if show:
             self.panel.show()
             self.panel.update_position()
@@ -849,11 +851,7 @@ def set_app_callbacks(callbacks):
 
 # --- Public API called from background threads ---
 def toggle_control_panel(show=None):
-    # show is optional, but logic for toggle isn't fully robust here without checking state.
-    # For now, we assume if show is not provided, it forces show=True, or we leave it.
-    # The original implementation toggled if show was None.
-    # We will simplify by requiring a bool or true.
-    ui_signals.toggle_panel.emit(show if show is not None else True)
+    ui_signals.toggle_panel.emit(show)
 
 
 def update_multi_state(in_progress):
