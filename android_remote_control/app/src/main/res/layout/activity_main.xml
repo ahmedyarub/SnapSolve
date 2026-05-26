@@ -197,6 +197,17 @@
             android:textColor="@color/text_primary"
             android:layout_margin="4dp"
             android:enabled="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/typeTextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:text="@string/btn_type_text"
+            android:backgroundTint="@color/btn_type_text"
+            android:textColor="@color/text_primary"
+            android:layout_margin="4dp"
+            android:enabled="false" />
     </GridLayout>
 
     <!-- ===== Gesture Instructions ===== -->

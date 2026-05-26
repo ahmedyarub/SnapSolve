@@ -34,5 +34,6 @@
   "enable_remote_control": false,
   "remote_control_host": "0.0.0.0",
   "remote_control_port": 8080,
-  "mouse_sensitivity": 1.5
+  "mouse_sensitivity": 1.5,
+  "remote_mouse_idle_timeout": 3.0
 }
