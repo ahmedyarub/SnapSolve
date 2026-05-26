@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
+import kotlinx.coroutines.channels.Channel
 
 /**
  * A full-screen touchpad view that translates finger gestures into remote mouse commands.
@@ -117,6 +118,14 @@ class TouchpadView @JvmOverloads constructor(
     private var lastMoveSentMs = 0L
 
     // -------------------------------------------------------------------------
+    // Mouse event queue
+    // -------------------------------------------------------------------------
+
+    private val eventQueue = java.util.LinkedList<MouseEvent>()
+    private val signalChannel = Channel<Unit>(Channel.CONFLATED)
+    private var moveJob: Job? = null
+
+    // -------------------------------------------------------------------------
     // Configuration constants
     // -------------------------------------------------------------------------
 
@@ -139,6 +148,20 @@ class TouchpadView @JvmOverloads constructor(
     private val SCROLL_PIXELS_PER_TICK = 40f
 
     // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        startMoveJob()
+    }
+
+    override fun onDetachedFromWindow() {
+        stopMoveJob()
+        super.onDetachedFromWindow()
+    }
+
+    // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
@@ -149,6 +172,7 @@ class TouchpadView @JvmOverloads constructor(
      */
     fun setRemoteControlClient(client: RemoteControlClient) {
         remoteControlClient = client
+        startMoveJob()
     }
 
     /**
@@ -157,6 +181,10 @@ class TouchpadView @JvmOverloads constructor(
      */
     fun clearRemoteControlClient() {
         remoteControlClient = null
+        stopMoveJob()
+        synchronized(eventQueue) {
+            eventQueue.clear()
+        }
     }
 
     /**
@@ -226,7 +254,7 @@ class TouchpadView @JvmOverloads constructor(
                 scrollAccumulator = 0f
             }
 
-            3 -> dispatchIO { it.clickMouse("middle") }
+            3 -> enqueueMouseEvent(MouseEvent.Click("middle"))
         }
         return true
     }
@@ -256,7 +284,7 @@ class TouchpadView @JvmOverloads constructor(
                 // Send relative delta to server for a true touchpad feel
                 val relX = (event.x / width).coerceIn(0f, 1f)
                 val relY = (event.y / height).coerceIn(0f, 1f)
-                dispatchIO { it.moveMouse(relX, relY) }
+                enqueueMouseEvent(MouseEvent.Move(relX, relY))
             }
         }
 
@@ -275,7 +303,7 @@ class TouchpadView @JvmOverloads constructor(
         val ticks = (scrollAccumulator / SCROLL_PIXELS_PER_TICK).toInt()
         if (ticks != 0) {
             scrollAccumulator -= ticks * SCROLL_PIXELS_PER_TICK
-            dispatchIO { it.scrollMouse(ticks) }
+            enqueueMouseEvent(MouseEvent.Scroll(ticks))
         }
     }
 
@@ -292,16 +320,16 @@ class TouchpadView @JvmOverloads constructor(
                     // End the drag at the current position
                     val relX = (lastX / width).coerceIn(0f, 1f)
                     val relY = (lastY / height).coerceIn(0f, 1f)
-                    dispatchIO { it.endDrag(relX, relY) }
+                    enqueueMouseEvent(MouseEvent.DragEnd(relX, relY))
                 }
 
                 !hasMoved -> {
                     // Tap: determine single vs double click
                     if (now - lastUpTimeMs <= DOUBLE_CLICK_TIMEOUT_MS) {
-                        dispatchIO { it.doubleClickMouse("left") }
+                        enqueueMouseEvent(MouseEvent.DoubleClick("left"))
                         lastUpTimeMs = 0L // reset so a triple tap won't re-trigger
                     } else {
-                        dispatchIO { it.clickMouse("left") }
+                        enqueueMouseEvent(MouseEvent.Click("left"))
                         lastUpTimeMs = now
                     }
                 }
@@ -311,7 +339,7 @@ class TouchpadView @JvmOverloads constructor(
 
         if (touchCount == 2 && !hasMoved) {
             // Two-finger lift without scroll movement = right click
-            dispatchIO { it.clickMouse("right") }
+            enqueueMouseEvent(MouseEvent.Click("right"))
         }
 
         isPointerDown = false
@@ -357,27 +385,69 @@ class TouchpadView @JvmOverloads constructor(
                 invalidate()
                 val relX = (x / width).coerceIn(0f, 1f)
                 val relY = (y / height).coerceIn(0f, 1f)
-                dispatchIO { it.startDrag(relX, relY) }
+                enqueueMouseEvent(MouseEvent.DragStart(relX, relY))
             }
         }
     }
 
     // -------------------------------------------------------------------------
-    // Dispatch helper
+    // Event processing loop
     // -------------------------------------------------------------------------
 
-    /**
-     * Run a network call on the IO dispatcher, bound to the Activity lifecycle
-     * so the coroutine is canceled automatically when the Activity is destroyed.
-     *
-     * @param block Lambda receiving the current [RemoteControlClient]. Skipped silently
-     *              if no client is attached.
-     */
-    private fun dispatchIO(block: suspend (RemoteControlClient) -> Unit) {
+    private fun enqueueMouseEvent(event: MouseEvent) {
+        synchronized(eventQueue) {
+            if (event is MouseEvent.Move && eventQueue.isNotEmpty()) {
+                val last = eventQueue.last
+                if (last is MouseEvent.Move) {
+                    eventQueue.removeLast()
+                }
+            }
+            eventQueue.add(event)
+        }
+        signalChannel.trySend(Unit)
+    }
+
+    private fun startMoveJob() {
         val client = remoteControlClient ?: return
         val owner = findViewTreeLifecycleOwner() ?: return
-        owner.lifecycleScope.launch(Dispatchers.IO) {
-            block(client)
+        moveJob?.cancel()
+        moveJob = owner.lifecycleScope.launch(Dispatchers.IO) {
+            for (signal in signalChannel) {
+                while (true) {
+                    val nextEvent = synchronized(eventQueue) {
+                        if (eventQueue.isNotEmpty()) eventQueue.removeFirst() else null
+                    } ?: break
+
+                    if (remoteControlClient != client) break
+
+                    executeMouseEvent(client, nextEvent)
+                }
+            }
         }
+    }
+
+    private fun stopMoveJob() {
+        moveJob?.cancel()
+        moveJob = null
+    }
+
+    private fun executeMouseEvent(client: RemoteControlClient, event: MouseEvent) {
+        when (event) {
+            is MouseEvent.Move -> client.moveMouse(event.x, event.y)
+            is MouseEvent.Click -> client.clickMouse(event.button)
+            is MouseEvent.DoubleClick -> client.doubleClickMouse(event.button)
+            is MouseEvent.DragStart -> client.startDrag(event.x, event.y)
+            is MouseEvent.DragEnd -> client.endDrag(event.x, event.y)
+            is MouseEvent.Scroll -> client.scrollMouse(event.delta)
+        }
+    }
+
+    private sealed class MouseEvent {
+        data class Move(val x: Float, val y: Float) : MouseEvent()
+        data class Click(val button: String) : MouseEvent()
+        data class DoubleClick(val button: String) : MouseEvent()
+        data class DragStart(val x: Float, val y: Float) : MouseEvent()
+        data class DragEnd(val x: Float, val y: Float) : MouseEvent()
+        data class Scroll(val delta: Int) : MouseEvent()
     }
 }
