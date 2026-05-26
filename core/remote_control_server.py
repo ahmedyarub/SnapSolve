@@ -67,6 +67,7 @@ class MouseBlocker:
         # Must keep a reference to prevent garbage collection while the hook
         # is installed.
         self._hook_proc: Optional[_HOOKPROC] = None
+        self._idle_timer: Optional[threading.Timer] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -93,6 +94,9 @@ class MouseBlocker:
     def unblock(self) -> None:
         """Stop blocking physical mouse events and restore normal input."""
         with self._lock:
+            if self._idle_timer:
+                self._idle_timer.cancel()
+                self._idle_timer = None
             if not self._is_blocking:
                 return
             self._is_blocking = False
@@ -115,6 +119,21 @@ class MouseBlocker:
         """Whether the blocker is currently active."""
         with self._lock:
             return self._is_blocking
+
+    def refresh(self, timeout: float) -> None:
+        """Refresh the idle timer, blocking the mouse if it was unblocked."""
+        with self._lock:
+            if self._idle_timer:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+        
+        if not self.is_blocking:
+            self.block()
+
+        with self._lock:
+            if timeout > 0:
+                self._idle_timer = threading.Timer(timeout, self.unblock)
+                self._idle_timer.start()
 
     # ------------------------------------------------------------------
     # Internal
@@ -319,9 +338,14 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
     # Connect / disconnect handlers
     # ------------------------------------------------------------------
 
+    def _refresh_idle_timer(self) -> None:
+        """Refresh the idle timer for the mouse blocker."""
+        timeout = self.app_config.get("remote_mouse_idle_timeout", 3.0)
+        mouse_blocker.refresh(timeout)
+
     def _handle_connect(self, _data: dict) -> None:
         """Handle an Android client connecting — block the physical mouse."""
-        mouse_blocker.block()
+        self._refresh_idle_timer()
         self._send_json_response(
             200, {"status": "connected", "mouse_blocked": True}
         )
@@ -345,11 +369,12 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         The config is passed in at server construction time (stored on the class) to
         avoid the expensive ``get_config()`` / ``parse_args()`` call on every request.
 
-        Supported actions
+        supported actions
         -----------------
         capture, reselect, multi_capture, end_multi_capture, cancel,
         toggle_stitching, cycle_source, toggle_panel, new_chat_session
         """
+        self._refresh_idle_timer()
         action = data.get("action")
         if not action:
             self._send_error_response(400, "Action parameter is required")
@@ -430,6 +455,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         The server receives normalized delta values and scales them
         by the current screen resolution.
         """
+        self._refresh_idle_timer()
         try:
             dx = data.get("dx")
             dy = data.get("dy")
@@ -452,6 +478,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_mouse_click(self, data: dict) -> None:
         """Send a single click with the specified button (``left``, ``right``, or ``middle``)."""
+        self._refresh_idle_timer()
         try:
             button = data.get("button", "left")
             if button == "left":
@@ -473,6 +500,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_mouse_double_click(self, data: dict) -> None:
         """Send a double click with the specified button."""
+        self._refresh_idle_timer()
         try:
             button = data.get("button", "left")
             if button == "left":
@@ -496,6 +524,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_mouse_drag_start(self, data: dict) -> None:
         """Press and hold the left mouse button."""
+        self._refresh_idle_timer()
         try:
             pyautogui.mouseDown()
             self._send_json_response(
@@ -512,6 +541,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_mouse_drag_end(self, data: dict) -> None:
         """Release the held mouse button."""
+        self._refresh_idle_timer()
         try:
             pyautogui.mouseUp()
             self._send_json_response(
@@ -535,6 +565,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             JSON body with a ``delta`` integer.  Positive values scroll up;
             negative values scroll down.
         """
+        self._refresh_idle_timer()
         try:
             delta = data.get("delta", 1)
             pyautogui.scroll(delta)
@@ -548,6 +579,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_keyboard_type(self, data: dict) -> None:
         """Type the given text using the keyboard module to ensure correct character mapping."""
+        self._refresh_idle_timer()
         try:
             text = data.get("text")
             if text is None:

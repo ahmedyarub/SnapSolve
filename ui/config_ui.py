@@ -107,6 +107,9 @@ class ConfigUI(QDialog):
         self.mouse_sensitivity = QLineEdit(
             str(self.config.get("mouse_sensitivity", 1.5))
         )
+        self.remote_mouse_idle_timeout = QLineEdit(
+            str(self.config.get("remote_mouse_idle_timeout", 3.0))
+        )
 
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
@@ -414,6 +417,9 @@ class ConfigUI(QDialog):
         self.mouse_sensitivity.setPlaceholderText("e.g. 1.5")
         layout.addRow("Mouse Sensitivity:", self.mouse_sensitivity)
 
+        self.remote_mouse_idle_timeout.setPlaceholderText("e.g. 3.0")
+        layout.addRow("Mouse Idle Timeout (s):", self.remote_mouse_idle_timeout)
+
         hint = QLabel(
             "When enabled, SnapSolve listens for connections from the Android remote "
             "control app on the specified port.\n"
@@ -504,6 +510,13 @@ class ConfigUI(QDialog):
             )
         except ValueError:
             self.config["mouse_sensitivity"] = 1.5
+
+        try:
+            self.config["remote_mouse_idle_timeout"] = float(
+                self.remote_mouse_idle_timeout.text().strip() or "3.0"
+            )
+        except ValueError:
+            self.config["remote_mouse_idle_timeout"] = 3.0
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:
