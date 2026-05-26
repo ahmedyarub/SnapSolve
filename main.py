@@ -72,8 +72,12 @@ if platform.system() == "Windows":
 
 
 def create_tray_icon(on_exit):
-    # Create a simple tray icon
-    img = Image.new("RGB", (64, 64), color=(73, 109, 137))
+    # Load custom tray icon from assets, fall back to generated if missing
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
+    if os.path.exists(icon_path):
+        img = Image.open(icon_path)
+    else:
+        img = Image.new("RGB", (64, 64), color=(73, 109, 137))
 
     def quit_action(_icon):
         _icon.stop()
