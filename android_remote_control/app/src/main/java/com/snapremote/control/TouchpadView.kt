@@ -346,8 +346,16 @@ class TouchpadView @JvmOverloads constructor(
         val ticks = (scrollAccumulator / SCROLL_PIXELS_PER_TICK).toInt()
         if (ticks != 0) {
             scrollAccumulator -= ticks * SCROLL_PIXELS_PER_TICK
+            hasMoved = true
             enqueueMouseEvent(MouseEvent.Scroll(ticks))
         }
+
+        // Keep tracking coordinates in sync so transitioning back to
+        // single-finger movement does not produce a large delta jump.
+        lastX = event.x
+        lastY = event.y
+        lastSentX = event.x
+        lastSentY = event.y
     }
 
     // — Last finger lifts —
@@ -411,10 +419,23 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     // — Additional finger lifts (multitouch) —
-    // The MotionEvent is part of the required onTouchEvent dispatch signature; the pointer
-    // index is not needed here because we only decrement the global touchCount counter.
-    private fun handlePointerUp(@Suppress("UNUSED_PARAMETER") event: MotionEvent): Boolean {
+    private fun handlePointerUp(event: MotionEvent): Boolean {
+        val wasScrolling = touchCount == 2
         if (touchCount > 0) touchCount--
+
+        // When dropping from a two-finger scroll back to one finger, reset
+        // the tracking coordinates to the remaining pointer so the next
+        // single-finger move does not cause a cursor jump.
+        if (wasScrolling && touchCount == 1) {
+            val liftedIndex = event.actionIndex
+            val remainingIndex = if (liftedIndex == 0) 1 else 0
+            if (remainingIndex < event.pointerCount) {
+                lastX = event.getX(remainingIndex)
+                lastY = event.getY(remainingIndex)
+                lastSentX = lastX
+                lastSentY = lastY
+            }
+        }
         return true
     }
 

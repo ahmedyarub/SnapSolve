@@ -163,9 +163,19 @@ class MouseBlocker:
         user32.UnhookWindowsHookEx.argtypes = [ctypes.wintypes.HHOOK]
         user32.UnhookWindowsHookEx.restype = ctypes.wintypes.BOOL
 
+        # Scroll wheel messages must pass through unconditionally because
+        # pyautogui.scroll() (via mouse_event / SendInput) does not reliably
+        # set the LLMHF_INJECTED flag for WM_MOUSEWHEEL on all Windows builds.
+        WM_MOUSEWHEEL = 0x020A
+        WM_MOUSEHWHEEL = 0x020E
+
         def _low_level_mouse_proc(n_code, w_param, l_param):
             """Hook callback: block physical events, allow injected ones."""
             if n_code == 0:  # HC_ACTION
+                # Always let scroll-wheel events through — the only scroll
+                # source during remote control is pyautogui.
+                if w_param in (WM_MOUSEWHEEL, WM_MOUSEHWHEEL):
+                    return user32.CallNextHookEx(None, n_code, w_param, l_param)
                 mouse_struct = ctypes.cast(
                     l_param, ctypes.POINTER(_MSLLHOOKSTRUCT)
                 ).contents
@@ -564,11 +574,16 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         data:
             JSON body with a ``delta`` integer.  Positive values scroll up;
             negative values scroll down.
+
+        Uses a direct ``mouse_event`` call instead of ``pyautogui.scroll()`` to
+        avoid the default 100 ms ``PAUSE`` delay and ensure the injected flag is
+        set correctly for the low-level mouse hook.
         """
         self._refresh_idle_timer()
         try:
             delta = data.get("delta", 1)
-            pyautogui.scroll(delta)
+            # MOUSEEVENTF_WHEEL = 0x0800, WHEEL_DELTA = 120
+            ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(delta) * 120, 0)
             self._send_json_response(
                 200, {"status": "success", "action": "scroll", "delta": delta}
             )
