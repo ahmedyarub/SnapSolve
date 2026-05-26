@@ -171,6 +171,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val success = withContext(Dispatchers.IO) { remoteControlClient.testConnection() }
             if (success) {
+                // Notify the server to block the physical mouse.
+                withContext(Dispatchers.IO) { remoteControlClient.connect() }
                 saveAddress(ip, port)
                 setConnected(true)
                 Toast.makeText(
@@ -187,6 +189,10 @@ class MainActivity : AppCompatActivity() {
 
     /** Disconnect from the server and reset UI state. */
     private fun disconnect() {
+        // Notify the server to restore the physical mouse before resetting.
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { remoteControlClient.disconnect() }
+        }
         touchpadView.clearRemoteControlClient()
         // Re-attach a fresh client so reconnection works without restarting.
         remoteControlClient = RemoteControlClient()

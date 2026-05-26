@@ -97,6 +97,33 @@ class RemoteControlClient {
     }
 
     /**
+     * Notify the server that the Android client has connected.
+     *
+     * The server will block physical mouse input so that only the Android
+     * touchpad controls the cursor.
+     *
+     * @return `true` if the server acknowledged the connection.
+     */
+    fun connect(): Boolean = try {
+        post("/connect", JSONObject())
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * Notify the server that the Android client is disconnecting.
+     *
+     * The server will restore physical mouse input.
+     *
+     * @return `true` if the server acknowledged the disconnection.
+     */
+    fun disconnect(): Boolean = try {
+        post("/disconnect", JSONObject())
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
      * Trigger a named SnapSolve action (e.g. `"capture"`, `"reselect"`, `"cancel"`).
      *
      * @param action Action identifier recognised by the server's `/action` endpoint.
