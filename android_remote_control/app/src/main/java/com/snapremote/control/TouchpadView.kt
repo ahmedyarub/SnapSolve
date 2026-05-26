@@ -92,12 +92,18 @@ class TouchpadView @JvmOverloads constructor(
     private var hasMoved = false
 
     /**
-     * Whether a long-press was detected for the current touch sequence, meaning the
-     * subsequent ACTION_UP should send a drag-end instead of a click.
+     * Whether a long-press was detected for the current touch sequence, meaning a
+     * right click has been triggered and the subsequent ACTION_UP should be ignored.
      */
     private var isLongPress = false
 
-    /** Coroutine job that fires after [LONG_PRESS_TIMEOUT_MS] to begin a drag. */
+    /** Whether the finger is in a potential drag state (tap followed by tap down within timeout). */
+    private var isPotentialDrag = false
+
+    /** Whether we are currently in an active drag operation. */
+    private var isDragging = false
+
+    /** Coroutine job that fires after [LONG_PRESS_TIMEOUT_MS] to trigger right click. */
     private var longPressJob: Job? = null
 
     // -------------------------------------------------------------------------
@@ -124,6 +130,7 @@ class TouchpadView @JvmOverloads constructor(
     private val eventQueue = java.util.LinkedList<MouseEvent>()
     private val signalChannel = Channel<Unit>(Channel.CONFLATED)
     private var moveJob: Job? = null
+    private var clickJob: Job? = null
 
     // -------------------------------------------------------------------------
     // Configuration constants
@@ -182,6 +189,8 @@ class TouchpadView @JvmOverloads constructor(
     fun clearRemoteControlClient() {
         remoteControlClient = null
         stopMoveJob()
+        clickJob?.cancel()
+        clickJob = null
         synchronized(eventQueue) {
             eventQueue.clear()
         }
@@ -237,7 +246,18 @@ class TouchpadView @JvmOverloads constructor(
         hasMoved = false
         isLongPress = false
         longPressJob?.cancel()
-        longPressJob = startLongPressTimer(event.x, event.y)
+
+        val now = System.currentTimeMillis()
+        isPotentialDrag = (lastUpTimeMs > 0L && now - lastUpTimeMs <= DOUBLE_CLICK_TIMEOUT_MS)
+
+        // Cancel the delayed click job since we have a second touch down (double tap or drag)
+        clickJob?.cancel()
+        clickJob = null
+
+        if (!isPotentialDrag) {
+            longPressJob = startLongPressTimer()
+        }
+
         invalidate()
         return true
     }
@@ -246,6 +266,9 @@ class TouchpadView @JvmOverloads constructor(
     private fun handlePointerDown(event: MotionEvent): Boolean {
         touchCount++
         longPressJob?.cancel() // Long-press only applies to single-finger
+        clickJob?.cancel()
+        clickJob = null
+        isPotentialDrag = false
 
         when (touchCount) {
             2 -> {
@@ -275,6 +298,15 @@ class TouchpadView @JvmOverloads constructor(
             hasMoved = true
             longPressJob?.cancel()
             longPressJob = null
+
+            // Double-tap drag: if in potential drag state and finger moves, begin the drag.
+            if (isPotentialDrag && !isDragging) {
+                val relX = (event.x / width).coerceIn(0f, 1f)
+                val relY = (event.y / height).coerceIn(0f, 1f)
+                enqueueMouseEvent(MouseEvent.DragStart(relX, relY))
+                isDragging = true
+                isPotentialDrag = false
+            }
         }
 
         if (hasMoved && !isLongPress) {
@@ -316,35 +348,55 @@ class TouchpadView @JvmOverloads constructor(
 
         if (touchCount == 1) {
             when {
-                isLongPress -> {
+                isDragging -> {
                     // End the drag at the current position
                     val relX = (lastX / width).coerceIn(0f, 1f)
                     val relY = (lastY / height).coerceIn(0f, 1f)
                     enqueueMouseEvent(MouseEvent.DragEnd(relX, relY))
+                    isDragging = false
+                }
+
+                isLongPress -> {
+                    // Long press right click already sent, nothing to do on release
+                    isLongPress = false
                 }
 
                 !hasMoved -> {
                     // Tap: determine single vs double click
-                    if (now - lastUpTimeMs <= DOUBLE_CLICK_TIMEOUT_MS) {
+                    if (isPotentialDrag) {
                         enqueueMouseEvent(MouseEvent.DoubleClick("left"))
                         lastUpTimeMs = 0L // reset so a triple tap won't re-trigger
+                        isPotentialDrag = false
                     } else {
-                        enqueueMouseEvent(MouseEvent.Click("left"))
-                        lastUpTimeMs = now
+                        // Delay single left click to see if it is part of double tap
+                        val owner = findViewTreeLifecycleOwner()
+                        if (owner != null) {
+                            lastUpTimeMs = now
+                            clickJob = owner.lifecycleScope.launch(Dispatchers.Main) {
+                                delay(DOUBLE_CLICK_TIMEOUT_MS)
+                                enqueueMouseEvent(MouseEvent.Click("left"))
+                                lastUpTimeMs = 0L
+                            }
+                        } else {
+                            enqueueMouseEvent(MouseEvent.Click("left"))
+                            lastUpTimeMs = now
+                        }
                     }
                 }
-                // If moved without long-press: cursor was already moved, nothing extra to do.
             }
         }
 
         if (touchCount == 2 && !hasMoved) {
             // Two-finger lift without scroll movement = right click
+            clickJob?.cancel()
+            clickJob = null
             enqueueMouseEvent(MouseEvent.Click("right"))
         }
 
         isPointerDown = false
         touchCount = 0
         isLongPress = false
+        isPotentialDrag = false
         invalidate()
         return true
     }
@@ -361,9 +413,13 @@ class TouchpadView @JvmOverloads constructor(
     private fun handleCancel(): Boolean {
         longPressJob?.cancel()
         longPressJob = null
+        clickJob?.cancel()
+        clickJob = null
         isPointerDown = false
         touchCount = 0
         isLongPress = false
+        isPotentialDrag = false
+        isDragging = false
         invalidate()
         return true
     }
@@ -373,19 +429,18 @@ class TouchpadView @JvmOverloads constructor(
     // -------------------------------------------------------------------------
 
     /**
-     * Start a coroutine that fires after [LONG_PRESS_TIMEOUT_MS] and begins a drag
+     * Start a coroutine that fires after [LONG_PRESS_TIMEOUT_MS] and triggers a right click
      * if the finger has not moved in the meantime.
      */
-    private fun startLongPressTimer(x: Float, y: Float): Job? {
+    private fun startLongPressTimer(): Job? {
         val owner = findViewTreeLifecycleOwner() ?: return null
         return owner.lifecycleScope.launch(Dispatchers.Main) {
             delay(LONG_PRESS_TIMEOUT_MS)
             if (!hasMoved && isPointerDown && touchCount == 1) {
                 isLongPress = true
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                 invalidate()
-                val relX = (x / width).coerceIn(0f, 1f)
-                val relY = (y / height).coerceIn(0f, 1f)
-                enqueueMouseEvent(MouseEvent.DragStart(relX, relY))
+                enqueueMouseEvent(MouseEvent.Click("right"))
             }
         }
     }

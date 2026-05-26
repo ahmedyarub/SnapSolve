@@ -28,20 +28,36 @@ class CoordinateSelector(QWidget):
         self.end_y = None
         self.is_drawing = False
         self.coordinates = None
+        self.first_point_locked = False
+        self.setMouseTracking(True)
 
     # noinspection PyPep8Naming
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.start_x = int(event.position().x())
-            self.start_y = int(event.position().y())
-            self.end_x = self.start_x
-            self.end_y = self.start_y
-            self.is_drawing = True
-            self.update()
+            if self.first_point_locked:
+                self.end_x = int(event.position().x())
+                self.end_y = int(event.position().y())
+                self.finish_selection()
+            else:
+                self.start_x = int(event.position().x())
+                self.start_y = int(event.position().y())
+                self.end_x = self.start_x
+                self.end_y = self.start_y
+                self.is_drawing = True
+                self.update()
+        elif event.button() == Qt.MouseButton.RightButton:
+            if self.first_point_locked:
+                # Reset first point selection on right click
+                self.first_point_locked = False
+                self.start_x = None
+                self.start_y = None
+                self.end_x = None
+                self.end_y = None
+                self.update()
 
     # noinspection PyPep8Naming
     def mouseMoveEvent(self, event):
-        if self.is_drawing:
+        if self.is_drawing or self.first_point_locked:
             self.end_x = int(event.position().x())
             self.end_y = int(event.position().y())
             self.update()
@@ -49,35 +65,59 @@ class CoordinateSelector(QWidget):
     # noinspection PyPep8Naming
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.end_x = int(event.position().x())
-            self.end_y = int(event.position().y())
-            self.is_drawing = False
+            if self.is_drawing:
+                self.end_x = int(event.position().x())
+                self.end_y = int(event.position().y())
+                self.is_drawing = False
 
-            x1 = min(self.start_x, self.end_x)
-            y1 = min(self.start_y, self.end_y)
-            x2 = max(self.start_x, self.end_x)
-            y2 = max(self.start_y, self.end_y)
+                x1 = min(self.start_x, self.end_x)
+                y1 = min(self.start_y, self.end_y)
+                x2 = max(self.start_x, self.end_x)
+                y2 = max(self.start_y, self.end_y)
 
-            if x2 - x1 > 10 and y2 - y1 > 10:
-                # Apply DPI scaling back to physical pixels for PIL.ImageGrab
-                ratio = (
-                    self.window().windowHandle().screen().devicePixelRatio()
-                    if self.window().windowHandle()
-                    else QApplication.primaryScreen().devicePixelRatio()
-                )
-                self.coordinates = [
-                    int(x1 * ratio),
-                    int(y1 * ratio),
-                    int(x2 * ratio),
-                    int(y2 * ratio),
-                ]
-
-            self.finish()
+                if x2 - x1 > 10 and y2 - y1 > 10:
+                    ratio = (
+                        self.window().windowHandle().screen().devicePixelRatio()
+                        if self.window().windowHandle()
+                        else QApplication.primaryScreen().devicePixelRatio()
+                    )
+                    self.coordinates = [
+                        int(x1 * ratio),
+                        int(y1 * ratio),
+                        int(x2 * ratio),
+                        int(y2 * ratio),
+                    ]
+                    self.finish()
+                else:
+                    self.first_point_locked = True
+                    self.end_x = self.start_x
+                    self.end_y = self.start_y
+                    self.update()
 
     # noinspection PyPep8Naming
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.coordinates = None
+            self.finish()
+
+    def finish_selection(self):
+        x1 = min(self.start_x, self.end_x)
+        y1 = min(self.start_y, self.end_y)
+        x2 = max(self.start_x, self.end_x)
+        y2 = max(self.start_y, self.end_y)
+
+        if x2 - x1 > 10 and y2 - y1 > 10:
+            ratio = (
+                self.window().windowHandle().screen().devicePixelRatio()
+                if self.window().windowHandle()
+                else QApplication.primaryScreen().devicePixelRatio()
+            )
+            self.coordinates = [
+                int(x1 * ratio),
+                int(y1 * ratio),
+                int(x2 * ratio),
+                int(y2 * ratio),
+            ]
             self.finish()
 
     def finish(self):
@@ -93,7 +133,7 @@ class CoordinateSelector(QWidget):
         # Fill the entire screen with a semi-transparent dark gray mask
         painter.fillRect(self.rect(), QColor(50, 50, 50, 76))
 
-        if self.is_drawing and self.start_x is not None and self.end_x is not None:
+        if (self.is_drawing or self.first_point_locked) and self.start_x is not None and self.end_x is not None:
             # Draw the red selection rectangle outline
             pen = QPen(QColor("red"))
             pen.setWidth(3)
