@@ -45,6 +45,7 @@ from ui_utils import (
     poll_button,
     mouse_down_button,
     mouse_up_button,
+    restore_all_windows,
 )
 
 # --- Global variables for background recording ---
@@ -156,6 +157,7 @@ def run_tests():
         if _recording_thread and _recording_thread.is_alive():
             _recording_thread.join(timeout=2)
         cleanup(app_process, service_process)
+        restore_all_windows()
 
 
 def _setup_recording_thread():
