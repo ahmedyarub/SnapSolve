@@ -1,0 +1,5 @@
+{
+    "git.ignoreLimitWarning": true,
+    "python.defaultInterpreterPath": "C:\\Python312\\python.exe",
+    "python.useEnvironmentsExtension": false
+}

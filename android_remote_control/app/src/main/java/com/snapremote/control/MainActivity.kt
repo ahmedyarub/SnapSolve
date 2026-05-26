@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         setupConnectButton()
         setupActionButtons()
         setConnected(false) // Start in disconnected state
+        attemptAutoConnect()
     }
 
     // -------------------------------------------------------------------------
@@ -125,6 +126,18 @@ class MainActivity : AppCompatActivity() {
         prefs.edit {
             putString(getString(R.string.pref_key_ip), ip)
                 .putInt(getString(R.string.pref_key_port), port)
+        }
+    }
+
+    /**
+     * If a non-empty IP address was previously saved, automatically
+     * attempt to connect so the user does not have to tap "Connect"
+     * every time the app is launched.
+     */
+    private fun attemptAutoConnect() {
+        val savedIp = ipAddressEditText.text.toString().trim()
+        if (savedIp.isNotEmpty()) {
+            connectToServer()
         }
     }
 
