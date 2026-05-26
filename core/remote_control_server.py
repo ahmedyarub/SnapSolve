@@ -124,6 +124,26 @@ class MouseBlocker:
         """Install the hook and pump messages until told to stop."""
         user32 = ctypes.windll.user32
 
+        # Define argtypes and restypes to prevent OverflowError on 64-bit systems
+        user32.CallNextHookEx.argtypes = [
+            ctypes.wintypes.HHOOK,
+            ctypes.c_int,
+            ctypes.wintypes.WPARAM,
+            ctypes.wintypes.LPARAM,
+        ]
+        user32.CallNextHookEx.restype = ctypes.wintypes.LPARAM
+
+        user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int,
+            _HOOKPROC,
+            ctypes.wintypes.HINSTANCE,
+            ctypes.wintypes.DWORD,
+        ]
+        user32.SetWindowsHookExW.restype = ctypes.wintypes.HHOOK
+
+        user32.UnhookWindowsHookEx.argtypes = [ctypes.wintypes.HHOOK]
+        user32.UnhookWindowsHookEx.restype = ctypes.wintypes.BOOL
+
         def _low_level_mouse_proc(n_code, w_param, l_param):
             """Hook callback: block physical events, allow injected ones."""
             if n_code == 0:  # HC_ACTION
