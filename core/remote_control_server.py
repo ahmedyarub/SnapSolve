@@ -415,8 +415,9 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
                 return
 
             screen_width, screen_height = pyautogui.size()
-            move_x = int(dx * screen_width)
-            move_y = int(dy * screen_height)
+            sensitivity = self.app_config.get("mouse_sensitivity", 1.5)
+            move_x = int(dx * screen_width * sensitivity)
+            move_y = int(dy * screen_height * sensitivity)
             pyautogui.move(move_x, move_y)
             self._send_json_response(
                 200, {"status": "success", "action": "move", "dx": move_x, "dy": move_y}

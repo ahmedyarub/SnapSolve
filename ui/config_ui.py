@@ -104,6 +104,9 @@ class ConfigUI(QDialog):
         self.remote_control_port = QLineEdit(
             str(self.config.get("remote_control_port", 8080))
         )
+        self.mouse_sensitivity = QLineEdit(
+            str(self.config.get("mouse_sensitivity", 1.5))
+        )
 
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
@@ -408,6 +411,9 @@ class ConfigUI(QDialog):
         self.remote_control_port.setPlaceholderText("e.g. 8080")
         layout.addRow("Port:", self.remote_control_port)
 
+        self.mouse_sensitivity.setPlaceholderText("e.g. 1.5")
+        layout.addRow("Mouse Sensitivity:", self.mouse_sensitivity)
+
         hint = QLabel(
             "When enabled, SnapSolve listens for connections from the Android remote "
             "control app on the specified port.\n"
@@ -492,6 +498,12 @@ class ConfigUI(QDialog):
         self.config["remote_control_port"] = int(
             self.remote_control_port.text().strip() or "8080"
         )
+        try:
+            self.config["mouse_sensitivity"] = float(
+                self.mouse_sensitivity.text().strip() or "1.5"
+            )
+        except ValueError:
+            self.config["mouse_sensitivity"] = 1.5
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:
