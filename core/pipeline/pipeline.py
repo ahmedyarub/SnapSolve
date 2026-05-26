@@ -2,6 +2,7 @@ from typing import Optional
 import threading
 import time
 from core.sources.base import Source
+from core.sources.ocr.exceptions import OCRCancelledError
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 
@@ -56,47 +57,78 @@ def _retrieve_data_from_source(
     cancel_event: threading.Event = None,
 ) -> tuple[Optional[str], Optional[str], bool]:
     """Retrieve text or image from source."""
-    extracted_text = None
     image_path = None
     is_image = False
 
     try:
-        if (
-            hasattr(source, "get_text")
-            and "cancel_event" in source.get_text.__code__.co_varnames
-        ):
-            extracted_text = source.get_text(
-                coords=coords,
-                text=text,
-                status_callback=status_callback,
-                cancel_event=cancel_event,
-            )
-        else:
-            extracted_text = source.get_text(
-                coords=coords, text=text, status_callback=status_callback
-            )
+        extracted_text = _get_text_from_source(
+            source, coords, text, status_callback, cancel_event
+        )
         print(f"Retrieved text from source: {extracted_text}")
-    except ValueError as e:
-        if hasattr(source, "supports_images") and source.supports_images:
-            is_image = True
-            if (
-                hasattr(source, "get_image")
-                and "cancel_event" in source.get_image.__code__.co_varnames
-            ):
-                image_path = source.get_image(
-                    coords=coords, text=text, cancel_event=cancel_event
-                )
-            else:
-                image_path = source.get_image(coords=coords, text=text)
-            print(f"Retrieved image from source: {image_path}")
-        else:
-            raise ValueError(
-                f"Pipeline failed: Source could not provide text ({str(e)}), and LLM does not support images."
-            )
+        return extracted_text, image_path, is_image
+    except (ValueError, OCRCancelledError) as e:
+        return _handle_text_retrieval_error(source, coords, text, cancel_event, str(e))
     except Exception as e:
         raise RuntimeError(f"Error retrieving data from source: {str(e)}")
 
-    return extracted_text, image_path, is_image
+
+def _get_text_from_source(
+    source: Source,
+    coords=None,
+    text=None,
+    status_callback=None,
+    cancel_event: threading.Event = None,
+) -> str:
+    """Get text from source with optional cancel event support."""
+    if (
+        hasattr(source, "get_text")
+        and "cancel_event" in source.get_text.__code__.co_varnames
+    ):
+        return source.get_text(
+            coords=coords,
+            text=text,
+            status_callback=status_callback,
+            cancel_event=cancel_event,
+        )
+    else:
+        return source.get_text(
+            coords=coords, text=text, status_callback=status_callback
+        )
+
+
+def _handle_text_retrieval_error(
+    source: Source,
+    coords=None,
+    text=None,
+    cancel_event: threading.Event = None,
+    error_message: str = "",
+) -> tuple[Optional[str], Optional[str], bool]:
+    """Handle text retrieval error by attempting image retrieval."""
+    if not (hasattr(source, "supports_images") and source.supports_images):
+        raise ValueError(
+            f"Pipeline failed: Source could not provide text ({error_message}), and LLM does not support images."
+        )
+
+    is_image = True
+    image_path = _get_image_from_source(source, coords, text, cancel_event)
+    print(f"Retrieved image from source: {image_path}")
+    return None, image_path, is_image
+
+
+def _get_image_from_source(
+    source: Source,
+    coords=None,
+    text=None,
+    cancel_event: threading.Event = None,
+) -> str:
+    """Get image from source with optional cancel event support."""
+    if (
+        hasattr(source, "get_image")
+        and "cancel_event" in source.get_image.__code__.co_varnames
+    ):
+        return source.get_image(coords=coords, text=text, cancel_event=cancel_event)
+    else:
+        return source.get_image(coords=coords, text=text)
 
 
 def _build_prompt(prompt_text: str, extracted_text: Optional[str]) -> str:

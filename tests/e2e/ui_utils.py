@@ -169,3 +169,9 @@ def minimize_all_windows():
     print("Minimizing all windows...")
     pyautogui.hotkey("win", "d")
     time.sleep(1)
+
+
+def restore_all_windows():
+    print("Restoring all windows...")
+    pyautogui.hotkey("win", "shift", "m")
+    time.sleep(1)

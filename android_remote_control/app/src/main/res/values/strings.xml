@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SnapSolve Remote</string>
+
+    <!-- Connection bar -->
+    <string name="hint_server_ip">Server IP</string>
+    <string name="hint_port">Port</string>
+    <string name="btn_connect">Connect</string>
+    <string name="btn_disconnect">Disconnect</string>
+
+    <!-- Status labels -->
+    <string name="status_disconnected">● Disconnected</string>
+    <string name="status_connected">● Connected</string>
+    <string name="status_connecting">Connecting…</string>
+
+    <!-- Action buttons -->
+    <string name="btn_capture">📸 Capture</string>
+    <string name="btn_reselect">🎯 Reselect</string>
+    <string name="btn_multi_select">➕ Multi-select</string>
+    <string name="btn_end_multi">✅ End Multi</string>
+    <string name="btn_toggle_stitching">🧵 Toggle Stitching</string>
+    <string name="btn_cycle_source">🔄 Cycle Source</string>
+    <string name="btn_toggle_panel">🖥️ Toggle Panel</string>
+    <string name="btn_new_chat">💬 New Chat</string>
+    <string name="btn_cancel">❌ Cancel</string>
+
+    <!-- Touchpad instructions -->
+    <string name="touchpad_instructions">Touchpad: Single tap = Left click | Double tap = Double click | Two-finger tap = Right click | Three-finger tap = Middle click | Two-finger scroll = Scroll | Long press = Drag</string>
+
+    <!-- Toast messages -->
+    <string name="toast_enter_ip">Please enter an IP address</string>
+    <string name="toast_connected">Connected to %1$s:%2$d</string>
+    <string name="toast_connect_failed">Failed to connect to server</string>
+    <string name="toast_connect_error">Connection error: %1$s</string>
+    <string name="toast_action_error">Error: %1$s</string>
+
+    <!-- SharedPreferences keys (not shown in UI, used internally) -->
+    <string name="pref_key_ip" translatable="false">pref_server_ip</string>
+    <string name="pref_key_port" translatable="false">pref_server_port</string>
+</resources>

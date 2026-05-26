@@ -10,7 +10,7 @@ formatting issues, and run the script again until it passes. Do not commit or de
 outputs success.
 Ignore submodules like services\whisperlive\
 
-When done with any task, run the following PowerShell commannd to notify me that the task is done:
+When done with any task, run the following PowerShell command to notify me that the task is done:
 `New-BurntToastNotification -Text 'Claude Code', 'I am done with the loop!'`
 Don't run it in bash. Run it in PowerShell instead.
 Always use front-slashes when running commands.

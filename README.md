@@ -7,7 +7,7 @@ answers, and provides responses via frameless popup notifications and/or local T
 
 * **Multiple Input Sources:** Support for text input, screen capture (images), and audio input with speech recognition.
 * **Fast Screen Capture:** Capture user-defined areas with minimal overhead.
-* **Multiple LLM Backends:** Use Gemini (via CLI or API), or a local Ollama server.
+* **Multiple LLM Backends:** Use Gemini (via CLI or Python SDK), Google GenAI API, or a local Ollama server.
 * **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
 * **Chat History:** Maintain conversational context over multiple queries with session management.
 * **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
@@ -18,13 +18,13 @@ answers, and provides responses via frameless popup notifications and/or local T
 * **Audio Input:** Record and transcribe audio input using speech recognition. Real-time transcription is also available using WhisperLive.
 * **Remote OCR Service:** Offload OCR processing to a remote server.
 
-For a full, detailed breakdown of all features, see [FEATURES.md](FEATURES.md).
-For technical details regarding how data flows through the application, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For a full, detailed breakdown of all features, see [FEATURES.md](docs/FEATURES.md).
+For technical details regarding how data flows through the application, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 For details regarding the real-time transcription feature, see [REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md).
 
 ## Setup & Installation
 
-1. Install Python 3.8+
+1. Install Python 3.10+
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt

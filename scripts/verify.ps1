@@ -12,7 +12,7 @@ try
     {
         throw "Ruff check failed."
     }
-    ruff format --check . --exclude "services/whisperlive"
+    ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build" --exclude "android_remote_control/app/build" --exclude "android_remote_control/gradle"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Ruff format check failed."
@@ -57,27 +57,153 @@ try
 
     try
     {
-        # Query for all open issues on this project
-        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&statuses=OPEN"
-        $Response = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
-
-        if ($Response.issues.Count -eq 0)
+        # Parse sonar.exclusions from sonar-project.properties to filter out stale issues
+        $ExclusionPatterns = @()
+        $PropsFile = Join-Path $PSScriptRoot "..\sonar-project.properties"
+        if (Test-Path $PropsFile)
         {
-            Write-Host "No open issues found!" -ForegroundColor Green
+            $ExclusionLine = (Get-Content $PropsFile | Where-Object { $_ -match "^sonar\.exclusions=" }) -replace "^sonar\.exclusions=", ""
+            if ($ExclusionLine)
+            {
+                # Convert sonar glob patterns (e.g. **/build/**) to regex patterns
+                $ExclusionPatterns = $ExclusionLine -split "," | ForEach-Object {
+                    $pattern = $_.Trim()
+                    $pattern = $pattern -replace "\.", "\."
+                    $pattern = $pattern -replace "\*\*/", "(.+/)?"
+                    $pattern = $pattern -replace "\*", "[^/]*"
+                    "^$pattern"
+                }
+            }
+        }
+
+        # Wait for SonarQube analysis to complete on the server
+        $ScannerWorkDir = Join-Path $PSScriptRoot "../.scannerwork"
+        $ReportTaskFile = Join-Path $ScannerWorkDir "report-task.txt"
+        $AnalysisDate = $null
+        if (Test-Path $ReportTaskFile)
+        {
+            $CeTaskUrl = (Get-Content $ReportTaskFile | Where-Object { $_ -match "^ceTaskUrl=" }) -replace "^ceTaskUrl=", ""
+            if ($CeTaskUrl)
+            {
+                Write-Host "Waiting for server-side analysis to complete..." -ForegroundColor Yellow
+                $maxWait = 60
+                $waited = 0
+                while ($waited -lt $maxWait)
+                {
+                    try
+                    {
+                        $TaskResponse = Invoke-RestMethod -Uri $CeTaskUrl -Headers $Headers -Method Get
+                        $TaskStatus = $TaskResponse.task.status
+                        if ($TaskStatus -eq "SUCCESS")
+                        {
+                            $AnalysisDate = $TaskResponse.task.startedAt
+                            Write-Host "Analysis completed." -ForegroundColor Green
+                            break
+                        }
+                        elseif ($TaskStatus -eq "FAILED" -or $TaskStatus -eq "CANCELED")
+                        {
+                            Write-Host "Analysis task $TaskStatus." -ForegroundColor Red
+                            break
+                        }
+                    }
+                    catch
+                    {
+                        Write-Host "Waiting for analysis..." -ForegroundColor Yellow
+                    }
+                    Start-Sleep -Seconds 2
+                    $waited += 2
+                }
+            }
+        }
+
+        # Query for issues (only open/confirmed/reopened)
+        $ApiUrl = "$SonarUrl/api/issues/search?componentKeys=$ProjectKey&types=CODE_SMELL,BUG,VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED"
+        $IssuesResponse = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
+
+        # Filter out issues from excluded paths
+        $filteredIssues = $IssuesResponse.issues | Where-Object {
+            $filePath = $_.component.Replace("${ProjectKey}:", "")
+            $excluded = $false
+            foreach ($pattern in $ExclusionPatterns)
+            {
+                if ($filePath -match $pattern)
+                {
+                    $excluded = $true
+                    break
+                }
+            }
+            -not $excluded
+        }
+
+        if ($filteredIssues.Count -eq 0)
+        {
+            Write-Host "No issues found!" -ForegroundColor Green
         }
         else
         {
-            foreach ($issue in $Response.issues)
+            foreach ($issue in $filteredIssues)
             {
-                # Format: [Rule] File:Line - Message
+                # Format: [Rule] File:Line - Message (Severity)
                 $filePath = $issue.component.Replace("${ProjectKey}:", "")
-                Write-Host "[$( $issue.rule )] $( $filePath ):$( $issue.line ) - $( $issue.message )" -ForegroundColor Red
+                $line = if ($issue.textRange) { $issue.textRange.startLine } else { "N/A" }
+                $severity = $issue.severity
+                Write-Host "[$( $issue.rule )] $( $filePath ):$( $line ) - $( $issue.message ) [$severity]" -ForegroundColor Red
             }
         }
     }
     catch
     {
-        Write-Host "Failed to fetch report from SonarQube API." -ForegroundColor DarkRed
+        Write-Host "Failed to fetch issues from SonarQube API: $_" -ForegroundColor DarkRed
+    }
+
+    # 4. Fetch Security Hotspots
+    Write-Host "`n--- Security Hotspots Report ---" -ForegroundColor Cyan
+
+    try
+    {
+        $HotspotsUrl = "$SonarUrl/api/hotspots/search?projectKey=$ProjectKey&status=TO_REVIEW"
+        $HotspotsResponse = Invoke-RestMethod -Uri $HotspotsUrl -Headers $Headers -Method Get
+
+        # Filter out hotspots from excluded paths
+        $filteredHotspots = $HotspotsResponse.hotspots | Where-Object {
+            $filePath = $_.component.Replace("${ProjectKey}:", "")
+            $excluded = $false
+            foreach ($pattern in $ExclusionPatterns)
+            {
+                if ($filePath -match $pattern)
+                {
+                    $excluded = $true
+                    break
+                }
+            }
+            -not $excluded
+        }
+
+        if ($filteredHotspots.Count -eq 0)
+        {
+            Write-Host "No security hotspots to review!" -ForegroundColor Green
+        }
+        else
+        {
+            foreach ($hotspot in $filteredHotspots)
+            {
+                $filePath = $hotspot.component.Replace("${ProjectKey}:", "")
+                $line = if ($hotspot.textRange) { $hotspot.textRange.startLine } else { "N/A" }
+                $vulnerability = $hotspot.vulnerabilityProbability
+                Write-Host "[$( $hotspot.securityCategory )] $( $filePath ):$( $line ) - $( $hotspot.message ) [$vulnerability]" -ForegroundColor Magenta
+            }
+        }
+    }
+    catch
+    {
+        if ($_.ToString() -match "Insufficient privileges" -or $_.Exception.Response.StatusCode -eq 403)
+        {
+            Write-Host "Skipped: Token lacks 'Browse' permission for hotspots. Grant it at: $SonarUrl/project/permissions?id=$ProjectKey" -ForegroundColor DarkYellow
+        }
+        else
+        {
+            Write-Host "Failed to fetch security hotspots from SonarQube API: $_" -ForegroundColor DarkRed
+        }
     }
 
     Write-Host "-------------------------------`n" -ForegroundColor Cyan

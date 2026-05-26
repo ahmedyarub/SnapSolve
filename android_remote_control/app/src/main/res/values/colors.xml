@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background colors -->
+    <color name="background_dark">#1E1E1E</color>
+    <color name="surface_dark">#2C2C2C</color>
+    <color name="surface_elevated">#3C3C3C</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_hint">#AAAAAA</color>
+    <color name="text_secondary">#AAAAAA</color>
+
+    <!-- Action button colors -->
+    <color name="btn_capture">#2196F3</color>
+    <color name="btn_reselect">#FF9800</color>
+    <color name="btn_multi_select">#9C27B0</color>
+    <color name="btn_end_multi">#4CAF50</color>
+    <color name="btn_toggle_stitching">#00BCD4</color>
+    <color name="btn_cycle_source">#FF5722</color>
+    <color name="btn_toggle_panel">#607D8B</color>
+    <color name="btn_new_chat">#795548</color>
+    <color name="btn_cancel">#F44336</color>
+    <color name="btn_connect">#4CAF50</color>
+
+    <!-- Status indicator colors -->
+    <color name="status_connected">#4CAF50</color>
+    <color name="status_disconnected">#F44336</color>
+    <color name="touchpad_drag_indicator">#4CAF50</color>
+</resources>

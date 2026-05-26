@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 
 # --- Signal Broker ---
 class UISignals(QObject):
-    toggle_panel = pyqtSignal(bool)
+    toggle_panel = pyqtSignal(object)
     set_multi_state = pyqtSignal(bool)
     set_source = pyqtSignal(str, float)
     set_processing_state = pyqtSignal(bool)
@@ -611,6 +611,28 @@ class PanelWidget(QWidget):
 
         self.resize(200, 300)
 
+    def _broadcast_state(self):
+        from core.remote_control_server import set_ui_state
+
+        state = {}
+        panel_visible = self.isVisible()
+        for name, btn in self.buttons.items():
+            state[name] = {
+                "visible": bool(btn.isVisible() and panel_visible),
+                "enabled": bool(btn.isEnabled()),
+            }
+        set_ui_state(state)
+
+    # noinspection PyPep8Naming
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._broadcast_state()
+
+    # noinspection PyPep8Naming
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._broadcast_state()
+
     def update_position(self):
         screen = QApplication.primaryScreen().size()
         x = 20
@@ -623,6 +645,7 @@ class PanelWidget(QWidget):
         self.btn_cancel.setVisible(in_progress)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
     def set_source(self, source_name):
         is_image = source_name == "image"
@@ -633,6 +656,7 @@ class PanelWidget(QWidget):
         self.btn_record.setVisible(is_audio)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
     def set_processing_state(self, is_processing):
         if not self.is_multi_selecting:
@@ -642,6 +666,7 @@ class PanelWidget(QWidget):
                 btn.setEnabled(not is_processing)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
 
 class TextInputWidget(QWidget):
@@ -758,6 +783,8 @@ class UIManager(QObject):
 
     def _on_toggle_panel(self, show):
         assert self.panel is not None
+        if show is None:
+            show = not self.panel.isVisible()
         if show:
             self.panel.show()
             self.panel.update_position()
@@ -824,11 +851,7 @@ def set_app_callbacks(callbacks):
 
 # --- Public API called from background threads ---
 def toggle_control_panel(show=None):
-    # show is optional, but logic for toggle isn't fully robust here without checking state.
-    # For now, we assume if show is not provided, it forces show=True, or we leave it.
-    # The original implementation toggled if show was None.
-    # We will simplify by requiring a bool or true.
-    ui_signals.toggle_panel.emit(show if show is not None else True)
+    ui_signals.toggle_panel.emit(show)
 
 
 def update_multi_state(in_progress):
@@ -891,7 +914,7 @@ def get_subtitle_text(index: int) -> str:
     return ""
 
 
-def output_result(text, output_modes, _voice_id=None, auto_close=False, opacity=0.8):
+def output_result(text, output_modes, auto_close=False, opacity=0.8):
     if not output_modes:
         output_modes = ["popup"]
 

@@ -44,7 +44,7 @@ The Screen Capture & QA application provides several customizable features organ
 
 *   **Popup Sink:** Displays responses in an unobtrusive, frameless window.
     *   Supports dynamic resizing based on text length.
-    *   Renders rich Markdown, including bold, italics, lists, Markdown tables, and syntax-highlighted code blocks.
+    *   Renders rich Markdown via QWebEngineView with marked.js, including bold, italics, lists, Markdown tables, syntax-highlighted code blocks, LaTeX math (KaTeX), and Mermaid diagrams.
     *   Configurable opacity for visual integration.
 *   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
     *   Support for multiple voice models (.onnx format).

@@ -4,6 +4,7 @@ import threading
 from PIL import Image, ImageDraw
 
 from .base import OCREngine
+from .exceptions import OCRCancelledError
 
 
 class RemotePaddleOCREngine(OCREngine):
@@ -11,8 +12,10 @@ class RemotePaddleOCREngine(OCREngine):
         if config is None:
             config = {}
         self.config = config
-        # noinspection HttpUrlsUsage
-        self.url = f"http://{config.get('remote_ocr_host', '127.0.0.1')}:{config.get('port', 8000)}/ocr"
+        protocol = config.get("remote_ocr_protocol", "http")
+        host = config.get("remote_ocr_host", "127.0.0.1")
+        port = config.get("port", 8000)
+        self.url = f"{protocol}://{host}:{port}/ocr"
         if status_callback:
             status_callback("Remote PaddleOCR Engine Initialized")
 
@@ -43,7 +46,7 @@ class RemotePaddleOCREngine(OCREngine):
         cancel_event: threading.Event = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
-            raise ValueError("OCR cancelled.")
+            raise OCRCancelledError("OCR cancelled.")
 
         print("Using remote PaddleOCR engine.")
         if status_callback:
@@ -54,7 +57,7 @@ class RemotePaddleOCREngine(OCREngine):
             with httpx.Client() as client:
                 response = client.post(self.url, json=payload, timeout=30.0)
                 if cancel_event and cancel_event.is_set():
-                    raise ValueError("OCR cancelled.")
+                    raise OCRCancelledError("OCR cancelled.")
                 response.raise_for_status()
                 response_data = response.json()
                 print(f"Received response from remote OCR: {response_data}")

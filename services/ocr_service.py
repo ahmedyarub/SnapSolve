@@ -9,10 +9,9 @@ from fastapi import FastAPI, HTTPException
 from paddleocr import PaddleOCR
 from pydantic import BaseModel
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Module-level logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 # Helper function to parse OCR results consistently, based on local_paddleocr_engine.py

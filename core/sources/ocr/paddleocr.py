@@ -2,7 +2,14 @@ import os
 import tempfile
 import time
 import threading
+from typing import Optional
 from .base import OCREngine
+from .exceptions import (
+    OCRInitializationError,
+    OCRDependencyError,
+    OCRCancelledError,
+    OCRExecutionError,
+)
 
 
 class LocalPaddleOCREngine(OCREngine):
@@ -27,33 +34,39 @@ class LocalPaddleOCREngine(OCREngine):
 
             # Warmup
             if warmup:
-                if os.path.exists("test_image.png"):
-                    if status_callback:
-                        status_callback("Warming up PaddleOCR...")
-                    self.ocr.ocr("test_image.png")
-                else:
-                    from PIL import Image
+                self._warmup(status_callback)
 
-                    temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                    img = Image.new("RGB", (100, 100), color="white")
-                    img.save(temp_file.name)
-                    self.ocr.ocr(temp_file.name)
-
-        except ImportError:
-            raise ImportError(
-                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
-            )
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             import traceback
 
             print(f"Error during OCR initialization:\n{traceback.format_exc()}")
-            raise RuntimeError(f"Error during OCR initialization: {str(e)}") from e
+            raise OCRInitializationError(
+                f"Error during OCR initialization: {str(e)}"
+            ) from e
+        except ImportError:
+            raise OCRDependencyError(
+                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
+            )
+
+    def _warmup(self, status_callback=None):
+        """Warm up the OCR engine."""
+        if os.path.exists("test_image.png"):
+            if status_callback:
+                status_callback("Warming up PaddleOCR...")
+            self.ocr.ocr("test_image.png")
+        else:
+            from PIL import Image
+
+            temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            img = Image.new("RGB", (100, 100), color="white")
+            img.save(temp_file.name)
+            self.ocr.ocr(temp_file.name)
 
     @staticmethod
-    def _check_cancelled(cancel_event: threading.Event):
-        """Check if operation is cancelled."""
+    def _check_cancelled(cancel_event: Optional[threading.Event]):
+        """Check if operation is canceled."""
         if cancel_event and cancel_event.is_set():
-            raise ValueError("OCR cancelled.")
+            raise OCRCancelledError("OCR cancelled.")
 
     @staticmethod
     def _process_json_result(data):
@@ -106,13 +119,13 @@ class LocalPaddleOCREngine(OCREngine):
             return extracted_text
         else:
             print("PaddleOCR found no text.")
-            return None
+            return ""
 
     def extract_text(
         self,
         image_path: str,
         status_callback=None,
-        cancel_event: threading.Event = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> str:
         self._check_cancelled(cancel_event)
 
@@ -135,14 +148,8 @@ class LocalPaddleOCREngine(OCREngine):
 
             return extracted_text
 
-        except ImportError:
-            raise ImportError(
-                "Error: paddleocr is not installed. Please install it to use the 'paddleocr' engine."
-            )
-        except Exception as e:
-            if "cancelled" in str(e).lower():
-                raise
+        except (OSError, RuntimeError, ValueError, OCRCancelledError) as e:
             import traceback
 
             print(f"Error during OCR execution:\n{traceback.format_exc()}")
-            raise RuntimeError(f"Error during OCR execution: {str(e)}") from e
+            raise OCRExecutionError(f"Error during OCR execution: {str(e)}") from e
