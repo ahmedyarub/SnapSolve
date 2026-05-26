@@ -611,6 +611,28 @@ class PanelWidget(QWidget):
 
         self.resize(200, 300)
 
+    def _broadcast_state(self):
+        from core.remote_control_server import set_ui_state
+
+        state = {}
+        panel_visible = self.isVisible()
+        for name, btn in self.buttons.items():
+            state[name] = {
+                "visible": bool(btn.isVisible() and panel_visible),
+                "enabled": bool(btn.isEnabled()),
+            }
+        set_ui_state(state)
+
+    # noinspection PyPep8Naming
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._broadcast_state()
+
+    # noinspection PyPep8Naming
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._broadcast_state()
+
     def update_position(self):
         screen = QApplication.primaryScreen().size()
         x = 20
@@ -623,6 +645,7 @@ class PanelWidget(QWidget):
         self.btn_cancel.setVisible(in_progress)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
     def set_source(self, source_name):
         is_image = source_name == "image"
@@ -633,6 +656,7 @@ class PanelWidget(QWidget):
         self.btn_record.setVisible(is_audio)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
     def set_processing_state(self, is_processing):
         if not self.is_multi_selecting:
@@ -642,6 +666,7 @@ class PanelWidget(QWidget):
                 btn.setEnabled(not is_processing)
         self.adjustSize()
         self.update_position()
+        self._broadcast_state()
 
 
 class TextInputWidget(QWidget):
