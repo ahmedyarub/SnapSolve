@@ -21,6 +21,7 @@
   "google_genai_api_key": "",
   "auto_close_results": false,
   "popup_opacity": 0.9,
+  "hide_from_capture": false,
   "toggle_panel": true,
   "warmup_ocr": false,
   "warmup_llm": false,
@@ -36,4 +37,4 @@
   "remote_control_port": 8080,
   "mouse_sensitivity": 1.5,
   "remote_mouse_idle_timeout": 3.0
-}
+}

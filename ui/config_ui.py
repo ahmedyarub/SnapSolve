@@ -86,6 +86,7 @@ class ConfigUI(QDialog):
         self.tts_output_device_combo = QComboBox()
         self.audio_input_device_combo = QComboBox()
         self.background_mode = QCheckBox("Run in system tray")
+        self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
@@ -259,6 +260,14 @@ class ConfigUI(QDialog):
         # Show Control Panel
         self.show_control_panel.setChecked(self.config.get("show_control_panel", False))
         layout.addRow("Control Panel:", self.show_control_panel)
+
+        # Hide from capture
+        self.hide_from_capture.setChecked(self.config.get("hide_from_capture", True))
+        self.hide_from_capture.setToolTip(
+            "When enabled, all overlay windows are invisible to screen sharing,\n"
+            "recording, and capture tools (requires Windows 10 2004+)."
+        )
+        layout.addRow("Screen Capture:", self.hide_from_capture)
 
         # API Keys & URLs
         layout.addRow("Ollama URL:", self.ollama_url)
@@ -477,6 +486,7 @@ class ConfigUI(QDialog):
         )
         self.config["background"] = self.background_mode.isChecked()
         self.config["show_control_panel"] = self.show_control_panel.isChecked()
+        self.config["hide_from_capture"] = self.hide_from_capture.isChecked()
         self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
