@@ -237,4 +237,33 @@ class RemoteControlClient {
     } catch (e: IOException) {
         false
     }
+
+    /**
+     * Fetch the response screenshot image bytes from the server.
+     *
+     * @return `ByteArray` containing the PNG image if successful, `null` otherwise.
+     */
+    fun fetchResponseImage(): ByteArray? = try {
+        val request = Request.Builder().url("${baseUrl()}/response_image").get().build()
+        httpClient.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                response.body?.bytes()
+            } else {
+                null
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Acknowledge receipt of the response image so the server clears the flag.
+     *
+     * @return `true` if the server responded with HTTP 200.
+     */
+    fun ackResponseImage(): Boolean = try {
+        post("/response_image/ack", JSONObject())
+    } catch (e: IOException) {
+        false
+    }
 }

@@ -157,6 +157,7 @@ def _get_default_config():
         "remote_control_host": "0.0.0.0",
         "remote_control_port": 8080,
         "remote_mouse_idle_timeout": 3.0,
+        "share_response_with_android": False,
     }
 
 

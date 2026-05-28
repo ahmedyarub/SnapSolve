@@ -4,6 +4,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import logging
+import os
 import platform
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -14,7 +15,6 @@ import keyboard
 import pyautogui
 
 logger = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Mouse blocker — blocks physical mouse while allowing pyautogui (injected)
@@ -40,7 +40,7 @@ class _MSLLHOOKSTRUCT(ctypes.Structure):
 # Callback type for SetWindowsHookExW.
 _HOOKPROC = ctypes.WINFUNCTYPE(
     ctypes.wintypes.LPARAM,  # return type
-    ctypes.c_int,            # nCode
+    ctypes.c_int,  # nCode
     ctypes.wintypes.WPARAM,  # wParam
     ctypes.wintypes.LPARAM,  # lParam
 )
@@ -126,7 +126,7 @@ class MouseBlocker:
             if self._idle_timer:
                 self._idle_timer.cancel()
                 self._idle_timer = None
-        
+
         if not self.is_blocking:
             self.block()
 
@@ -214,11 +214,33 @@ mouse_blocker = MouseBlocker()
 # Global UI state dictionary used to sync button visibility with the Android app
 ui_state: dict[str, dict[str, bool]] = {}
 
+# Android client connection tracking
+_android_client_connected: bool = False
+
+# Latest response image path for sharing with Android
+_response_image_path: Optional[str] = None
+_has_new_response_image: bool = False
+_response_image_lock = threading.Lock()
+
 
 def set_ui_state(state: dict[str, dict[str, bool]]) -> None:
     """Update the global UI state broadcasted to remote clients."""
     global ui_state
     ui_state = state
+
+
+def is_android_connected() -> bool:
+    """Check whether an Android client is currently connected."""
+    return _android_client_connected
+
+
+def set_response_image_path(path: str) -> None:
+    """Store the path of a new response screenshot for the Android app to fetch."""
+    global _response_image_path, _has_new_response_image
+    with _response_image_lock:
+        _response_image_path = path
+        _has_new_response_image = True
+    logger.info("Response image available for Android: %s", path)
 
 
 # Shared error message constant to avoid duplication.
@@ -287,9 +309,13 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
                 200, {"status": "running", "server": "SnapSolve Remote Control"}
             )
         elif parsed_path.path == "/state":
+            with _response_image_lock:
+                has_image = _has_new_response_image
             self._send_json_response(
-                200, {"buttons": ui_state}
+                200, {"buttons": ui_state, "has_new_response_image": has_image}
             )
+        elif parsed_path.path == "/response_image":
+            self._handle_get_response_image()
         elif parsed_path.path == "/":
             self._send_json_response(
                 200,
@@ -314,6 +340,29 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
         else:
             self._send_error_response(404, "Endpoint not found")
 
+    def _handle_get_response_image(self) -> None:
+        """Serve the latest response screenshot as a PNG image."""
+        with _response_image_lock:
+            image_path = _response_image_path
+
+        if not image_path or not os.path.exists(image_path):
+            self._send_error_response(404, "No response image available")
+            return
+
+        try:
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+
+            self.send_response(200)
+            self._set_cors_headers()
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(image_data)))
+            self.end_headers()
+            self.wfile.write(image_data)
+        except Exception as exc:
+            logger.error("Error serving response image: %s", exc)
+            self._send_error_response(500, f"Error serving image: {exc}")
+
     def do_POST(self):  # noqa: N802
         """Route POST requests to the appropriate handler."""
         parsed_path = urlparse(self.path)
@@ -337,6 +386,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             "/mouse/drag_end": self._handle_mouse_drag_end,
             "/mouse/scroll": self._handle_mouse_scroll,
             "/keyboard/type": self._handle_keyboard_type,
+            "/response_image/ack": self._handle_response_image_ack,
         }
         handler = routes.get(parsed_path.path)
         if handler:
@@ -355,6 +405,8 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_connect(self, _data: dict) -> None:
         """Handle an Android client connecting — block the physical mouse."""
+        global _android_client_connected
+        _android_client_connected = True
         self._refresh_idle_timer()
         self._send_json_response(
             200, {"status": "connected", "mouse_blocked": True}
@@ -363,11 +415,21 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 
     def _handle_disconnect(self, _data: dict) -> None:
         """Handle an Android client disconnecting — restore the physical mouse."""
+        global _android_client_connected
+        _android_client_connected = False
         mouse_blocker.unblock()
         self._send_json_response(
             200, {"status": "disconnected", "mouse_blocked": False}
         )
         logger.info("Android client disconnected — physical mouse restored")
+
+    def _handle_response_image_ack(self, _data: dict) -> None:
+        """Acknowledge receipt of the response image and clear the flag."""
+        global _has_new_response_image
+        with _response_image_lock:
+            _has_new_response_image = False
+        self._send_json_response(200, {"status": "acknowledged"})
+        logger.info("Android client acknowledged response image")
 
     # ------------------------------------------------------------------
     # Action handler
@@ -629,7 +691,7 @@ class RemoteControlServer:
     """
 
     def __init__(
-        self, host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
+            self, host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
     ):
         self.host = host
         self.port = port
@@ -702,7 +764,7 @@ remote_control_server: Optional[RemoteControlServer] = None
 
 
 def start_remote_control_server(
-    host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
+        host: str = "0.0.0.0", port: int = 8080, config: Optional[dict] = None
 ) -> RemoteControlServer:
     """Create (if needed) and start the global remote control server.
 

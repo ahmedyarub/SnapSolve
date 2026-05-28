@@ -24,10 +24,12 @@ from core.output import (
     set_active_source_ui,
     set_app_processing_state,
     get_subtitle_text,
+    share_response_screenshot,
 )
 from core.remote_control_server import (
     start_remote_control_server,
     stop_remote_control_server,
+    is_android_connected,
 )
 from core.pipeline import process_pipeline
 from core.session_manager import SessionManager
@@ -269,6 +271,10 @@ def _process_capture_result(
         auto_close=config.get("auto_close_results", False),
         opacity=config.get("popup_opacity", 0.8),
     )
+
+    if config.get("share_response_with_android", False) and is_android_connected():
+        print("Sharing response screenshot with Android app...")
+        share_response_screenshot()
 
 
 def _execute_capture_pipeline(
