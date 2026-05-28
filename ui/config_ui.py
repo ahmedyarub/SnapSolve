@@ -111,6 +111,9 @@ class ConfigUI(QDialog):
         self.remote_mouse_idle_timeout = QLineEdit(
             str(self.config.get("remote_mouse_idle_timeout", 3.0))
         )
+        self.share_response_with_android = QCheckBox(
+            "Share LLM response screenshot with Android app"
+        )
 
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
@@ -429,10 +432,17 @@ class ConfigUI(QDialog):
         self.remote_mouse_idle_timeout.setPlaceholderText("e.g. 3.0")
         layout.addRow("Mouse Idle Timeout (s):", self.remote_mouse_idle_timeout)
 
+        self.share_response_with_android.setChecked(
+            self.config.get("share_response_with_android", False)
+        )
+        layout.addRow("Response Screenshot:", self.share_response_with_android)
+
         hint = QLabel(
             "When enabled, SnapSolve listens for connections from the Android remote "
             "control app on the specified port.\n"
             "Make sure your firewall allows inbound TCP traffic on that port.\n"
+            "When 'Share LLM response screenshot' is enabled, a full-page screenshot\n"
+            "of each response is sent to the connected Android app for viewing.\n"
             "A restart is required for changes to take effect."
         )
         hint.setWordWrap(True)
@@ -527,6 +537,10 @@ class ConfigUI(QDialog):
             )
         except ValueError:
             self.config["remote_mouse_idle_timeout"] = 3.0
+
+        self.config["share_response_with_android"] = (
+            self.share_response_with_android.isChecked()
+        )
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:

@@ -1,6 +1,8 @@
 package com.snapremote.control
 
 import android.content.SharedPreferences
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -9,6 +11,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
@@ -18,6 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Main (and only) Activity for SnapSolve Remote Control.
@@ -290,8 +295,40 @@ class MainActivity : AppCompatActivity() {
                 val state = withContext(Dispatchers.IO) { remoteControlClient.fetchState() }
                 if (state != null) {
                     updateButtonStates(state)
+                    if (state.optBoolean("has_new_response_image", false)) {
+                        handleNewResponseImage()
+                    }
                 }
                 delay(500)
+            }
+        }
+    }
+
+    private suspend fun handleNewResponseImage() {
+        val imageBytes = withContext(Dispatchers.IO) { remoteControlClient.fetchResponseImage() }
+        if (imageBytes != null) {
+            try {
+                // Save to cache dir
+                val imageFile = File(cacheDir, "response_image.png")
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(imageFile).use { fos ->
+                        fos.write(imageBytes)
+                    }
+                }
+                
+                // Ack receipt
+                withContext(Dispatchers.IO) { remoteControlClient.ackResponseImage() }
+                
+                // View image
+                val intent = Intent(this@MainActivity, ImageViewerActivity::class.java).apply {
+                    putExtra("EXTRA_IMAGE_PATH", imageFile.absolutePath)
+                }
+                startActivity(intent)
+                
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Failed to view response image", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

@@ -22,6 +22,7 @@ class UISignals(QObject):
     set_processing_state = pyqtSignal(bool)
     show_popup = pyqtSignal(dict)
     close_popup = pyqtSignal()
+    capture_popup_screenshot = pyqtSignal()
     request_active_source = pyqtSignal(object)
     show_subtitle = pyqtSignal(str)
     update_subtitle = pyqtSignal(str, bool)
@@ -221,6 +222,54 @@ class PopupWidget(QWidget):
             self.auto_close_timer.stop()
 
         self.show()
+
+    def capture_full_page_screenshot(self):
+        """Capture the full web view content as a PNG and send to remote control server."""
+        import os
+        import tempfile
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        def on_size_eval(size_data):
+            width = self.width() # Keep current width to avoid text reflow
+            content_height = size_data.get('height', self.height())
+            
+            # Account for layout margins and the top bar's height
+            extra_height = self.height() - self.web_view.height()
+            total_height = content_height + extra_height + 20 # Add some padding
+            
+            original_size = self.size()
+            
+            # Force size past screen limits
+            self.setFixedSize(width, int(total_height))
+            
+            # Wait longer for Chromium to reflow and repaint the larger surface
+            QTimer.singleShot(600, lambda: capture_now(original_size))
+
+        def capture_now(original_size):
+            pixmap = self.grab()
+            
+            # Restore normal resizing
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(16777215, 16777215)
+            self.resize(original_size)
+
+            try:
+                fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="snapsolve_response_")
+                os.close(fd)
+                pixmap.save(temp_path, "PNG")
+
+                from core.remote_control_server import set_response_image_path
+                set_response_image_path(temp_path)
+            except Exception as e:
+                logger.error(f"Failed to capture and save popup screenshot: {e}")
+
+        # Scroll to top and get the actual scroll dimensions
+        self.web_view.page().runJavaScript(
+            "window.scrollTo(0, 0); ({ width: document.documentElement.scrollWidth, height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) })",
+            on_size_eval
+        )
 
 
 class RecordButton(QPushButton):
@@ -805,6 +854,7 @@ class UIManager(QObject):
         ui_signals.set_processing_state.connect(self._on_set_processing_state)
         ui_signals.show_popup.connect(self.popup.show_content)
         ui_signals.close_popup.connect(self.popup.hide)
+        ui_signals.capture_popup_screenshot.connect(self.popup.capture_full_page_screenshot)
         ui_signals.request_active_source.connect(_on_request_active_source)
         ui_signals.show_subtitle.connect(self._on_show_subtitle)
         ui_signals.update_subtitle.connect(self._on_update_subtitle)
@@ -924,6 +974,10 @@ def show_popup(text, auto_close=5000, opacity=0.8, is_result=False):
 
 def close_popup():
     ui_signals.close_popup.emit()
+
+
+def share_response_screenshot():
+    ui_signals.capture_popup_screenshot.emit()
 
 
 def show_subtitle(text: str):
