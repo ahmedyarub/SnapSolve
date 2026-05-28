@@ -24,6 +24,7 @@ from core.output import (
     set_active_source_ui,
     set_app_processing_state,
     get_subtitle_text,
+    set_hide_from_capture,
     share_response_screenshot,
 )
 from core.remote_control_server import (
@@ -946,6 +947,7 @@ def _initialize_ui(config, active_source, callbacks):
     from core.output import init_ui_manager
 
     init_ui_manager()
+    set_hide_from_capture(config.get("hide_from_capture", False))
     set_app_callbacks(callbacks)
 
     set_active_source_ui(

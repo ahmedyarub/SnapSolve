@@ -1,7 +1,7 @@
 import json
 import threading
 
-from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer, QEvent
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
@@ -37,6 +37,28 @@ class SelectorSignals(QObject):
 ui_signals = UISignals()
 selector_signals = SelectorSignals()
 _app_callbacks = {}
+
+
+def _apply_display_affinity(widget, exclude: bool = True) -> bool:
+    """Set or clear WDA_EXCLUDEFROMCAPTURE on a widget's native window.
+
+    When *exclude* is True the window becomes invisible to screen-capture
+    APIs (video-call sharing, OBS, Win+Shift+S, etc.) while remaining
+    fully visible on the user's monitor.  Requires Windows 10 2004+.
+    """
+    import platform
+
+    if platform.system() != "Windows":
+        return False
+
+    import ctypes
+
+    hwnd = int(widget.winId())
+    WDA_EXCLUDEFROMCAPTURE = 0x00000011
+    WDA_NONE = 0x00000000
+    affinity = WDA_EXCLUDEFROMCAPTURE if exclude else WDA_NONE
+    result = ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, affinity)
+    return bool(result)
 
 
 # --- PyQt UI Components ---
@@ -803,6 +825,7 @@ def _on_request_active_source(q):
 class UIManager(QObject):
     def __init__(self):
         super().__init__()
+        self._hide_from_capture = False
         self.popup: PopupWidget | None = None
         self.panel: PanelWidget | None = None
         self.text_input: TextInputWidget | None = None
@@ -818,6 +841,12 @@ class UIManager(QObject):
         self.text_input = TextInputWidget()
         self.subtitle = SubtitleWidget()
 
+        # Install event filters so capture-hiding is applied on every show
+        self.popup.installEventFilter(self)
+        self.panel.installEventFilter(self)
+        self.text_input.installEventFilter(self)
+        self.subtitle.installEventFilter(self)
+
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)
         ui_signals.set_multi_state.connect(self.panel.set_multi_state)
@@ -830,6 +859,16 @@ class UIManager(QObject):
         ui_signals.show_subtitle.connect(self._on_show_subtitle)
         ui_signals.update_subtitle.connect(self._on_update_subtitle)
         ui_signals.clear_subtitles.connect(self._on_clear_subtitles)
+
+    # noinspection PyPep8Naming
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Show and self._hide_from_capture:
+            _apply_display_affinity(obj, exclude=True)
+        return super().eventFilter(obj, event)
+
+    def set_hide_from_capture(self, hide: bool):
+        """Enable or disable capture-hiding on all managed overlay widgets."""
+        self._hide_from_capture = hide
 
     def _on_toggle_panel(self, show):
         assert self.panel is not None
@@ -897,6 +936,12 @@ def init_ui_manager():
 def set_app_callbacks(callbacks):
     global _app_callbacks
     _app_callbacks = callbacks
+
+
+def set_hide_from_capture(hide: bool):
+    """Enable or disable capture-hiding globally for all overlay widgets."""
+    if ui_manager is not None:
+        ui_manager.set_hide_from_capture(hide)
 
 
 # --- Public API called from background threads ---
