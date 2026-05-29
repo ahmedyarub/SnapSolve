@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tempfile
 import uuid
 import time
 from datetime import datetime
@@ -14,6 +15,30 @@ TRANSCRIPTIONS_DIR = os.path.join(SESSIONS_DIR, "transcriptions")
 DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_json_write(path: str, data: Any) -> None:
+    """Write JSON data to *path* atomically.
+
+    Writes to a temporary file in the same directory, then uses
+    ``os.replace()`` to atomically swap it into place.  This prevents
+    data corruption if the process is killed (e.g. via ``os._exit()``) in
+    the middle of a write — either the old file remains intact or the new
+    file is fully committed.
+    """
+    dir_name = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        os.replace(tmp_path, path)
+    except BaseException:
+        # Clean up the temp file on any failure (including KeyboardInterrupt).
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 class SessionManager:
@@ -252,8 +277,7 @@ class SessionManager:
         }
 
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+            _atomic_json_write(path, data)
         except IOError as e:
             print(f"[SessionManager] Failed to save session data: {e}")
 
@@ -322,8 +346,7 @@ class SessionManager:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             data["name"] = new_name
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+            _atomic_json_write(path, data)
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"[SessionManager] Failed to rename session {session_id}: {e}")
 
@@ -337,8 +360,7 @@ class SessionManager:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             data["tags"] = tags
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+            _atomic_json_write(path, data)
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"[SessionManager] Failed to set tags for session {session_id}: {e}")
 

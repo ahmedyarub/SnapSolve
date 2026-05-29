@@ -125,6 +125,14 @@ async def extract_text(request: ImageRequest):
 
 
 if __name__ == "__main__":
+    import signal
     import uvicorn
+
+    def _handle_exit(_sig, _frame):
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, _handle_exit)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, _handle_exit)
 
     uvicorn.run(app, host="127.0.0.1", port=8000)

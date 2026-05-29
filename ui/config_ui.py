@@ -484,6 +484,7 @@ class ConfigUI(QDialog):
             "toggle_stitching",
             "cycle_source",
             "open_session_browser",
+            "quit_app",
         ]
 
         hotkeys_config = self.config.get("hotkeys", [])

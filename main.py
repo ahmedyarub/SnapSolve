@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import platform
+import signal
 import subprocess
 import sys
 import threading
@@ -73,6 +74,19 @@ if platform.system() == "Windows":
         SetProcessDpiAwareness(2)
     except Exception as e:
         print(f"Warning: Failed to set DPI awareness: {e}")
+
+    # Register a console control handler BEFORE any library (keyboard, Qt,
+    # pystray) has a chance to install its own.  This ensures PyCharm's Stop
+    # button (which sends CTRL_C_EVENT or CTRL_BREAK_EVENT) terminates the
+    # process immediately via os._exit().
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
+    def _console_ctrl_handler(ctrl_type):
+        # CTRL_C_EVENT=0, CTRL_BREAK_EVENT=1, CTRL_CLOSE_EVENT=2,
+        # CTRL_LOGOFF_EVENT=5, CTRL_SHUTDOWN_EVENT=6
+        os._exit(0)
+        return True  # pragma: no cover
+
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_ctrl_handler, True)
 
 
 def create_tray_icon(on_exit):
@@ -735,17 +749,32 @@ def exit_app():
     is_running = False
     print("Exiting...")
 
-    # Stop remote control server
-    stop_remote_control_server()
+    def _cleanup():
+        """Best-effort cleanup on a background thread."""
+        try:
+            stop_remote_control_server()
+        except Exception as e:
+            print(f"Error stopping remote control server: {e}")
 
-    if session_manager:
-        session_manager.cleanup()
+        if session_manager:
+            try:
+                session_manager.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up session manager: {e}")
 
-    app = QApplication.instance()
-    if app:
-        app.quit()
-    keyboard.unhook_all()
-    sys.exit(0)
+    # Run cleanup on a daemon thread so it cannot block the exit.
+    cleanup_thread = threading.Thread(target=_cleanup, daemon=True)
+    cleanup_thread.start()
+    cleanup_thread.join(timeout=2)
+
+    # Force-terminate immediately.  We intentionally skip app.quit() and
+    # keyboard.unhook_all() because:
+    #  - exit_app() may be called from the keyboard hook thread (via the quit
+    #    hotkey), and keyboard.unhook_all() deadlocks in that context.
+    #  - app.quit() can block when called from a non-main thread.
+    # os._exit() terminates the process at the OS level, making both calls
+    # unnecessary.
+    os._exit(0)
 
 
 def load_models_data():
@@ -1175,6 +1204,8 @@ def _register_config_hotkeys(config, active_profile, active_prompt_text):
             keyboard.add_hotkey(key, handle_open_url)
         elif action == "open_session_browser":
             keyboard.add_hotkey(key, handle_open_session_browser)
+        elif action == "quit_app":
+            keyboard.add_hotkey(key, exit_app)
 
 
 def _register_keyboard_shortcuts(config, active_profile, active_prompt_text):
@@ -1195,14 +1226,23 @@ def _setup_tray_or_console_mode(config, exit_handler):
         threading.Thread(target=run_tray, daemon=True).start()
     else:
         print("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")
-        import signal
+        # On Windows, the SetConsoleCtrlHandler registered at module load
+        # handles SIGINT/console-close.  On other platforms, fall back to
+        # Python signal handlers with a QTimer to ensure delivery.
+        if platform.system() != "Windows":
+            def _signal_exit(_sig, _frame):
+                print("Exiting (signal)...")
+                os._exit(0)
 
-        signal.signal(signal.SIGINT, lambda sig, frame: exit_handler())
-        from PyQt6.QtCore import QTimer
+            signal.signal(signal.SIGINT, _signal_exit)
+            if hasattr(signal, 'SIGTERM'):
+                signal.signal(signal.SIGTERM, _signal_exit)
 
-        timer = QTimer()
-        timer.start(500)
-        timer.timeout.connect(lambda: None)
+            from PyQt6.QtCore import QTimer
+
+            timer = QTimer()
+            timer.start(500)
+            timer.timeout.connect(lambda: None)
 
 
 def main():

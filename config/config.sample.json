@@ -15,6 +15,10 @@
     {
       "action": "toggle_all_widgets",
       "key": "ctrl+alt+shift+v"
+    },
+    {
+      "action": "quit_app",
+      "key": "ctrl+alt+shift+q"
     }
   ],
   "coordinates": null,
