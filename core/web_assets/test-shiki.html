@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Shiki Highlighting Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="shiki.bundle.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            color: white;
+            background-color: #1e1e1e;
+            margin: 0;
+            padding: 20px 40px;
+            font-size: 14px;
+            overflow-x: hidden;
+        }
+        /* Markdown-generated pre>code (before Shiki replaces them) */
+        pre {
+            background-color: #0b1118;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid #1d2433;
+        }
+        pre code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            background-color: transparent;
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        /* Shiki-generated pre blocks */
+        pre.shiki {
+            background-color: #0b1118 !important;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid #1d2433;
+        }
+        pre.shiki code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            background-color: transparent;
+            padding: 0;
+        }
+        /* Language label for fenced code blocks */
+        pre[data-lang]::before {
+            content: attr(data-lang);
+            display: block;
+            margin: -10px -10px 8px -10px;
+            padding: 4px 14px;
+            font-size: 11px;
+            font-family: Arial, sans-serif;
+            color: #475267;
+            background-color: #080b11;
+            border-bottom: 1px solid #1d2433;
+            border-radius: 8px 8px 0 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        /* Inline code */
+        :not(pre) > code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            background-color: #0b1118;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #bfbdb6;
+            border: 1px solid #1d2433;
+        }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+        th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+        th { background-color: #333; }
+        a { color: #8be9fd; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+        h1 { color: #e6b450; border-bottom: 1px solid #1d2433; padding-bottom: 8px; }
+        h2 { color: #59c2ff; }
+        h3 { color: #aad94c; }
+        hr { border: none; border-top: 1px solid #1d2433; margin: 24px 0; }
+        blockquote { border-left: 3px solid #475267; margin: 12px 0; padding: 4px 16px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div id="content"></div>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+        const testMarkdown = String.raw`# Shiki Syntax Highlighting Test
+
+This page tests **Shiki** highlighting with the Ayu Dark theme, alongside tables, Mermaid diagrams, bullet points, and LaTeX equations.
+
+---
+
+## Python — Decorators, Type Hints & Async
+
+` + "```python\n" + String.raw`from dataclasses import dataclass, field
+from typing import AsyncIterator, Protocol
+import asyncio
+
+
+class Streamable(Protocol):
+    """Protocol for objects that support async streaming."""
+
+    async def stream(self) -> AsyncIterator[bytes]: ...
+
+
+@dataclass
+class Config:
+    host: str = "localhost"
+    port: int = 8080
+    debug: bool = False
+    tags: list[str] = field(default_factory=list)
+
+    @property
+    def base_url(self) -> str:
+        scheme = "http" if self.debug else "https"
+        return f"{scheme}://{self.host}:{self.port}"
+
+
+class Pipeline:
+    TIMEOUT: float = 30.0
+
+    def __init__(self, config: Config) -> None:
+        self._config = config
+        self._running = False
+
+    async def process(self, source: Streamable) -> list[bytes]:
+        """Collect all chunks from an async stream."""
+        self._running = True
+        chunks: list[bytes] = []
+        try:
+            async for chunk in source.stream():
+                chunks.append(chunk)
+                if len(chunks) % 100 == 0:
+                    print(f"Processed {len(chunks)} chunks...")
+        finally:
+            self._running = False
+        return chunks
+
+
+async def main():
+    cfg = Config(host="0.0.0.0", port=443, tags=["prod", "v2"])
+    print(f"Starting pipeline at {cfg.base_url}")
+    pipeline = Pipeline(cfg)
+    # ... would normally pass a real Streamable here
+    print(f"Timeout set to {Pipeline.TIMEOUT}s")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+` + "```\n\n---\n\n" + String.raw`## Java — Generics, Records & Sealed Interfaces
+
+` + "```java\n" + String.raw`package com.example.pipeline;
+
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * A type-safe, composable data pipeline.
+ */
+public sealed interface Stage<I, O> permits MapStage, FilterStage, FlatMapStage {
+
+    CompletableFuture<O> process(I input);
+
+    default <R> Stage<I, R> andThen(Stage<O, R> next) {
+        return input -> this.process(input).thenCompose(next::process);
+    }
+}
+
+record MapStage<I, O>(Function<I, O> mapper) implements Stage<I, O> {
+    @Override
+    public CompletableFuture<O> process(I input) {
+        return CompletableFuture.completedFuture(mapper.apply(input));
+    }
+}
+
+record FilterStage<T>(java.util.function.Predicate<T> predicate)
+        implements Stage<T, Optional<T>> {
+    @Override
+    public CompletableFuture<Optional<T>> process(T input) {
+        return CompletableFuture.completedFuture(
+            predicate.test(input) ? Optional.of(input) : Optional.empty()
+        );
+    }
+}
+
+record FlatMapStage<I, O>(Function<I, List<O>> expander) implements Stage<I, List<O>> {
+    @Override
+    public CompletableFuture<List<O>> process(I input) {
+        return CompletableFuture.completedFuture(expander.apply(input));
+    }
+}
+
+class PipelineRunner {
+    public static void main(String[] args) {
+        var upper = new MapStage<String, String>(String::toUpperCase);
+        var lengths = new MapStage<String, Integer>(String::length);
+
+        Stage<String, Integer> composed = upper.andThen(lengths);
+
+        List<String> words = List.of("hello", "shiki", "highlighting");
+        List<Integer> results = words.stream()
+            .map(w -> composed.process(w).join())
+            .collect(Collectors.toList());
+
+        System.out.println("Lengths: " + results);  // [5, 5, 12]
+    }
+}
+` + "```\n\n---\n\n" + String.raw`## TypeScript — Generics, Mapped Types & Async Iterables
+
+` + "```typescript\n" + `interface Entity {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+type Mutable<T> = {
+  -readonly [K in keyof T]: T[K];
+};
+
+type EntityUpdate<T extends Entity> = Partial<Omit<Mutable<T>, "id" | "createdAt">>;
+
+interface Repository<T extends Entity> {
+  findById(id: string): Promise<T | null>;
+  findAll(filter?: Partial<T>): AsyncIterable<T>;
+  save(entity: T): Promise<T>;
+  update(id: string, changes: EntityUpdate<T>): Promise<T>;
+  delete(id: string): Promise<boolean>;
+}
+
+interface User extends Entity {
+  readonly email: string;
+  name: string;
+  role: "admin" | "editor" | "viewer";
+  preferences: Record<string, unknown>;
+}
+
+class InMemoryRepository<T extends Entity> implements Repository<T> {
+  private store = new Map<string, T>();
+
+  async findById(id: string): Promise<T | null> {
+    return this.store.get(id) ?? null;
+  }
+
+  async *findAll(filter?: Partial<T>): AsyncIterable<T> {
+    for (const entity of this.store.values()) {
+      if (!filter || this.matches(entity, filter)) {
+        yield entity;
+      }
+    }
+  }
+
+  async save(entity: T): Promise<T> {
+    this.store.set(entity.id, { ...entity, updatedAt: new Date() });
+    return entity;
+  }
+
+  async update(id: string, changes: EntityUpdate<T>): Promise<T> {
+    const existing = this.store.get(id);
+    if (!existing) throw new Error(\`Entity \${id} not found\`);
+
+    const updated = { ...existing, ...changes, updatedAt: new Date() };
+    this.store.set(id, updated);
+    return updated;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.store.delete(id);
+  }
+
+  private matches(entity: T, filter: Partial<T>): boolean {
+    return Object.entries(filter).every(
+      ([key, value]) => entity[key as keyof T] === value
+    );
+  }
+}
+
+// Usage
+async function demo() {
+  const repo = new InMemoryRepository<User>();
+
+  const user: User = {
+    id: crypto.randomUUID(),
+    email: "alice@example.com",
+    name: "Alice",
+    role: "admin",
+    preferences: { theme: "dark", lang: "en" },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await repo.save(user);
+  await repo.update(user.id, { role: "editor", name: "Alice B." });
+
+  for await (const u of repo.findAll({ role: "editor" })) {
+    console.log(\`Found: \${u.name} (\${u.email})\`);
+  }
+}
+` + "```\n\n---\n\n" + String.raw`## Feature Comparison Table
+
+| Feature | highlight.js | Shiki |
+|---|---|---|
+| Grammar engine | Custom regex | TextMate (VS Code) |
+| Theme application | CSS classes | Inline styles |
+| Token granularity | ~15 token types | 100+ scopes |
+| Python ` + "`self`" + String.raw` highlighting | ❌ Generic variable | ✅ Distinct token |
+| Type annotations | ❌ Not distinguished | ✅ Colored separately |
+| Bundle approach | Single JS file | IIFE via esbuild |
+| WASM required | No | No (JS RegExp engine) |
+
+---
+
+## Architecture — Mermaid Diagram
+
+` + "```mermaid\n" + String.raw`graph LR
+    A[Markdown Input] --> B[marked.js Parser]
+    B --> C{Code Block?}
+    C -->|Yes| D[Shiki Highlighter]
+    C -->|No| E[Regular HTML]
+    D --> F[Inline-styled HTML]
+    E --> G[DOM Update]
+    F --> G
+    G --> H[KaTeX Math Rendering]
+    H --> I[Mermaid Diagram Rendering]
+    I --> J[Final Display]
+
+    style D fill:#e6b450,stroke:#1d2433,color:#0b1118
+    style J fill:#aad94c,stroke:#1d2433,color:#0b1118
+` + "```\n\n---\n\n" + String.raw`## Key Benefits
+
+- **VS Code-quality highlighting** — Shiki uses the exact same TextMate grammars as VS Code
+- **Inline styles** — No external CSS needed; colors are baked into the HTML
+- **No WASM dependency** — Uses the JavaScript RegExp engine for compatibility with QWebEngineView
+- **32 bundled languages** including:
+  - Systems: C, C++, Rust, Go
+  - JVM: Java, Kotlin, Scala
+  - Web: JavaScript, TypeScript, HTML, CSS
+  - Scripting: Python, Ruby, Lua, PHP, Bash
+  - Data: SQL, JSON, YAML, TOML, XML
+  - Academic: LaTeX, R, Haskell
+
+---
+
+## LaTeX Equations
+
+The **quadratic formula** solves $ax^2 + bx + c = 0$:
+
+$$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+
+**Euler's identity** connects five fundamental constants:
+
+$$e^{i\pi} + 1 = 0$$
+
+The **Gaussian integral** evaluates to:
+
+$$\int_{-\infty}^{\infty} e^{-x^2} \, dx = \sqrt{\pi}$$
+
+**Maxwell's equations** in differential form:
+
+$$\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}, \quad \nabla \times \mathbf{B} = \mu_0 \mathbf{J} + \mu_0 \varepsilon_0 \frac{\partial \mathbf{E}}{\partial t}$$
+
+The **softmax function** used in neural networks:
+
+$$\sigma(z_i) = \frac{e^{z_i}}{\sum_{j=1}^{K} e^{z_j}}$$
+
+> **Note:** Inline math also works: the time complexity is $O(n \log n)$ and space is $\Theta(n)$.
+`;
+
+        function updateContent(markdownText) {
+            // Temporarily replace mermaid blocks so marked doesn't touch them
+            let mermaidBlocks = [];
+            let tempText = markdownText.replace(/```mermaid([\s\S]*?)```/g, function(match, p1) {
+                mermaidBlocks.push(p1);
+                return `<!--MERMAID_BLOCK_${mermaidBlocks.length - 1}-->`;
+            });
+
+            // Parse markdown
+            let html = marked.parse(tempText);
+
+            // Restore mermaid blocks
+            mermaidBlocks.forEach((block, index) => {
+                html = html.replace(`<!--MERMAID_BLOCK_${index}-->`, `<div class="mermaid">${block}</div>`);
+            });
+
+            document.getElementById('content').innerHTML = html;
+
+            // Apply Shiki highlighting
+            document.querySelectorAll('pre code').forEach((el) => {
+                const langMatch = el.className.match(/language-(\S+)/);
+                const lang = langMatch ? langMatch[1] : null;
+                if (lang) {
+                    el.parentElement.setAttribute('data-lang', lang);
+                }
+                const code = el.textContent;
+                const highlighted = window.shikiHighlight(code, lang);
+                if (highlighted) {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = highlighted;
+                    const newPre = wrapper.firstElementChild;
+                    if (lang) {
+                        newPre.setAttribute('data-lang', lang);
+                    }
+                    el.parentElement.replaceWith(newPre);
+                }
+            });
+
+            // Render Math via KaTeX
+            if (typeof renderMathInElement === 'function') {
+                renderMathInElement(document.getElementById('content'), {
+                    delimiters: [
+                        {left: "$$", right: "$$", display: true},
+                        {left: "$", right: "$", display: false},
+                        {left: "\\(", right: "\\)", display: false},
+                        {left: "\\[", right: "\\]", display: true}
+                    ]
+                });
+            }
+
+            // Render Mermaid diagrams
+            if (typeof mermaid !== 'undefined' && mermaid.run) {
+                mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+            }
+        }
+
+        // Wait for Shiki to initialize, then render
+        window.shikiReady.then(() => {
+            updateContent(testMarkdown);
+        });
+    </script>
+</body>
+</html>

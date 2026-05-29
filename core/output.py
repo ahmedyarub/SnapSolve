@@ -2,8 +2,9 @@ import json
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer, QEvent, QPoint, QSize, QRect
+from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer, QEvent, QPoint, QSize, QRect, QUrl
 from PyQt6.QtGui import QCursor
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QTextEdit,
     QLabel,
+    QLineEdit,
 )
 
 
@@ -30,6 +32,8 @@ class UISignals(QObject):
     update_subtitle = pyqtSignal(str, bool)
     clear_subtitles = pyqtSignal()
     toggle_all_visibility = pyqtSignal()
+    show_url_input = pyqtSignal()
+    open_url = pyqtSignal(str)
 
 
 class SelectorSignals(QObject):
@@ -320,6 +324,7 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
 
         # WebEngine View for Markdown/Math
         self.web_view = QWebEngineView()
+        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.setStyleSheet("background-color: transparent; border: none;")
         self.layout.addWidget(self.web_view)
@@ -327,229 +332,34 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         self.auto_close_timer = QTimer(self)
         self.auto_close_timer.timeout.connect(self.hide)
 
-        # Create base HTML template
-        # Load highlight.js assets from disk to embed inline (CDN loading fails in QWebEngineView)
+        self._is_loaded = False
+        self._pending_js = []
+        self.web_view.loadFinished.connect(self._on_load_finished)
+
+        # Load HTML using a file:// URL to avoid IPC size limits
         _assets_dir = Path(__file__).parent / "web_assets"
-        _hljs_js = (_assets_dir / "highlight.min.js").read_text(encoding="utf-8")
-        _hljs_css = (_assets_dir / "dracula.min.css").read_text(encoding="utf-8")
+        _popup_html = _assets_dir / "popup.html"
+        self.web_view.setUrl(QUrl.fromLocalFile(str(_popup_html)))
 
-        # Build the HTML template by concatenating:
-        # 1) Header with CDN links + inlined hljs (normal string)
-        # 2) Body with JS containing regex backslashes (raw string)
-        _html_head = """\
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-            <style>""" + _hljs_css + """</style>
-            <script>""" + _hljs_js + """</script>"""
-
-        # Raw string for the rest — preserves \s \S \\( \\[ without Python interpreting them
-        _html_body = r"""
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    color: white;
-                    background-color: #1e1e1e;
-                    margin: 0;
-                    padding: 10px;
-                    font-size: 14px;
-                    overflow-x: hidden;
-                }
-                pre {
-                    background-color: #282a36;
-                    padding: 10px;
-                    border-radius: 8px;
-                    overflow-x: auto;
-                    margin: 12px 0;
-                    border: 1px solid #44475a;
-                }
-                pre code {
-                    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
-                    background-color: transparent;
-                    padding: 0;
-                    font-size: 13px;
-                    line-height: 1.5;
-                }
-                /* Language label for fenced code blocks */
-                pre[data-lang]::before {
-                    content: attr(data-lang);
-                    display: block;
-                    margin: -10px -10px 8px -10px;
-                    padding: 4px 14px;
-                    font-size: 11px;
-                    font-family: Arial, sans-serif;
-                    color: #6272a4;
-                    background-color: #21222c;
-                    border-bottom: 1px solid #44475a;
-                    border-radius: 8px 8px 0 0;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-                /* Inline code */
-                :not(pre) > code {
-                    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
-                    background-color: #282a36;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    color: #f8f8f2;
-                    border: 1px solid #44475a;
-                }
-                table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
-                th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-                th { background-color: #333; }
-                a { color: #8be9fd; }
-                /* Custom scrollbar for webkit */
-                ::-webkit-scrollbar { width: 8px; height: 8px; }
-                ::-webkit-scrollbar-track { background: #1e1e1e; }
-                ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
-                ::-webkit-scrollbar-thumb:hover { background: #777; }
-
-                /* --- highlight.js token overrides for richer Python highlighting --- */
-                /* self, cls — italic to stand out from regular variables */
-                .hljs-variable.language_ {
-                    color: #ff79c6;
-                    font-style: italic;
-                }
-                /* Class names — bold bright green */
-                .hljs-title.class_ {
-                    color: #50fa7b;
-                    font-weight: bold;
-                }
-                /* Inherited class names */
-                .hljs-title.class_.inherited__ {
-                    color: #8aff97;
-                    font-weight: normal;
-                    font-style: italic;
-                }
-                /* Function / method names */
-                .hljs-title.function_ {
-                    color: #66d9ef;
-                }
-                /* Function parameters */
-                .hljs-params {
-                    color: #ffb86c;
-                    font-style: italic;
-                }
-                /* Member attributes / properties (e.g. obj.attr) */
-                .hljs-property {
-                    color: #8be9fd;
-                }
-                /* Built-in types and functions (print, len, int, str, etc.) */
-                .hljs-built_in {
-                    color: #a1efe4;
-                    font-style: italic;
-                }
-                /* Type annotations */
-                .hljs-type {
-                    color: #bd93f9;
-                }
-                /* Regular variables */
-                .hljs-variable {
-                    color: #f8f8f2;
-                }
-                /* Constants (UPPER_CASE) */
-                .hljs-variable.constant_ {
-                    color: #bd93f9;
-                }
-                /* Decorators (@property, @staticmethod) */
-                .hljs-meta,
-                .hljs-meta .hljs-keyword {
-                    color: #50fa7b;
-                    font-weight: bold;
-                }
-                /* Numbers — distinct orange-purple */
-                .hljs-number {
-                    color: #bd93f9;
-                }
-                /* Boolean and None literals */
-                .hljs-literal {
-                    color: #bd93f9;
-                    font-style: italic;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="content"></div>
-            <script>
-                mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-
-                function updateContent(markdownText) {
-                    // Temporarily replace mermaid blocks so marked doesn't touch them
-                    let mermaidBlocks = [];
-                    let tempText = markdownText.replace(/```mermaid([\s\S]*?)```/g, function(match, p1) {
-                        mermaidBlocks.push(p1);
-                        return `___MERMAID_BLOCK_${mermaidBlocks.length - 1}___`;
-                    });
-
-                    // Parse markdown
-                    let html = marked.parse(tempText);
-
-                    // Restore mermaid blocks
-                    mermaidBlocks.forEach((block, index) => {
-                        html = html.replace(`___MERMAID_BLOCK_${index}___`, `<div class="mermaid">${block}</div>`);
-                    });
-
-                    document.getElementById('content').innerHTML = html;
-
-                    // Apply syntax highlighting if highlight.js loaded successfully
-                    if (typeof hljs !== 'undefined') {
-                        document.querySelectorAll('pre code').forEach((el) => {
-                            const langMatch = el.className.match(/language-(\S+)/);
-                            if (langMatch) {
-                                el.parentElement.setAttribute('data-lang', langMatch[1]);
-                            }
-                            el.removeAttribute('data-highlighted');
-                            hljs.highlightElement(el);
-                        });
-                    }
-
-                    // Render Math
-                    renderMathInElement(document.getElementById('content'), {
-                        delimiters: [
-                            {left: "$$", right: "$$", display: true},
-                            {left: "$", right: "$", display: false},
-                            {left: "\\(", right: "\\)", display: false},
-                            {left: "\\[", right: "\\]", display: true}
-                        ]
-                    });
-
-                    // Render Mermaid
-                    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
-
-                    // Scroll to bottom smoothly
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }
-            </script>
-        </body>
-        </html>
-        """
-
-        self.base_html = _html_head + _html_body
-        self.web_view.setHtml(self.base_html)
+    def _on_load_finished(self, ok: bool):
+        self._is_loaded = True
+        for js in self._pending_js:
+            self.web_view.page().runJavaScript(js)
+        self._pending_js.clear()
 
     def _apply_opacity(self, opacity: float):
-        """Apply opacity via RGBA backgrounds instead of setWindowOpacity.
+        """Apply opacity to the popup window.
 
-        setWindowOpacity does not reliably work with WA_TranslucentBackground
-        on Windows, so we bake the alpha into the background colours directly.
+        Because QWebEngineView has an opaque background (#1e1e1e) to prevent 
+        scrolling shadows, we use setWindowOpacity to make the entire window
+        translucent as requested.
         """
         self._bg_opacity = opacity
-        alpha_int = int(opacity * 255)
         self.setStyleSheet(
-            f"background-color: rgba(30, 30, 30, {alpha_int});"
-            f" border: 2px solid #555; border-radius: 10px;"
+            "background-color: #1e1e1e;"
+            " border: 2px solid #555; border-radius: 10px;"
         )
-        # Push the opacity into the web view body as well
-        self.web_view.page().runJavaScript(
-            f"document.body.style.backgroundColor = 'rgba(30, 30, 30, {opacity})';"
-        )
+        self.setWindowOpacity(opacity)
 
     def show_content(self, data):
         text = data.get("text", "")
@@ -561,9 +371,13 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
 
         # Safely serialize string for JS injection using json.dumps
         js_text = json.dumps(text)
+        js_code = f"updateContent({js_text});"
 
-        # Update via JS evaluation
-        self.web_view.page().runJavaScript(f"updateContent({js_text});")
+        # Update via JS evaluation (buffer if page is not yet loaded)
+        if self._is_loaded:
+            self.web_view.page().runJavaScript(js_code)
+        else:
+            self._pending_js.append(js_code)
 
         # Determine size and position
         screen = QApplication.primaryScreen().size()
@@ -593,6 +407,19 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
             self.auto_close_timer.stop()
 
         self.show()
+
+    def load_url(self, url: str):
+        self._is_loaded = False
+        screen = QApplication.primaryScreen().size()
+        w, h = int(screen.width() * 0.6), int(screen.height() * 0.6)
+        x = (screen.width() - w) // 2
+        y = (screen.height() - h) // 2
+        self.setGeometry(x, y, w, h)
+        
+        self.web_view.setUrl(QUrl(url))
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def capture_full_page_screenshot(self):
         """Capture the full web view content as a PNG and send to remote control server."""
@@ -1236,6 +1063,66 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
             self.text_edit.setFocus()
 
 
+class UrlInputWidget(DraggableWidgetMixin, QWidget):
+    def __init__(self):
+        super().__init__()
+        self._init_draggable()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._bg_opacity = 0.8
+        self.setStyleSheet(
+            "background-color: rgba(30, 30, 30, 204); border: 2px solid #555; border-radius: 8px;"
+        )
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 4, 10, 10)
+
+        self.drag_handle = _DragHandleBar(self)
+        self.layout.addWidget(self.drag_handle)
+
+        self.line_edit = QLineEdit()
+        self.line_edit.setPlaceholderText("Enter URL to load...")
+        self.line_edit.setStyleSheet(
+            "background-color: rgba(45, 45, 45, 180); color: white; border: none; font-size: 16px; padding: 5px;"
+        )
+        self.line_edit.returnPressed.connect(self._handle_submit)
+        self.layout.addWidget(self.line_edit)
+
+    def _apply_opacity(self, opacity: float):
+        self._bg_opacity = opacity
+        alpha_int = int(opacity * 255)
+        self.setStyleSheet(
+            f"background-color: rgba(30, 30, 30, {alpha_int});"
+            f" border: 2px solid #555; border-radius: 8px;"
+        )
+        self.drag_handle._apply_opacity(opacity)
+        self.line_edit.setStyleSheet(
+            f"background-color: rgba(45, 45, 45, {alpha_int}); color: white;"
+            f" border: none; font-size: 16px; padding: 5px;"
+        )
+
+    def _handle_submit(self):
+        url = self.line_edit.text().strip()
+        if url:
+            if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
+                url = "https://" + url
+            self.line_edit.clear()
+            ui_signals.open_url.emit(url)
+            self.hide()
+
+    def update_position(self):
+        screen = QApplication.primaryScreen().size()
+        w = int(screen.width() * 0.4)
+        h = 80
+        x = (screen.width() - w) // 2
+        y = (screen.height() - h) // 2
+        self.setGeometry(x, y, w, h)
+
+
 # --- UI Manager ---
 def _on_request_active_source(q):
     from core.sources import get_active_source_instance
@@ -1253,6 +1140,7 @@ class UIManager(QObject):
         self.panel: PanelWidget | None = None
         self.text_input: TextInputWidget | None = None
         self.subtitle: SubtitleWidget | None = None
+        self.url_input: UrlInputWidget | None = None
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
@@ -1263,12 +1151,14 @@ class UIManager(QObject):
         self.panel = PanelWidget()
         self.text_input = TextInputWidget()
         self.subtitle = SubtitleWidget()
+        self.url_input = UrlInputWidget()
 
         # Install event filters so capture-hiding is applied on every show
         self.popup.installEventFilter(self)
         self.panel.installEventFilter(self)
         self.text_input.installEventFilter(self)
         self.subtitle.installEventFilter(self)
+        self.url_input.installEventFilter(self)
 
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)
@@ -1283,6 +1173,20 @@ class UIManager(QObject):
         ui_signals.update_subtitle.connect(self._on_update_subtitle)
         ui_signals.clear_subtitles.connect(self._on_clear_subtitles)
         ui_signals.toggle_all_visibility.connect(self._on_toggle_all_visibility)
+        ui_signals.show_url_input.connect(self._on_show_url_input)
+        ui_signals.open_url.connect(self._on_open_url)
+
+    def _on_open_url(self, url: str):
+        self.popup._apply_opacity(self._global_opacity)
+        self.popup.load_url(url)
+
+    def _on_show_url_input(self):
+        self.url_input.update_position()
+        self.url_input._apply_opacity(self._global_opacity)
+        self.url_input.show()
+        self.url_input.raise_()
+        self.url_input.activateWindow()
+        self.url_input.line_edit.setFocus()
 
     # noinspection PyPep8Naming
     def eventFilter(self, obj, event):
