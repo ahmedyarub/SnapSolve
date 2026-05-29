@@ -1,5 +1,6 @@
 import json
 import threading
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer, QEvent, QPoint, QSize, QRect
 from PyQt6.QtGui import QCursor
@@ -327,8 +328,15 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         self.auto_close_timer.timeout.connect(self.hide)
 
         # Create base HTML template
-        # Note: raw string to avoid invalid escape sequence warning with \s
-        self.base_html = r"""
+        # Load highlight.js assets from disk to embed inline (CDN loading fails in QWebEngineView)
+        _assets_dir = Path(__file__).parent / "web_assets"
+        _hljs_js = (_assets_dir / "highlight.min.js").read_text(encoding="utf-8")
+        _hljs_css = (_assets_dir / "dracula.min.css").read_text(encoding="utf-8")
+
+        # Build the HTML template by concatenating:
+        # 1) Header with CDN links + inlined hljs (normal string)
+        # 2) Body with JS containing regex backslashes (raw string)
+        _html_head = """\
         <!DOCTYPE html>
         <html>
         <head>
@@ -338,6 +346,11 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
             <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
             <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+            <style>""" + _hljs_css + """</style>
+            <script>""" + _hljs_js + """</script>"""
+
+        # Raw string for the rest — preserves \s \S \\( \\[ without Python interpreting them
+        _html_body = r"""
             <style>
                 body {
                     font-family: Arial, sans-serif;
@@ -348,8 +361,46 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
                     font-size: 14px;
                     overflow-x: hidden;
                 }
-                pre { background-color: #282a36; padding: 10px; border-radius: 5px; overflow-x: auto; }
-                code { font-family: Courier, monospace; background-color: #282a36; padding: 2px 4px; border-radius: 3px; }
+                pre {
+                    background-color: #282a36;
+                    padding: 10px;
+                    border-radius: 8px;
+                    overflow-x: auto;
+                    margin: 12px 0;
+                    border: 1px solid #44475a;
+                }
+                pre code {
+                    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+                    background-color: transparent;
+                    padding: 0;
+                    font-size: 13px;
+                    line-height: 1.5;
+                }
+                /* Language label for fenced code blocks */
+                pre[data-lang]::before {
+                    content: attr(data-lang);
+                    display: block;
+                    margin: -10px -10px 8px -10px;
+                    padding: 4px 14px;
+                    font-size: 11px;
+                    font-family: Arial, sans-serif;
+                    color: #6272a4;
+                    background-color: #21222c;
+                    border-bottom: 1px solid #44475a;
+                    border-radius: 8px 8px 0 0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                /* Inline code */
+                :not(pre) > code {
+                    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+                    background-color: #282a36;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    color: #f8f8f2;
+                    border: 1px solid #44475a;
+                }
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
                 th, td { border: 1px solid #444; padding: 8px; text-align: left; }
                 th { background-color: #333; }
@@ -359,6 +410,69 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
                 ::-webkit-scrollbar-track { background: #1e1e1e; }
                 ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
                 ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+                /* --- highlight.js token overrides for richer Python highlighting --- */
+                /* self, cls — italic to stand out from regular variables */
+                .hljs-variable.language_ {
+                    color: #ff79c6;
+                    font-style: italic;
+                }
+                /* Class names — bold bright green */
+                .hljs-title.class_ {
+                    color: #50fa7b;
+                    font-weight: bold;
+                }
+                /* Inherited class names */
+                .hljs-title.class_.inherited__ {
+                    color: #8aff97;
+                    font-weight: normal;
+                    font-style: italic;
+                }
+                /* Function / method names */
+                .hljs-title.function_ {
+                    color: #66d9ef;
+                }
+                /* Function parameters */
+                .hljs-params {
+                    color: #ffb86c;
+                    font-style: italic;
+                }
+                /* Member attributes / properties (e.g. obj.attr) */
+                .hljs-property {
+                    color: #8be9fd;
+                }
+                /* Built-in types and functions (print, len, int, str, etc.) */
+                .hljs-built_in {
+                    color: #a1efe4;
+                    font-style: italic;
+                }
+                /* Type annotations */
+                .hljs-type {
+                    color: #bd93f9;
+                }
+                /* Regular variables */
+                .hljs-variable {
+                    color: #f8f8f2;
+                }
+                /* Constants (UPPER_CASE) */
+                .hljs-variable.constant_ {
+                    color: #bd93f9;
+                }
+                /* Decorators (@property, @staticmethod) */
+                .hljs-meta,
+                .hljs-meta .hljs-keyword {
+                    color: #50fa7b;
+                    font-weight: bold;
+                }
+                /* Numbers — distinct orange-purple */
+                .hljs-number {
+                    color: #bd93f9;
+                }
+                /* Boolean and None literals */
+                .hljs-literal {
+                    color: #bd93f9;
+                    font-style: italic;
+                }
             </style>
         </head>
         <body>
@@ -384,6 +498,18 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
 
                     document.getElementById('content').innerHTML = html;
 
+                    // Apply syntax highlighting if highlight.js loaded successfully
+                    if (typeof hljs !== 'undefined') {
+                        document.querySelectorAll('pre code').forEach((el) => {
+                            const langMatch = el.className.match(/language-(\S+)/);
+                            if (langMatch) {
+                                el.parentElement.setAttribute('data-lang', langMatch[1]);
+                            }
+                            el.removeAttribute('data-highlighted');
+                            hljs.highlightElement(el);
+                        });
+                    }
+
                     // Render Math
                     renderMathInElement(document.getElementById('content'), {
                         delimiters: [
@@ -404,6 +530,8 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         </body>
         </html>
         """
+
+        self.base_html = _html_head + _html_body
         self.web_view.setHtml(self.base_html)
 
     def _apply_opacity(self, opacity: float):
