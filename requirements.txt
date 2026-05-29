@@ -18,3 +18,4 @@ opencv-python
 fastapi
 resampy
 pydantic
+websockets>=13

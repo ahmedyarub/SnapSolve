@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ctypes
 import ctypes.wintypes
 import json
@@ -7,12 +8,16 @@ import logging
 import os
 import platform
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Optional
-from urllib.parse import urlparse
 
 import keyboard
 import pyautogui
+
+# Disable pyautogui's default 0.1 s pause after every call — critical for
+# real-time mouse control.  Without this the server processes moves at ~10 Hz
+# while receiving them at ~30 Hz, causing a huge backlog that drains long
+# after the finger lifts.
+pyautogui.PAUSE = 0
 
 logger = logging.getLogger(__name__)
 
@@ -224,9 +229,12 @@ _response_image_lock = threading.Lock()
 
 
 def set_ui_state(state: dict[str, dict[str, bool]]) -> None:
-    """Update the global UI state broadcasted to remote clients."""
+    """Update the global UI state and push it to the connected remote client."""
     global ui_state
     ui_state = state
+    # Push state to connected WebSocket client
+    if remote_control_server and remote_control_server.is_running:
+        remote_control_server.schedule_push_state(state)
 
 
 def is_android_connected() -> bool:
@@ -235,450 +243,257 @@ def is_android_connected() -> bool:
 
 
 def set_response_image_path(path: str) -> None:
-    """Store the path of a new response screenshot for the Android app to fetch."""
+    """Store the path of a new response screenshot and notify the Android client."""
     global _response_image_path, _has_new_response_image
     with _response_image_lock:
         _response_image_path = path
         _has_new_response_image = True
     logger.info("Response image available for Android: %s", path)
+    # Notify the connected client via a state_update push
+    if remote_control_server and remote_control_server.is_running:
+        remote_control_server.schedule_push_state(ui_state)
 
 
-# Shared error message constant to avoid duplication.
-X_Y_REQUIRED_ERROR = "x and y parameters are required"
+# ---------------------------------------------------------------------------
+# WebSocket message handlers
+# ---------------------------------------------------------------------------
+
+def _refresh_idle_timer(app_config: dict[str, Any]) -> None:
+    """Refresh the idle timer for the mouse blocker."""
+    timeout = app_config.get("remote_mouse_idle_timeout", 3.0)
+    mouse_blocker.refresh(timeout)
 
 
-class RemoteControlHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for the SnapSolve remote control server.
+def _handle_connect(app_config: dict[str, Any]) -> dict:
+    """Handle an Android client connecting — block the physical mouse."""
+    global _android_client_connected
+    _android_client_connected = True
+    _refresh_idle_timer(app_config)
+    logger.info("Android client connected — physical mouse blocked")
+    return {"type": "response", "status": "connected", "mouse_blocked": True}
 
-    Endpoints
-    ---------
-    GET  /status              — Health-check; returns ``{"status": "running"}``.
-    GET  /                    — Lists all available endpoints.
-    POST /action              — Triggers a SnapSolve action (capture, cancel, etc.).
-    POST /mouse/move          — Moves the cursor to a relative position (0–1 range).
-    POST /mouse/click         — Single mouse-button click at the current position.
-    POST /mouse/double_click  — Double mouse-button click at the current position.
-    POST /mouse/drag_start    — Presses and holds a mouse button (drag begin).
-    POST /mouse/drag_end      — Releases the held mouse button (drag end).
-    POST /mouse/scroll        — Scrolls the wheel; positive delta = up, negative = down.
-    """
 
-    # The live application config dict is injected at server construction time so that
-    # action handlers can look up the active profile without re-parsing CLI arguments
-    # on every request.
-    app_config: dict[str, Any] = {}
+def _handle_disconnect() -> dict:
+    """Handle an Android client disconnecting — restore the physical mouse."""
+    global _android_client_connected
+    _android_client_connected = False
+    mouse_blocker.unblock()
+    logger.info("Android client disconnected — physical mouse restored")
+    return {"type": "response", "status": "disconnected", "mouse_blocked": False}
 
-    # ------------------------------------------------------------------
-    # Response helpers
-    # ------------------------------------------------------------------
 
-    def _set_cors_headers(self) -> None:
-        """Append permissive CORS headers required by the Android HTTP client."""
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
+    """Dispatch a named SnapSolve action using the live application config."""
+    _refresh_idle_timer(app_config)
+    action = data.get("action")
+    if not action:
+        return {"type": "error", "message": "Action parameter is required"}
 
-    def _send_json_response(self, status_code: int, data: dict) -> None:
-        """Serialise *data* to JSON and write it as the HTTP response body."""
-        self.send_response(status_code)
-        self._set_cors_headers()
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode("utf-8"))
+    # Import inside the function to avoid circular-import issues at module load.
+    from main import (  # noqa: PLC0415
+        handle_cancel,
+        handle_capture,
+        handle_cycle_source,
+        handle_end_multi_capture,
+        handle_multi_capture,
+        handle_new_chat_session,
+        handle_reselect,
+        handle_toggle_panel,
+        handle_toggle_stitching,
+    )
+    from config.settings import load_profiles, load_prompts  # noqa: PLC0415
 
-    def _send_error_response(self, status_code: int, message: str) -> None:
-        """Convenience wrapper that sends a JSON ``{"error": message}`` response."""
-        self._send_json_response(status_code, {"error": message})
+    try:
+        profiles = load_profiles()
+        prompts = load_prompts()
 
-    # ------------------------------------------------------------------
-    # HTTP verb handlers
-    # ------------------------------------------------------------------
+        active_profile_id = app_config.get("active_profile_id", "prof1")
+        active_profile = next(
+            (p for p in profiles if p.get("id") == active_profile_id),
+            profiles[0] if profiles else {},
+        )
 
-    def do_OPTIONS(self):  # noqa: N802
-        """Handle CORS pre-flight requests."""
-        self.send_response(200)
-        self._set_cors_headers()
-        self.end_headers()
+        prompt_id = active_profile.get("prompt_id", "default")
+        active_prompt = next(
+            (p for p in prompts if p.get("id") == prompt_id),
+            prompts[0] if prompts else {},
+        )
+        active_prompt_text = active_prompt.get(
+            "text", "answer the following question quickly and briefly"
+        )
 
-    def do_GET(self):  # noqa: N802
-        """Handle GET requests for /status and /."""
-        parsed_path = urlparse(self.path)
-
-        if parsed_path.path == "/status":
-            self._send_json_response(
-                200, {"status": "running", "server": "SnapSolve Remote Control"}
-            )
-        elif parsed_path.path == "/state":
-            with _response_image_lock:
-                has_image = _has_new_response_image
-            self._send_json_response(
-                200, {"buttons": ui_state, "has_new_response_image": has_image}
-            )
-        elif parsed_path.path == "/response_image":
-            self._handle_get_response_image()
-        elif parsed_path.path == "/":
-            self._send_json_response(
-                200,
-                {
-                    "message": "SnapSolve Remote Control Server",
-                    "endpoints": [
-                        "/status",
-                        "/state",
-                        "/action",
-                        "/connect",
-                        "/disconnect",
-                        "/mouse/move",
-                        "/mouse/click",
-                        "/mouse/double_click",
-                        "/mouse/drag_start",
-                        "/mouse/drag_end",
-                        "/mouse/scroll",
-                        "/keyboard/type",
-                    ],
-                },
-            )
-        else:
-            self._send_error_response(404, "Endpoint not found")
-
-    def _handle_get_response_image(self) -> None:
-        """Serve the latest response screenshot as a PNG image."""
-        with _response_image_lock:
-            image_path = _response_image_path
-
-        if not image_path or not os.path.exists(image_path):
-            self._send_error_response(404, "No response image available")
-            return
-
-        try:
-            with open(image_path, "rb") as f:
-                image_data = f.read()
-
-            self.send_response(200)
-            self._set_cors_headers()
-            self.send_header("Content-Type", "image/png")
-            self.send_header("Content-Length", str(len(image_data)))
-            self.end_headers()
-            self.wfile.write(image_data)
-        except Exception as exc:
-            logger.error("Error serving response image: %s", exc)
-            self._send_error_response(500, f"Error serving image: {exc}")
-
-    def do_POST(self):  # noqa: N802
-        """Route POST requests to the appropriate handler."""
-        parsed_path = urlparse(self.path)
-
-        try:
-            content_length = int(self.headers["Content-Length"])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode("utf-8"))
-        except (ValueError, KeyError, TypeError) as exc:
-            self._send_error_response(400, f"Invalid JSON data: {exc}")
-            return
-
-        routes = {
-            "/action": self._handle_action,
-            "/connect": self._handle_connect,
-            "/disconnect": self._handle_disconnect,
-            "/mouse/move": self._handle_mouse_move,
-            "/mouse/click": self._handle_mouse_click,
-            "/mouse/double_click": self._handle_mouse_double_click,
-            "/mouse/drag_start": self._handle_mouse_drag_start,
-            "/mouse/drag_end": self._handle_mouse_drag_end,
-            "/mouse/scroll": self._handle_mouse_scroll,
-            "/keyboard/type": self._handle_keyboard_type,
-            "/response_image/ack": self._handle_response_image_ack,
+        action_map = {
+            "capture": lambda: handle_capture(
+                app_config, active_profile, active_prompt_text
+            ),
+            "reselect": lambda: handle_reselect(app_config),
+            "multi_capture": lambda: handle_multi_capture(app_config, active_profile),
+            "end_multi_capture": lambda: handle_end_multi_capture(
+                app_config, active_profile, active_prompt_text
+            ),
+            "cancel": handle_cancel,
+            "toggle_stitching": lambda: handle_toggle_stitching(
+                app_config, active_profile
+            ),
+            "cycle_source": lambda: handle_cycle_source(app_config, active_profile),
+            "toggle_panel": handle_toggle_panel,
+            "new_chat_session": lambda: handle_new_chat_session(app_config),
         }
-        handler = routes.get(parsed_path.path)
-        if handler:
-            handler(data)
+
+        fn = action_map.get(action)
+        if fn is None:
+            return {"type": "error", "message": f"Unknown action: {action}"}
+
+        fn()
+        logger.info("Remote control action executed: %s", action)
+        return {"type": "response", "status": "success", "action": action}
+
+    except Exception as exc:
+        logger.error("Error executing action %s: %s", action, exc)
+        return {"type": "error", "message": f"Error executing action: {exc}"}
+
+
+def _handle_mouse_move(data: dict, app_config: dict[str, Any]) -> Optional[dict]:
+    """Move the cursor by relative coordinates.
+
+    Returns ``None`` on success (no response sent) to avoid doubling
+    WebSocket traffic for high-frequency move events.
+    """
+    _refresh_idle_timer(app_config)
+    try:
+        dx = data.get("dx")
+        dy = data.get("dy")
+        if dx is None or dy is None:
+            return {"type": "error", "message": "dx and dy parameters are required"}
+
+        screen_width, screen_height = pyautogui.size()
+        sensitivity = app_config.get("mouse_sensitivity", 1.5)
+        move_x = int(dx * screen_width * sensitivity)
+        move_y = int(dy * screen_height * sensitivity)
+        pyautogui.move(move_x, move_y)
+        return None  # fire-and-forget — no response needed
+
+    except Exception as exc:
+        logger.error("Error moving mouse: %s", exc)
+        return {"type": "error", "message": f"Error moving mouse: {exc}"}
+
+
+def _handle_mouse_click(data: dict, app_config: dict[str, Any]) -> dict:
+    """Send a single click with the specified button."""
+    _refresh_idle_timer(app_config)
+    try:
+        button = data.get("button", "left")
+        if button == "left":
+            pyautogui.click()
+        elif button == "right":
+            pyautogui.rightClick()
+        elif button == "middle":
+            pyautogui.middleClick()
         else:
-            self._send_error_response(404, "Endpoint not found")
+            return {"type": "error", "message": f"Unknown button: {button}"}
+        return {"type": "response", "status": "success", "action": "click", "button": button}
 
-    # ------------------------------------------------------------------
-    # Connect / disconnect handlers
-    # ------------------------------------------------------------------
+    except Exception as exc:
+        logger.error("Error clicking mouse: %s", exc)
+        return {"type": "error", "message": f"Error clicking mouse: {exc}"}
 
-    def _refresh_idle_timer(self) -> None:
-        """Refresh the idle timer for the mouse blocker."""
-        timeout = self.app_config.get("remote_mouse_idle_timeout", 3.0)
-        mouse_blocker.refresh(timeout)
 
-    def _handle_connect(self, _data: dict) -> None:
-        """Handle an Android client connecting — block the physical mouse."""
-        global _android_client_connected
-        _android_client_connected = True
-        self._refresh_idle_timer()
-        self._send_json_response(
-            200, {"status": "connected", "mouse_blocked": True}
-        )
-        logger.info("Android client connected — physical mouse blocked")
+def _handle_mouse_double_click(data: dict, app_config: dict[str, Any]) -> dict:
+    """Send a double click with the specified button."""
+    _refresh_idle_timer(app_config)
+    try:
+        button = data.get("button", "left")
+        if button == "left":
+            pyautogui.doubleClick()
+        elif button == "right":
+            pyautogui.rightClick()
+            pyautogui.rightClick()
+        elif button == "middle":
+            pyautogui.middleClick()
+            pyautogui.middleClick()
+        else:
+            return {"type": "error", "message": f"Unknown button: {button}"}
+        return {"type": "response", "status": "success", "action": "double_click", "button": button}
 
-    def _handle_disconnect(self, _data: dict) -> None:
-        """Handle an Android client disconnecting — restore the physical mouse."""
-        global _android_client_connected
-        _android_client_connected = False
-        mouse_blocker.unblock()
-        self._send_json_response(
-            200, {"status": "disconnected", "mouse_blocked": False}
-        )
-        logger.info("Android client disconnected — physical mouse restored")
+    except Exception as exc:
+        logger.error("Error double-clicking mouse: %s", exc)
+        return {"type": "error", "message": f"Error double-clicking mouse: {exc}"}
 
-    def _handle_response_image_ack(self, _data: dict) -> None:
-        """Acknowledge receipt of the response image and clear the flag."""
-        global _has_new_response_image
-        with _response_image_lock:
-            _has_new_response_image = False
-        self._send_json_response(200, {"status": "acknowledged"})
-        logger.info("Android client acknowledged response image")
 
-    # ------------------------------------------------------------------
-    # Action handler
-    # ------------------------------------------------------------------
+def _handle_mouse_drag_start(app_config: dict[str, Any]) -> dict:
+    """Press and hold the left mouse button."""
+    _refresh_idle_timer(app_config)
+    try:
+        pyautogui.mouseDown()
+        return {"type": "response", "status": "success", "action": "drag_start"}
 
-    def _handle_action(self, data: dict) -> None:
-        """Dispatch a named SnapSolve action using the live application config.
+    except Exception as exc:
+        logger.error("Error starting drag: %s", exc)
+        return {"type": "error", "message": f"Error starting drag: {exc}"}
 
-        The config is passed in at server construction time (stored on the class) to
-        avoid the expensive ``get_config()`` / ``parse_args()`` call on every request.
 
-        supported actions
-        -----------------
-        capture, reselect, multi_capture, end_multi_capture, cancel,
-        toggle_stitching, cycle_source, toggle_panel, new_chat_session
-        """
-        self._refresh_idle_timer()
-        action = data.get("action")
-        if not action:
-            self._send_error_response(400, "Action parameter is required")
-            return
+def _handle_mouse_drag_end(app_config: dict[str, Any]) -> dict:
+    """Release the held mouse button."""
+    _refresh_idle_timer(app_config)
+    try:
+        pyautogui.mouseUp()
+        return {"type": "response", "status": "success", "action": "drag_end"}
 
-        # Import inside the function to avoid circular-import issues at module load.
-        from main import (  # noqa: PLC0415
-            handle_cancel,
-            handle_capture,
-            handle_cycle_source,
-            handle_end_multi_capture,
-            handle_multi_capture,
-            handle_new_chat_session,
-            handle_reselect,
-            handle_toggle_panel,
-            handle_toggle_stitching,
-        )
-        from config.settings import load_profiles, load_prompts  # noqa: PLC0415
+    except Exception as exc:
+        logger.error("Error ending drag: %s", exc)
+        return {"type": "error", "message": f"Error ending drag: {exc}"}
 
-        try:
-            config = self.__class__.app_config
-            profiles = load_profiles()
-            prompts = load_prompts()
 
-            active_profile_id = config.get("active_profile_id", "prof1")
-            active_profile = next(
-                (p for p in profiles if p.get("id") == active_profile_id),
-                profiles[0] if profiles else {},
-            )
+def _handle_mouse_scroll(data: dict, app_config: dict[str, Any]) -> dict:
+    """Scroll the mouse wheel."""
+    _refresh_idle_timer(app_config)
+    try:
+        delta = data.get("delta", 1)
+        # MOUSEEVENTF_WHEEL = 0x0800, WHEEL_DELTA = 120
+        ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(delta) * 120, 0)
+        return {"type": "response", "status": "success", "action": "scroll", "delta": delta}
 
-            prompt_id = active_profile.get("prompt_id", "default")
-            active_prompt = next(
-                (p for p in prompts if p.get("id") == prompt_id),
-                prompts[0] if prompts else {},
-            )
-            active_prompt_text = active_prompt.get(
-                "text", "answer the following question quickly and briefly"
-            )
+    except Exception as exc:
+        logger.error("Error scrolling mouse: %s", exc)
+        return {"type": "error", "message": f"Error scrolling mouse: {exc}"}
 
-            action_map = {
-                "capture": lambda: handle_capture(
-                    config, active_profile, active_prompt_text
-                ),
-                "reselect": lambda: handle_reselect(config),
-                "multi_capture": lambda: handle_multi_capture(config, active_profile),
-                "end_multi_capture": lambda: handle_end_multi_capture(
-                    config, active_profile, active_prompt_text
-                ),
-                "cancel": handle_cancel,
-                "toggle_stitching": lambda: handle_toggle_stitching(
-                    config, active_profile
-                ),
-                "cycle_source": lambda: handle_cycle_source(config, active_profile),
-                "toggle_panel": handle_toggle_panel,
-                "new_chat_session": lambda: handle_new_chat_session(config),
-            }
 
-            fn = action_map.get(action)
-            if fn is None:
-                self._send_error_response(400, f"Unknown action: {action}")
-                return
+def _handle_keyboard_type(data: dict, app_config: dict[str, Any]) -> dict:
+    """Type the given text using the keyboard module."""
+    _refresh_idle_timer(app_config)
+    try:
+        text = data.get("text")
+        if text is None:
+            return {"type": "error", "message": "text parameter is required"}
 
-            fn()
-            self._send_json_response(200, {"status": "success", "action": action})
-            logger.info("Remote control action executed: %s", action)
+        keyboard.write(text)
+        keyboard.send("enter")
+        return {"type": "response", "status": "success", "action": "type_text"}
+    except Exception as exc:
+        logger.error("Error typing text: %s", exc)
+        return {"type": "error", "message": f"Error typing text: {exc}"}
 
-        except Exception as exc:
-            logger.error("Error executing action %s: %s", action, exc)
-            self._send_error_response(500, f"Error executing action: {exc}")
 
-    # ------------------------------------------------------------------
-    # Mouse handlers
-    # ------------------------------------------------------------------
+def _handle_response_image_ack() -> dict:
+    """Acknowledge receipt of the response image and clear the flag."""
+    global _has_new_response_image
+    with _response_image_lock:
+        _has_new_response_image = False
+    logger.info("Android client acknowledged response image")
+    return {"type": "response", "status": "acknowledged"}
 
-    def _handle_mouse_move(self, data: dict) -> None:
-        """Move the cursor by relative coordinates.
 
-        The server receives normalized delta values and scales them
-        by the current screen resolution.
-        """
-        self._refresh_idle_timer()
-        try:
-            dx = data.get("dx")
-            dy = data.get("dy")
-            if dx is None or dy is None:
-                self._send_error_response(400, "dx and dy parameters are required")
-                return
-
-            screen_width, screen_height = pyautogui.size()
-            sensitivity = self.app_config.get("mouse_sensitivity", 1.5)
-            move_x = int(dx * screen_width * sensitivity)
-            move_y = int(dy * screen_height * sensitivity)
-            pyautogui.move(move_x, move_y)
-            self._send_json_response(
-                200, {"status": "success", "action": "move", "dx": move_x, "dy": move_y}
-            )
-
-        except Exception as exc:
-            logger.error("Error moving mouse: %s", exc)
-            self._send_error_response(500, f"Error moving mouse: {exc}")
-
-    def _handle_mouse_click(self, data: dict) -> None:
-        """Send a single click with the specified button (``left``, ``right``, or ``middle``)."""
-        self._refresh_idle_timer()
-        try:
-            button = data.get("button", "left")
-            if button == "left":
-                pyautogui.click()
-            elif button == "right":
-                pyautogui.rightClick()
-            elif button == "middle":
-                pyautogui.middleClick()
-            else:
-                self._send_error_response(400, f"Unknown button: {button}")
-                return
-            self._send_json_response(
-                200, {"status": "success", "action": "click", "button": button}
-            )
-
-        except Exception as exc:
-            logger.error("Error clicking mouse: %s", exc)
-            self._send_error_response(500, f"Error clicking mouse: {exc}")
-
-    def _handle_mouse_double_click(self, data: dict) -> None:
-        """Send a double click with the specified button."""
-        self._refresh_idle_timer()
-        try:
-            button = data.get("button", "left")
-            if button == "left":
-                pyautogui.doubleClick()
-            elif button == "right":
-                pyautogui.rightClick()
-                pyautogui.rightClick()
-            elif button == "middle":
-                pyautogui.middleClick()
-                pyautogui.middleClick()
-            else:
-                self._send_error_response(400, f"Unknown button: {button}")
-                return
-            self._send_json_response(
-                200, {"status": "success", "action": "double_click", "button": button}
-            )
-
-        except Exception as exc:
-            logger.error("Error double-clicking mouse: %s", exc)
-            self._send_error_response(500, f"Error double-clicking mouse: {exc}")
-
-    def _handle_mouse_drag_start(self, data: dict) -> None:
-        """Press and hold the left mouse button."""
-        self._refresh_idle_timer()
-        try:
-            pyautogui.mouseDown()
-            self._send_json_response(
-                200,
-                {
-                    "status": "success",
-                    "action": "drag_start",
-                },
-            )
-
-        except Exception as exc:
-            logger.error("Error starting drag: %s", exc)
-            self._send_error_response(500, f"Error starting drag: {exc}")
-
-    def _handle_mouse_drag_end(self, data: dict) -> None:
-        """Release the held mouse button."""
-        self._refresh_idle_timer()
-        try:
-            pyautogui.mouseUp()
-            self._send_json_response(
-                200,
-                {
-                    "status": "success",
-                    "action": "drag_end",
-                },
-            )
-
-        except Exception as exc:
-            logger.error("Error ending drag: %s", exc)
-            self._send_error_response(500, f"Error ending drag: {exc}")
-
-    def _handle_mouse_scroll(self, data: dict) -> None:
-        """Scroll the mouse wheel.
-
-        Parameters
-        ----------
-        data:
-            JSON body with a ``delta`` integer.  Positive values scroll up;
-            negative values scroll down.
-
-        Uses a direct ``mouse_event`` call instead of ``pyautogui.scroll()`` to
-        avoid the default 100 ms ``PAUSE`` delay and ensure the injected flag is
-        set correctly for the low-level mouse hook.
-        """
-        self._refresh_idle_timer()
-        try:
-            delta = data.get("delta", 1)
-            # MOUSEEVENTF_WHEEL = 0x0800, WHEEL_DELTA = 120
-            ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(delta) * 120, 0)
-            self._send_json_response(
-                200, {"status": "success", "action": "scroll", "delta": delta}
-            )
-
-        except Exception as exc:
-            logger.error("Error scrolling mouse: %s", exc)
-            self._send_error_response(500, f"Error scrolling mouse: {exc}")
-
-    def _handle_keyboard_type(self, data: dict) -> None:
-        """Type the given text using the keyboard module to ensure correct character mapping."""
-        self._refresh_idle_timer()
-        try:
-            text = data.get("text")
-            if text is None:
-                self._send_error_response(400, "text parameter is required")
-                return
-
-            keyboard.write(text)
-            keyboard.send("enter")
-            self._send_json_response(
-                200, {"status": "success", "action": "type_text"}
-            )
-        except Exception as exc:
-            logger.error("Error typing text: %s", exc)
-            self._send_error_response(500, f"Error typing text: {exc}")
-
-    def log_message(self, fmt: str, *args) -> None:  # noqa: N802
-        """Route BaseHTTPRequestHandler access logs through the standard logger."""
-        logger.info("%s - %s", self.address_string(), fmt % args if args else fmt)
-
+# ---------------------------------------------------------------------------
+# WebSocket server
+# ---------------------------------------------------------------------------
 
 class RemoteControlServer:
-    """Threaded HTTP server that exposes mouse control and SnapSolve actions over LAN.
+    """WebSocket server that exposes mouse control and SnapSolve actions over LAN.
+
+    Plain HTTP ``GET`` requests for ``/status`` and ``/response_image`` are
+    intercepted before the WebSocket upgrade via the ``process_request`` hook,
+    so the Android client can health-check and fetch response screenshots
+    without opening a WebSocket connection.
 
     Usage
     -----
@@ -695,44 +510,270 @@ class RemoteControlServer:
     ):
         self.host = host
         self.port = port
-        self.server: Optional[HTTPServer] = None
-        self.server_thread: Optional[threading.Thread] = None
+        self.app_config: dict[str, Any] = config or {}
         self.is_running = False
 
-        # Inject the live config into the handler class so each request can use it
-        # without re-parsing CLI arguments.
-        RemoteControlHandler.app_config = config or {}
+        # asyncio event loop for the WebSocket server (runs on a background thread)
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._server_thread: Optional[threading.Thread] = None
+        self._ws_server: Optional[Any] = None  # websockets.WebSocketServer
+
+        # Single connected client (only one allowed at a time)
+        self._client: Optional[Any] = None  # websockets.ServerConnection
+        self._client_lock = threading.Lock()
 
     def start(self) -> None:
-        """Bind the socket and start accepting requests in a daemon thread."""
+        """Start the WebSocket server on a daemon thread."""
         if self.is_running:
             logger.warning("Remote control server is already running")
             return
 
         try:
-            self.server = HTTPServer((self.host, self.port), RemoteControlHandler)
+            self._loop = asyncio.new_event_loop()
             self.is_running = True
-            self.server_thread = threading.Thread(
+            self._server_thread = threading.Thread(
                 target=self._run_server, daemon=True, name="RemoteControlServer"
             )
-            self.server_thread.start()
+            self._server_thread.start()
             logger.info(
-                "Remote control server started on http://%s:%s", self.host, self.port
+                "Remote control server starting on ws://%s:%s", self.host, self.port
             )
-            print(f"Remote control server started on http://{self.host}:{self.port}")
+            print(f"Remote control server starting on ws://{self.host}:{self.port}")
 
         except Exception as exc:
             logger.error("Failed to start remote control server: %s", exc)
             raise
 
     def _run_server(self) -> None:
-        """Blocking serve loop executed on the daemon thread."""
-        assert self.server is not None
+        """Blocking server loop executed on the daemon thread."""
+        assert self._loop is not None
+        asyncio.set_event_loop(self._loop)
         try:
-            self.server.serve_forever()
+            self._loop.run_until_complete(self._serve())
         except Exception as exc:
             logger.error("Server error: %s", exc)
             self.is_running = False
+
+    async def _serve(self) -> None:
+        """Start the WebSocket server and run until stopped."""
+        import websockets  # noqa: PLC0415
+
+        self._ws_server = await websockets.serve(
+            self._handler,
+            self.host,
+            self.port,
+            process_request=self._process_http_request,
+            ping_interval=20,
+            ping_timeout=10,
+        )
+        logger.info("Remote control WebSocket server is ready on ws://%s:%s", self.host, self.port)
+        print(f"Remote control WebSocket server ready on ws://{self.host}:{self.port}")
+
+        # Block until the server is closed
+        await self._ws_server.wait_closed()
+
+    # ------------------------------------------------------------------
+    # HTTP request interception (for /status and /response_image)
+    # ------------------------------------------------------------------
+
+    def _process_http_request(self, connection, request):
+        """Intercept plain HTTP requests before the WebSocket handshake.
+
+        Returns an HTTP ``Response`` for ``/status`` and ``/response_image``
+        endpoints so the Android client can health-check the server and
+        fetch response screenshots over plain HTTP.  Returns ``None`` for
+        all other paths to proceed with the normal WebSocket upgrade.
+        """
+        from websockets.datastructures import Headers as WsHeaders  # noqa: PLC0415
+        from websockets.http11 import Response as WsResponse  # noqa: PLC0415
+
+        if request.path == "/status":
+            body = json.dumps(
+                {"status": "running", "server": "SnapSolve Remote Control"}
+            ).encode("utf-8")
+            return WsResponse(
+                200, "OK",
+                WsHeaders([("Content-Type", "application/json"), ("Access-Control-Allow-Origin", "*")]),
+                body,
+            )
+
+        if request.path == "/response_image":
+            return self._serve_response_image_http(WsResponse, WsHeaders)
+
+        # Return None → proceed with WebSocket upgrade
+        return None
+
+    @staticmethod
+    def _serve_response_image_http(ws_response_cls, ws_headers_cls):
+        """Build an HTTP response containing the latest response screenshot."""
+        with _response_image_lock:
+            image_path = _response_image_path
+
+        if not image_path or not os.path.exists(image_path):
+            body = json.dumps({"error": "No response image available"}).encode("utf-8")
+            return ws_response_cls(
+                404, "Not Found",
+                ws_headers_cls([("Content-Type", "application/json"), ("Access-Control-Allow-Origin", "*")]),
+                body,
+            )
+
+        try:
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+            return ws_response_cls(
+                200, "OK",
+                ws_headers_cls([
+                    ("Content-Type", "image/png"),
+                    ("Content-Length", str(len(image_data))),
+                    ("Access-Control-Allow-Origin", "*"),
+                ]),
+                image_data,
+            )
+        except Exception as exc:
+            logger.error("Error serving response image: %s", exc)
+            body = json.dumps({"error": f"Error serving image: {exc}"}).encode("utf-8")
+            return ws_response_cls(
+                500, "Internal Server Error",
+                ws_headers_cls([("Content-Type", "application/json"), ("Access-Control-Allow-Origin", "*")]),
+                body,
+            )
+
+    # ------------------------------------------------------------------
+    # WebSocket connection handler
+    # ------------------------------------------------------------------
+
+    async def _handler(self, websocket) -> None:
+        """Per-connection handler — only one client is allowed at a time."""
+        global _android_client_connected
+
+        # Reject if another client is already connected.
+        with self._client_lock:
+            if self._client is not None:
+                await websocket.close(1013, "Another client is already connected")
+                logger.warning(
+                    "Rejected WebSocket client from %s — another client is already connected",
+                    websocket.remote_address,
+                )
+                return
+            self._client = websocket
+
+        logger.info("WebSocket client connected from %s", websocket.remote_address)
+
+        try:
+            async for raw_message in websocket:
+                # Drain all immediately-available messages so we can
+                # coalesce high-frequency mouse_move events and skip
+                # stale intermediate positions.
+                pending_raw = [raw_message]
+                while True:
+                    try:
+                        extra = await asyncio.wait_for(websocket.recv(), timeout=0.001)
+                        pending_raw.append(extra)
+                    except (asyncio.TimeoutError, Exception):
+                        break
+
+                # Parse and separate: keep only the latest mouse_move,
+                # preserve order of everything else.
+                latest_move: Optional[dict] = None
+                other_messages: list[dict] = []
+                for raw in pending_raw:
+                    try:
+                        data = json.loads(raw)
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        await websocket.send(json.dumps(
+                            {"type": "error", "message": f"Invalid JSON: {exc}"}
+                        ))
+                        continue
+                    if data.get("type") == "mouse_move":
+                        latest_move = data  # overwrite — only the newest matters
+                    else:
+                        other_messages.append(data)
+
+                # Execute non-move messages in order
+                for data in other_messages:
+                    response = self._dispatch(data)
+                    if response:
+                        await websocket.send(json.dumps(response))
+
+                # Execute the single latest move (if any)
+                if latest_move is not None:
+                    response = self._dispatch(latest_move)
+                    if response:
+                        await websocket.send(json.dumps(response))
+
+        except Exception as exc:
+            logger.debug("WebSocket connection error: %s", exc)
+        finally:
+            with self._client_lock:
+                if self._client is websocket:
+                    self._client = None
+
+            _android_client_connected = False
+            mouse_blocker.unblock()
+            logger.info("WebSocket client disconnected — physical mouse restored")
+
+    def _dispatch(self, data: dict) -> Optional[dict]:
+        """Route an incoming message to the appropriate handler by ``type``."""
+        msg_type = data.get("type")
+        if not msg_type:
+            return {"type": "error", "message": "Missing 'type' field"}
+
+        handlers = {
+            "connect": lambda: _handle_connect(self.app_config),
+            "disconnect": lambda: _handle_disconnect(),
+            "action": lambda: _handle_action(data, self.app_config),
+            "mouse_move": lambda: _handle_mouse_move(data, self.app_config),
+            "mouse_click": lambda: _handle_mouse_click(data, self.app_config),
+            "mouse_double_click": lambda: _handle_mouse_double_click(data, self.app_config),
+            "mouse_drag_start": lambda: _handle_mouse_drag_start(self.app_config),
+            "mouse_drag_end": lambda: _handle_mouse_drag_end(self.app_config),
+            "mouse_scroll": lambda: _handle_mouse_scroll(data, self.app_config),
+            "keyboard_type": lambda: _handle_keyboard_type(data, self.app_config),
+            "response_image_ack": lambda: _handle_response_image_ack(),
+        }
+
+        handler = handlers.get(msg_type)
+        if handler is None:
+            return {"type": "error", "message": f"Unknown message type: {msg_type}"}
+
+        return handler()
+
+    # ------------------------------------------------------------------
+    # Server-push methods (called from other threads)
+    # ------------------------------------------------------------------
+
+    def schedule_push_state(self, state: dict[str, dict[str, bool]]) -> None:
+        """Schedule a UI state push to the connected client (thread-safe)."""
+        if self._loop and self.is_running:
+            asyncio.run_coroutine_threadsafe(
+                self._push_state(state), self._loop
+            )
+
+    async def _push_state(self, state: dict[str, dict[str, bool]]) -> None:
+        """Push a ``state_update`` message to the connected client."""
+        with self._client_lock:
+            client = self._client
+
+        if client is None:
+            return
+
+        with _response_image_lock:
+            has_image = _has_new_response_image
+
+        message = json.dumps({
+            "type": "state_update",
+            "buttons": state,
+            "has_new_response_image": has_image,
+        })
+
+        try:
+            await client.send(message)
+        except Exception:
+            pass  # Client may have disconnected
+
+    # ------------------------------------------------------------------
+    # Shutdown
+    # ------------------------------------------------------------------
 
     def stop(self) -> None:
         """Gracefully shut down the server and join the daemon thread."""
@@ -744,11 +785,25 @@ class RemoteControlServer:
             mouse_blocker.unblock()
 
             self.is_running = False
-            if self.server:
-                self.server.shutdown()
-                self.server.server_close()
-            if self.server_thread:
-                self.server_thread.join(timeout=5)
+
+            if self._ws_server and self._loop:
+                # Close the server from the event loop thread
+                async def _shutdown():
+                    self._ws_server.close()
+                    await self._ws_server.wait_closed()
+
+                future = asyncio.run_coroutine_threadsafe(_shutdown(), self._loop)
+                try:
+                    future.result(timeout=5)
+                except Exception:
+                    pass
+
+                # Stop the event loop
+                self._loop.call_soon_threadsafe(self._loop.stop)
+
+            if self._server_thread:
+                self._server_thread.join(timeout=5)
+
             logger.info("Remote control server stopped")
 
         except Exception as exc:

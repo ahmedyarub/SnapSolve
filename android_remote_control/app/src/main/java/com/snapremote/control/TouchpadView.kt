@@ -67,10 +67,10 @@ class TouchpadView @JvmOverloads constructor(
     // Touch tracking state
     // -------------------------------------------------------------------------
 
-    /** X coordinate of the initial touch-down (updated as the finger moves). */
+    /** X coordinate where the finger currently is (updated continuously). */
     private var lastX = 0f
 
-    /** Y coordinate of the initial touch-down (updated as the finger moves). */
+    /** Y coordinate where the finger currently is (updated continuously). */
     private var lastY = 0f
 
     /** X coordinate of the last mouse move sent to the server. */
@@ -78,6 +78,15 @@ class TouchpadView @JvmOverloads constructor(
 
     /** Y coordinate of the last mouse move sent to the server. */
     private var lastSentY = 0f
+
+    /** X coordinate of the original ACTION_DOWN event (never updated during a gesture). */
+    private var downX = 0f
+
+    /** Y coordinate of the original ACTION_DOWN event (never updated during a gesture). */
+    private var downY = 0f
+
+    /** Timestamp (ms) of the original ACTION_DOWN event. */
+    private var downTimeMs = 0L
 
     /** Whether at least one pointer is currently pressing down. */
     private var isPointerDown = false
@@ -142,14 +151,17 @@ class TouchpadView @JvmOverloads constructor(
     // Configuration constants
     // -------------------------------------------------------------------------
 
-    /** Minimum pixels a finger must travel before a touch is treated as a move. */
-    private val moveThresholdPx = 8f
+    /** Minimum pixels a finger must travel from the DOWN position to be a move. */
+    private val moveThresholdPx = 12f
 
     /** Sensitivity multiplier for mouse movement (can be exposed as a setting). */
     private var sensitivity = 1.5f
 
     /** Two taps within this window (ms) are interpreted as a double click. */
     private val DOUBLE_CLICK_TIMEOUT_MS = 300L
+
+    /** Maximum touch duration (ms) for a gesture to qualify as a tap/click. */
+    private val TAP_TIMEOUT_MS = 200L
 
     /** A finger held down for this long without movement starts a drag. */
     private val LONG_PRESS_TIMEOUT_MS = 500L
@@ -247,6 +259,8 @@ class TouchpadView @JvmOverloads constructor(
         lastY = event.y
         lastSentX = event.x
         lastSentY = event.y
+        downX = event.x
+        downY = event.y
         scrollStartY = event.y
         scrollAccumulator = 0f
         isPointerDown = true
@@ -256,6 +270,7 @@ class TouchpadView @JvmOverloads constructor(
         longPressJob?.cancel()
 
         val now = System.currentTimeMillis()
+        downTimeMs = now
         isPotentialDrag = (lastUpTimeMs > 0L && now - lastUpTimeMs <= DOUBLE_CLICK_TIMEOUT_MS)
 
         // Cancel the delayed click job since we have a second touch down (double tap or drag)
@@ -299,10 +314,13 @@ class TouchpadView @JvmOverloads constructor(
 
         if (touchCount != 1) return true
 
-        val dx = event.x - lastX
-        val dy = event.y - lastY
+        // Measure cumulative distance from the original DOWN position, not
+        // from the last MOVE position.  This prevents a series of tiny
+        // incremental deltas from sneaking past the threshold.
+        val cumulDx = event.x - downX
+        val cumulDy = event.y - downY
 
-        if (!hasMoved && (dx.absoluteValue > moveThresholdPx || dy.absoluteValue > moveThresholdPx)) {
+        if (!hasMoved && (cumulDx.absoluteValue > moveThresholdPx || cumulDy.absoluteValue > moveThresholdPx)) {
             hasMoved = true
             longPressJob?.cancel()
             longPressJob = null
@@ -378,8 +396,8 @@ class TouchpadView @JvmOverloads constructor(
                     isLongPress = false
                 }
 
-                !hasMoved -> {
-                    // Tap: determine single vs double click
+                !hasMoved && (now - downTimeMs < TAP_TIMEOUT_MS) -> {
+                    // Tap: must be both short AND stationary to qualify.
                     if (isPotentialDrag) {
                         enqueueMouseEvent(MouseEvent.DoubleClick("left"))
                         lastUpTimeMs = 0L // reset so a triple tap won't re-trigger

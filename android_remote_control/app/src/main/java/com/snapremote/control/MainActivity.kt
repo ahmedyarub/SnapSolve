@@ -2,7 +2,6 @@ package com.snapremote.control
 
 import android.content.SharedPreferences
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -11,13 +10,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -35,12 +31,18 @@ import java.io.FileOutputStream
  * - Wire the [TouchpadView] to the [RemoteControlClient] so touch events are sent
  *   directly to the server without routing through this Activity.
  *
+ * ## Connection model
+ * Uses a persistent WebSocket connection. UI state updates and response-image
+ * notifications are **pushed** by the server via [RemoteControlListener] —
+ * no polling loop is needed.
+ *
  * ## Threading
  * All network calls are dispatched via [lifecycleScope] on [Dispatchers.IO] so they
  * are automatically canceled when the Activity is destroyed and never touch the UI
- * from a background thread.
+ * from a background thread. [RemoteControlListener] callbacks arrive on OkHttp's
+ * background thread and are forwarded to the main thread via [runOnUiThread].
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), RemoteControlListener {
 
     // -------------------------------------------------------------------------
     // Views
@@ -74,9 +76,6 @@ class MainActivity : AppCompatActivity() {
     /** Whether the client is currently connected to the server. */
     private var isConnected = false
 
-    /** Job for polling UI state. */
-    private var statePollingJob: Job? = null
-
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
@@ -87,6 +86,7 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getPreferences(MODE_PRIVATE)
         remoteControlClient = RemoteControlClient()
+        remoteControlClient.setListener(this)
 
         bindViews()
         restoreSavedAddress()
@@ -94,6 +94,14 @@ class MainActivity : AppCompatActivity() {
         setupActionButtons()
         setConnected(false) // Start in disconnected state
         attemptAutoConnect()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isConnected) {
+            remoteControlClient.disconnect()
+        }
+        remoteControlClient.setListener(null)
     }
 
     // -------------------------------------------------------------------------
@@ -181,18 +189,14 @@ class MainActivity : AppCompatActivity() {
         remoteControlClient.setServerConfig(ip, port)
         setStatusConnecting()
 
+        // First verify the server is reachable via HTTP, then open WebSocket
         lifecycleScope.launch {
-            val success = withContext(Dispatchers.IO) { remoteControlClient.testConnection() }
-            if (success) {
-                // Notify the server to block the physical mouse.
-                withContext(Dispatchers.IO) { remoteControlClient.connect() }
+            val reachable = withContext(Dispatchers.IO) { remoteControlClient.testConnection() }
+            if (reachable) {
                 saveAddress(ip, port)
-                setConnected(true)
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.toast_connected, ip, port),
-                    Toast.LENGTH_SHORT,
-                ).show()
+                // Open the persistent WebSocket connection.
+                // onConnected() / onDisconnected() will be called via the listener.
+                remoteControlClient.connect()
             } else {
                 setConnected(false)
                 Toast.makeText(this@MainActivity, R.string.toast_connect_failed, Toast.LENGTH_SHORT).show()
@@ -202,15 +206,59 @@ class MainActivity : AppCompatActivity() {
 
     /** Disconnect from the server and reset UI state. */
     private fun disconnect() {
-        // Notify the server to restore the physical mouse before resetting.
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) { remoteControlClient.disconnect() }
-        }
+        remoteControlClient.disconnect()
         touchpadView.clearRemoteControlClient()
+
         // Re-attach a fresh client so reconnection works without restarting.
         remoteControlClient = RemoteControlClient()
+        remoteControlClient.setListener(this)
         touchpadView.setRemoteControlClient(remoteControlClient)
+
         setConnected(false)
+    }
+
+    // -------------------------------------------------------------------------
+    // RemoteControlListener — push-based callbacks from the server
+    // -------------------------------------------------------------------------
+
+    override fun onConnected() {
+        runOnUiThread {
+            setConnected(true)
+            val ip = ipAddressEditText.text.toString().trim()
+            val port = portEditText.text.toString().toIntOrNull() ?: 8080
+            Toast.makeText(
+                this,
+                getString(R.string.toast_connected, ip, port),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    override fun onDisconnected(reason: String) {
+        runOnUiThread {
+            if (isConnected) {
+                // Unexpected disconnection — reset UI
+                setConnected(false)
+                Toast.makeText(this, "Disconnected: $reason", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean) {
+        runOnUiThread {
+            if (buttons != null) {
+                updateButtonStates(buttons)
+            }
+        }
+        if (hasNewResponseImage) {
+            handleNewResponseImage()
+        }
+    }
+
+    override fun onError(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, "Server error: $message", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -231,20 +279,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Send a named action to the server.
+     * Send a named action to the server via WebSocket.
      *
      * @param action Action identifier (e.g. `"capture"`, `"cancel"`).
      */
     private fun executeAction(action: String) {
-        lifecycleScope.launch {
-            val success = withContext(Dispatchers.IO) { remoteControlClient.executeAction(action) }
-            if (!success) {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.toast_action_error, action),
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
+        val success = remoteControlClient.executeAction(action)
+        if (!success) {
+            Toast.makeText(
+                this,
+                getString(R.string.toast_action_error, action),
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 
@@ -257,8 +303,6 @@ class MainActivity : AppCompatActivity() {
      *
      * @param connected `true` after a successful connection, `false` otherwise.
      */
-    // The MotionEvent is part of the required onTouchEvent dispatch signature; the pointer
-    // index is not needed here because we only decrement the global touchCount counter.
     private fun setConnected(connected: Boolean) {
         isConnected = connected
 
@@ -280,67 +324,12 @@ class MainActivity : AppCompatActivity() {
         actionButtons.forEach { it.isEnabled = connected }
 
         touchpadView.visibility = if (connected) View.VISIBLE else View.INVISIBLE
-
-        if (connected) {
-            startStatePolling()
-        } else {
-            stopStatePolling()
-        }
     }
 
-    private fun startStatePolling() {
-        statePollingJob?.cancel()
-        statePollingJob = lifecycleScope.launch {
-            while (isConnected) {
-                val state = withContext(Dispatchers.IO) { remoteControlClient.fetchState() }
-                if (state != null) {
-                    updateButtonStates(state)
-                    if (state.optBoolean("has_new_response_image", false)) {
-                        handleNewResponseImage()
-                    }
-                }
-                delay(500)
-            }
-        }
-    }
-
-    private suspend fun handleNewResponseImage() {
-        val imageBytes = withContext(Dispatchers.IO) { remoteControlClient.fetchResponseImage() }
-        if (imageBytes != null) {
-            try {
-                // Save to cache dir
-                val imageFile = File(cacheDir, "response_image.png")
-                withContext(Dispatchers.IO) {
-                    FileOutputStream(imageFile).use { fos ->
-                        fos.write(imageBytes)
-                    }
-                }
-                
-                // Ack receipt
-                withContext(Dispatchers.IO) { remoteControlClient.ackResponseImage() }
-                
-                // View image
-                val intent = Intent(this@MainActivity, ImageViewerActivity::class.java).apply {
-                    putExtra("EXTRA_IMAGE_PATH", imageFile.absolutePath)
-                }
-                startActivity(intent)
-                
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Failed to view response image", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun stopStatePolling() {
-        statePollingJob?.cancel()
-        statePollingJob = null
-    }
-
-    private fun updateButtonStates(state: JSONObject) {
-        val buttonsObj = state.optJSONObject("buttons") ?: return
-        
+    /**
+     * Apply button visibility/enabled states received from the server.
+     */
+    private fun updateButtonStates(buttonsObj: JSONObject) {
         fun updateBtn(btn: View, name: String) {
             val btnState = buttonsObj.optJSONObject(name)
             if (btnState != null) {
@@ -357,6 +346,41 @@ class MainActivity : AppCompatActivity() {
         updateBtn(cycleSourceButton, "cycle")
         updateBtn(cancelButton, "cancel")
         // newChatButton and togglePanelButton are kept always visible.
+    }
+
+    /**
+     * Fetch the response image via HTTP, display it, and acknowledge receipt
+     * via WebSocket.
+     */
+    private fun handleNewResponseImage() {
+        lifecycleScope.launch {
+            val imageBytes = withContext(Dispatchers.IO) { remoteControlClient.fetchResponseImage() }
+            if (imageBytes != null) {
+                try {
+                    // Save to cache dir
+                    val imageFile = File(cacheDir, "response_image.png")
+                    withContext(Dispatchers.IO) {
+                        FileOutputStream(imageFile).use { fos ->
+                            fos.write(imageBytes)
+                        }
+                    }
+
+                    // Ack receipt via WebSocket
+                    remoteControlClient.ackResponseImage()
+
+                    // View image
+                    val intent = Intent(this@MainActivity, ImageViewerActivity::class.java).apply {
+                        putExtra("EXTRA_IMAGE_PATH", imageFile.absolutePath)
+                    }
+                    startActivity(intent)
+
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Failed to view response image", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
     }
 
     /** Show an intermediate "Connecting…" status while the network call is in flight. */
@@ -385,11 +409,9 @@ class MainActivity : AppCompatActivity() {
                 val text = editText.text.toString()
                 if (text.isNotEmpty()) {
                     editText.text.clear()
-                    lifecycleScope.launch {
-                        val success = withContext(Dispatchers.IO) { remoteControlClient.typeText(text) }
-                        if (!success) {
-                            Toast.makeText(this@MainActivity, "Failed to send text", Toast.LENGTH_SHORT).show()
-                        }
+                    val success = remoteControlClient.typeText(text)
+                    if (!success) {
+                        Toast.makeText(this@MainActivity, "Failed to send text", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -401,7 +423,7 @@ class MainActivity : AppCompatActivity() {
             topMargin = 16
         }
         container.addView(sendButton, params)
-        
+
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Type Text")
             .setView(container)
