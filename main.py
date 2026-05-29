@@ -205,6 +205,8 @@ def _execute_text_pipeline(
         else None,
         text=text,
         cancel_event=cancel_event,
+        max_retries=config.get("llm_max_retries", 3),
+        base_delay=config.get("llm_retry_base_delay", 5),
     )
 
     if hasattr(sink, "finish"):
@@ -332,6 +334,8 @@ def _execute_capture_pipeline(
         else None,
         coords=config.get("coordinates"),
         cancel_event=cancel_event,
+        max_retries=config.get("llm_max_retries", 3),
+        base_delay=config.get("llm_retry_base_delay", 5),
     )
 
     if hasattr(sink, "finish"):

@@ -1,4 +1,6 @@
 from typing import Optional
+import logging
+import re
 import threading
 import time
 from core.sources.base import Source
@@ -6,7 +8,95 @@ from core.sources.ocr.exceptions import OCRCancelledError
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 
+logger = logging.getLogger(__name__)
+
 PIPELINE_CANCELLED_MSG = "Pipeline cancelled."
+
+# Patterns that indicate a transient/retryable LLM error (matched case-insensitively).
+_RETRYABLE_PATTERNS: list[re.Pattern] = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"503",
+        r"429",
+        r"UNAVAILABLE",
+        r"overloaded",
+        r"rate.?limit",
+        r"quota",
+        r"capacity",
+        r"too many requests",
+        r"ResourceExhausted",
+        r"ServerError",
+        r"deadline.?exceeded",
+        r"connection",
+    )
+]
+
+
+def _is_retryable_error(error_text: str) -> bool:
+    """Return True if *error_text* matches any known transient error pattern."""
+    return any(pat.search(error_text) for pat in _RETRYABLE_PATTERNS)
+
+
+def _call_llm_with_retry(
+    llm: LLMEngine,
+    prompt: str,
+    image_path: Optional[str],
+    is_image: bool,
+    status_callback,
+    enable_stitching: bool,
+    sink: Sink,
+    is_main: bool,
+    cancel_event: threading.Event = None,
+    max_retries: int = 3,
+    base_delay: float = 5.0,
+) -> str:
+    """Call the LLM with automatic retry on transient errors.
+
+    Uses exponential backoff: *base_delay* × 2^attempt (5 s → 10 s → 20 s by
+    default).  Checks *cancel_event* between retries so the user can still
+    abort.
+    """
+    last_error = ""
+    for attempt in range(max_retries + 1):
+        if cancel_event and cancel_event.is_set():
+            return "Cancelled"
+
+        try:
+            result = _call_llm_with_cancel_check(
+                llm, prompt, image_path, is_image,
+                status_callback, enable_stitching, sink, is_main, cancel_event,
+            )
+
+            # Some engines return error strings instead of raising.
+            if isinstance(result, str) and result.startswith("Error") and _is_retryable_error(result):
+                raise RuntimeError(result)
+
+            return result
+
+        except Exception as exc:
+            last_error = str(exc)
+            if not _is_retryable_error(last_error) or attempt >= max_retries:
+                raise
+
+            delay = base_delay * (2 ** attempt)
+            role = "main" if is_main else "fallback"
+            logger.warning(
+                "[Pipeline] Retryable error on %s model (attempt %d/%d): %s — retrying in %.0fs",
+                role, attempt + 1, max_retries, last_error, delay,
+            )
+            if status_callback:
+                status_callback(f"Retrying ({attempt + 1}/{max_retries})...")
+
+            # Sleep in small increments so we can bail on cancellation.
+            deadline = time.time() + delay
+            while time.time() < deadline:
+                if cancel_event and cancel_event.is_set():
+                    return "Cancelled"
+                time.sleep(0.25)
+
+    # Should not be reached, but just in case:
+    return f"Error: retries exhausted — {last_error}"
+
 
 
 class ConcurrentSinkWrapper(Sink):
@@ -147,40 +237,15 @@ def _execute_llm_without_fallback(
     enable_stitching: bool = True,
     sink: Sink = None,
     cancel_event: threading.Event = None,
+    max_retries: int = 3,
+    base_delay: float = 5.0,
 ) -> str:
-    """Execute LLM processing without fallback."""
-    if is_image:
-        if "cancel_event" in llm.process_image.__code__.co_varnames:
-            return llm.process_image(
-                prompt,
-                image_path,
-                status_callback,
-                enable_stitching,
-                sink,
-                is_main=True,
-                cancel_event=cancel_event,
-            )
-        return llm.process_image(
-            prompt,
-            image_path,
-            status_callback,
-            enable_stitching,
-            sink,
-            is_main=True,
-        )
-    else:
-        if "cancel_event" in llm.process_text.__code__.co_varnames:
-            return llm.process_text(
-                prompt,
-                status_callback,
-                enable_stitching,
-                sink,
-                is_main=True,
-                cancel_event=cancel_event,
-            )
-        return llm.process_text(
-            prompt, status_callback, enable_stitching, sink, is_main=True
-        )
+    """Execute LLM processing without fallback, with automatic retry."""
+    return _call_llm_with_retry(
+        llm, prompt, image_path, is_image,
+        status_callback, enable_stitching, sink, is_main=True,
+        cancel_event=cancel_event, max_retries=max_retries, base_delay=base_delay,
+    )
 
 
 def _call_llm_with_cancel_check(
@@ -279,10 +344,12 @@ def _run_llm_thread(
     main_success: list,
     main_finished: threading.Event,
     cancel_event: threading.Event = None,
+    max_retries: int = 3,
+    base_delay: float = 5.0,
 ):
-    """Run LLM processing in a thread."""
+    """Run LLM processing in a thread with automatic retry."""
     try:
-        ans = _call_llm_with_cancel_check(
+        ans = _call_llm_with_retry(
             llm,
             prompt,
             image_path,
@@ -292,6 +359,8 @@ def _run_llm_thread(
             sink,
             is_main,
             cancel_event,
+            max_retries=max_retries,
+            base_delay=base_delay,
         )
         _store_llm_result(results, lock, ans, is_main, main_success)
     except Exception as error:
@@ -351,6 +420,8 @@ def process_pipeline(
     coords=None,
     text=None,
     cancel_event: threading.Event = None,
+    max_retries: int = 3,
+    base_delay: float = 5.0,
 ) -> str:
     if cancel_event is None:
         cancel_event = threading.Event()
@@ -389,6 +460,8 @@ def process_pipeline(
             enable_stitching,
             sink,
             cancel_event,
+            max_retries=max_retries,
+            base_delay=base_delay,
         )
 
     results = {}
@@ -428,6 +501,8 @@ def process_pipeline(
             main_success,
             main_finished,
             cancel_event,
+            max_retries,
+            base_delay,
         ),
         daemon=True,
     )
@@ -448,6 +523,8 @@ def process_pipeline(
             main_success,
             main_finished,
             cancel_event,
+            max_retries,
+            base_delay,
         ),
         daemon=True,
     )

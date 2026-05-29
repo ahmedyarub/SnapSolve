@@ -166,6 +166,9 @@ def _get_default_config():
         "share_response_with_android": False,
         "ide_pycharm_path": "pycharm",
         "ide_antigravity_path": str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe"),
+        # LLM retry on transient errors (503, rate limits, etc.)
+        "llm_max_retries": 3,
+        "llm_retry_base_delay": 5,
     }
 
 
