@@ -11,6 +11,10 @@
     {
       "action": "reselect",
       "key": "ctrl+alt+shift+s"
+    },
+    {
+      "action": "toggle_all_widgets",
+      "key": "ctrl+alt+shift+v"
     }
   ],
   "coordinates": null,
@@ -20,7 +24,7 @@
   "ollama_url": "http://localhost:11434",
   "google_genai_api_key": "",
   "auto_close_results": false,
-  "popup_opacity": 0.9,
+  "opacity": 0.9,
   "hide_from_capture": false,
   "toggle_panel": true,
   "warmup_ocr": false,
