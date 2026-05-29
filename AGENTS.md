@@ -36,7 +36,8 @@ This application relies on a strictly decoupled architecture:
       signal-based communication. This is the largest single file in the project.
     *   `session_manager.py`: `SessionManager` — chat session persistence, history management, transcription
       file storage.
-    *   `remote_control_server.py`: HTTP server for Android remote control — mouse control, app action dispatch.
+    *   `remote_control_server.py`: WebSocket server for Android remote control — mouse control, app action dispatch,
+      UI state synchronization.
 2.  **`ui/`**: PyQt6 dialog and overlay components. Do not mix heavy I/O or LLM requests directly inside UI event
     handlers.
     *   `config_ui.py`: `ConfigUI(QDialog)` — full configuration dialog with tabs for settings, profiles,
@@ -60,7 +61,7 @@ This application relies on a strictly decoupled architecture:
     *   `sanity/`: Standalone sanity check scripts (OCR, audio, WhisperLive warmup) for component verification.
 7.  **`scripts/`**: Verification scripts.
     *   `verify.ps1` / `verify.sh`: Linting (Ruff), formatting, Qodana, SonarQube, and Kotlin/Android lint.
-8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via HTTP.
+8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via WebSocket.
 9.  **`docs/`**: Additional documentation (architecture, features, setup guides, roadmap).
 10. **`main.py`**: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI,
     hotkeys, and runs the event loop. Contains all handler functions (`handle_capture()`, `handle_text_submit()`,
@@ -181,8 +182,10 @@ This application relies on a strictly decoupled architecture:
     - IDEs and editors automatically apply these settings when .editorconfig is respected
 * **Pydantic Models:** When working with Pydantic models (v2+), use `model_dump_json()` instead of the deprecated `json()` method
   for serializing models to JSON strings. The `json()` method was deprecated in Pydantic v2 and will be removed in future versions.
-* **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI whenever
-  you introduce new settings. **Important:** Any time a new Source, LLM engine, OCR engine, or Sink is added, you must remember to update `ui/config_ui.py` to allow the user to select them.
+* **Configuration:** Always update the sample configuration (`config/config.sample.json`) and configuration UI (`ui/config_ui.py`) whenever
+  you introduce new settings. **Every** new configuration key must have a corresponding widget in `ui/config_ui.py` so users can
+  modify it without editing JSON files. Additionally, any time a new Source, LLM engine, OCR engine, or Sink is added, you must
+  update `ui/config_ui.py` to allow the user to select them.
 * **Profile Management:** When adding new configuration options, consider whether they should be profile-specific or
   global settings. Update `profiles.json` structure accordingly.
 * **Hotkey Management:** New hotkeys should be added to the default configuration in `config/settings.py` and properly
@@ -191,6 +194,10 @@ This application relies on a strictly decoupled architecture:
     *   The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
     *   These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
     *   NEVER run sanity tests autonomously. These are strictly for developer usage and manual testing only.
+* **Documentation Tracking:**
+    *   When implementing a new feature, **always** update `docs/FEATURES.md` to document it.
+    *   Keep only the **10 most recent** completed tasks in the "Recently Completed Features" section of `docs/TODO.md`.
+      Older completed items should be removed to keep the list concise. New completions go at the bottom of the list.
 
 ## Testing Guidelines
 

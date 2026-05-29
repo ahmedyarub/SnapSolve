@@ -7,6 +7,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Keyboard Shortcuts:** Customizable global hotkeys (e.g., `Ctrl+Alt+Shift+C`) trigger actions (like Capture, Reselect, Multi-select, Toggle Panel, New Session, Open URL, Session Browser, Quit) without needing the app to be in focus.
 *   **Control Panel:** An optional floating toolbar to visually trigger key actions and view status.
 *   **Configuration UI:** A user-friendly settings dialog with tabs for modifying Application Settings, Profile Settings, Keyboard Shortcuts, Warmup Settings, and Remote Control settings without manually editing JSON files.
+*   **Active Profile Placement:** The active profile selector is placed on the main application tab for quick access.
 *   **Background Mode:** Run the application minimized to the system tray, freeing up taskbar space.
 *   **Profiles:** Define and switch between distinct configurations (e.g., "Fast Image Processing", "Deep Text Analysis"). Each profile stores its specific `llm_engine`, model, `ocr_engine`, prompt, and fallback model settings.
 *   **Audio Device Configuration:** Configure specific audio input devices for speech recognition and output devices for TTS.
@@ -23,6 +24,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Multi-Select:** Capture multiple disparate areas of the screen and aggregate them into a single request.
 *   **Text or Image Input:** Depending on the setup, the application can extract raw text (using OCR) or send the raw image directly to vision-capable engines.
 *   **Audio Recording:** Background audio recording with visual feedback and automatic transcription.
+*   **Voice Activity Detection:** Automatic start/stop of recording based on detected voice activity.
 *   **Real-time Transcription:** WhisperLive integration for live subtitle display during recording, with configurable pause threshold and subtitle double-click to submit.
 
 ## Prompt & Enrichment
@@ -52,6 +54,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Remote OCR:** Offload OCR processing to a remote PaddleOCR FastAPI service.
 *   **Concurrent Execution & Warmup:** Models are preloaded (warmed up) during application startup for reduced latency. Configurable warmup for OCR, LLM, TTS, speech recognition, and real-time transcription.
 *   **Speech Recognition:** Google Speech-to-Text integration for audio input processing with configurable warmup.
+*   **Automatic LLM Retry:** Automatic retry with exponential backoff (up to 3 attempts, configurable) when LLM providers return transient errors such as `503 UNAVAILABLE`, rate limits, or connection failures. Retries are cancellable and show status updates in the popup.
 
 ## Sink (Output Generation)
 
@@ -62,6 +65,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   Configurable opacity for visual integration.
     *   Draggable via title bar and resizable via edge/corner handles.
     *   "Open in IDE" context menu — right-click any code block to open it in PyCharm or Antigravity IDE.
+    *   Proper state reset between consecutive LLM responses.
 *   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
     *   Support for multiple voice models (.onnx format).
     *   Configurable audio output devices.
@@ -87,6 +91,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Button State Sync:** Real-time button visibility and state synchronization between the main app and the Android companion.
 *   **Text Input:** Type and submit text directly from the Android app via the `keyboard_type` message.
 *   **Response Image Sharing:** Capture and share response screenshots with the connected Android app over HTTP.
+*   **Android Response Viewer:** View rendered Markdown responses directly in the Android app without relying on screenshots.
 *   **Configurable Mouse Sensitivity:** Adjustable mouse sensitivity for remote control touchpad.
 *   **Android Companion App:** Kotlin/Gradle companion app with touchpad-style mouse control, synchronized action buttons, auto-connect, and text input.
 

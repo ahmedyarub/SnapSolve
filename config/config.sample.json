@@ -45,5 +45,7 @@
   "remote_control_port": 8080,
   "mouse_sensitivity": 1.5,
   "remote_mouse_idle_timeout": 3.0,
-  "share_response_with_android": false
+  "share_response_with_android": false,
+  "llm_max_retries": 3,
+  "llm_retry_base_delay": 5
 }

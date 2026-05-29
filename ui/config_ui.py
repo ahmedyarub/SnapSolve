@@ -85,6 +85,7 @@ class ConfigUI(QDialog):
         self.profile_tab = None
         self.app_tab = None
 
+        self.llm_tab = QWidget()
         self.tabs = QTabWidget()
         self.warmup_tab = QWidget()
         self.default_source_combo = QComboBox()
@@ -132,6 +133,14 @@ class ConfigUI(QDialog):
             "Share LLM response screenshot with Android app"
         )
 
+        # LLM Retry settings
+        self.llm_max_retries = QLineEdit(
+            str(self.config.get("llm_max_retries", 3))
+        )
+        self.llm_retry_base_delay = QLineEdit(
+            str(self.config.get("llm_retry_base_delay", 5))
+        )
+
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
 
@@ -155,12 +164,14 @@ class ConfigUI(QDialog):
 
         self.tabs.addTab(self.app_tab, "Application Settings")
         self.tabs.addTab(self.profile_tab, "Profile Settings")
+        self.tabs.addTab(self.llm_tab, "LLM Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
         self.tabs.addTab(self.remote_control_tab, "Remote Control")
 
         self.setup_app_tab()
         self.setup_profile_tab()
+        self.setup_llm_tab()
         self.setup_warmup_tab()
         self.setup_shortcuts_tab()
         self.setup_remote_control_tab()
@@ -309,12 +320,6 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Screen Capture:", self.hide_from_capture)
 
-        # API Keys & URLs
-        layout.addRow("Ollama URL:", self.ollama_url)
-
-        self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
-
         # IDE Paths
         pycharm_layout = QHBoxLayout()
         pycharm_layout.addWidget(self.ide_pycharm_path)
@@ -329,6 +334,44 @@ class ConfigUI(QDialog):
         browse_antigravity_btn.clicked.connect(self.browse_antigravity_path)
         antigravity_layout.addWidget(browse_antigravity_btn)
         layout.addRow("Antigravity IDE Path:", antigravity_layout)
+
+    def setup_llm_tab(self):
+        """Build the LLM Settings tab.
+
+        Contains API keys/URLs for LLM providers and retry configuration.
+        """
+        layout = QFormLayout(self.llm_tab)
+
+        # API Keys & URLs
+        layout.addRow("Ollama URL:", self.ollama_url)
+
+        self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
+
+        # LLM Retry
+        self.llm_max_retries.setPlaceholderText("e.g. 3")
+        self.llm_max_retries.setToolTip(
+            "Maximum number of retry attempts when the LLM returns a\n"
+            "transient error (503, rate limit, connection issue, etc.).\n"
+            "Set to 0 to disable retries."
+        )
+        layout.addRow("Max Retries:", self.llm_max_retries)
+
+        self.llm_retry_base_delay.setPlaceholderText("e.g. 5")
+        self.llm_retry_base_delay.setToolTip(
+            "Base delay in seconds for exponential backoff between retries.\n"
+            "Actual delays: base × 2^attempt (e.g. 5s → 10s → 20s)."
+        )
+        layout.addRow("Retry Base Delay (s):", self.llm_retry_base_delay)
+
+        hint = QLabel(
+            "Configure LLM provider connections and retry behavior.\n"
+            "Retries apply to transient errors like 503 (service unavailable),\n"
+            "rate limits, and connection failures.\n"
+            "Model selection is configured per-profile in the Profile Settings tab."
+        )
+        hint.setWordWrap(True)
+        layout.addRow(hint)
 
     def setup_profile_tab(self):
         layout = QVBoxLayout(self.profile_tab)
@@ -569,6 +612,21 @@ class ConfigUI(QDialog):
         self.config["ide_antigravity_path"] = self.ide_antigravity_path.text().strip() or default_antigravity
         
         self.config["opacity"] = self.opacity_slider.value() / 100.0
+
+        # LLM Retry
+        try:
+            self.config["llm_max_retries"] = int(
+                self.llm_max_retries.text().strip() or "3"
+            )
+        except ValueError:
+            self.config["llm_max_retries"] = 3
+
+        try:
+            self.config["llm_retry_base_delay"] = float(
+                self.llm_retry_base_delay.text().strip() or "5"
+            )
+        except ValueError:
+            self.config["llm_retry_base_delay"] = 5
 
         self.config["tts_output_device_name"] = (
             self.tts_output_device_combo.currentData()
