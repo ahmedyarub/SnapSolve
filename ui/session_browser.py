@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 
+from core.output import _PopupWebPage
 from core.session_manager import SessionManager
 
 
@@ -69,6 +70,7 @@ class SessionBrowserDialog(QDialog):
         self._current_session_id: Optional[str] = None
         self._response_loaded = False
         self._pending_response_js: list[str] = []
+        self._response_page: _PopupWebPage | None = None
 
         # Build UI
         self._build_ui()
@@ -146,10 +148,12 @@ class SessionBrowserDialog(QDialog):
         )
         response_layout.addWidget(response_header)
         self.response_view = QWebEngineView()
+        self._response_page = _PopupWebPage(self.response_view)
+        self.response_view.setPage(self._response_page)
         self.response_view.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
         )
-        self.response_view.page().setBackgroundColor(QColor(30, 30, 30))
+        self._response_page.setBackgroundColor(QColor(30, 30, 30))
         self.response_view.loadFinished.connect(self._on_response_loaded)
         response_layout.addWidget(self.response_view)
         self.v_splitter.addWidget(response_container)

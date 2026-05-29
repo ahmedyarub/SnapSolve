@@ -1,10 +1,15 @@
 import json
+import logging
+import os
+import subprocess
+import tempfile
 import threading
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer, QEvent, QPoint, QSize, QRect, QUrl
 from PyQt6.QtGui import QCursor
-from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
@@ -293,6 +298,111 @@ class ResizableWidgetMixin:
 # --- PyQt UI Components ---
 
 
+# --- Language → file extension mapping for temp files ---
+_LANG_EXTENSIONS: dict[str, str] = {
+    "python": ".py", "py": ".py",
+    "javascript": ".js", "js": ".js",
+    "typescript": ".ts", "ts": ".ts",
+    "java": ".java",
+    "c": ".c", "cpp": ".cpp", "c++": ".cpp",
+    "csharp": ".cs", "cs": ".cs",
+    "go": ".go",
+    "rust": ".rs", "rs": ".rs",
+    "kotlin": ".kt", "kt": ".kt",
+    "swift": ".swift",
+    "ruby": ".rb", "rb": ".rb",
+    "php": ".php",
+    "html": ".html",
+    "css": ".css",
+    "scss": ".scss",
+    "less": ".less",
+    "json": ".json",
+    "xml": ".xml",
+    "yaml": ".yaml", "yml": ".yaml",
+    "toml": ".toml",
+    "sql": ".sql",
+    "bash": ".sh", "sh": ".sh", "shell": ".sh",
+    "powershell": ".ps1", "ps1": ".ps1",
+    "bat": ".bat", "batch": ".bat",
+    "markdown": ".md", "md": ".md",
+    "lua": ".lua",
+    "r": ".r",
+    "scala": ".scala",
+    "dart": ".dart",
+    "groovy": ".groovy",
+    "perl": ".pl",
+    "jsx": ".jsx", "tsx": ".tsx",
+    "vue": ".vue",
+    "svelte": ".svelte",
+}
+
+
+def _get_extension_for_language(lang: str) -> str:
+    """Map a code-fence language tag to a file extension."""
+    return _LANG_EXTENSIONS.get(lang.lower().strip(), ".txt") if lang else ".txt"
+
+
+def _open_code_in_ide(ide: str, code: str, lang: str):
+    """Write *code* to a temp file and open it in the specified IDE."""
+    logger = logging.getLogger(__name__)
+    ext = _get_extension_for_language(lang)
+
+    try:
+        fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="snapsolve_code_")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(code)
+    except OSError as e:
+        logger.error(f"Failed to write temp file for IDE: {e}")
+        return
+
+    logger.info(f"Opening code in {ide}: {temp_path} (lang={lang})")
+
+    try:
+        from config.settings import load_config
+        app_config = load_config()
+        
+        if ide == "pycharm":
+            pycharm_path = app_config.get("ide_pycharm_path", "pycharm")
+            subprocess.Popen(f'"{pycharm_path}" "{temp_path}"', shell=True)
+        elif ide == "antigravity":
+            default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
+            antigravity_path = app_config.get("ide_antigravity_path", default_antigravity)
+            subprocess.Popen(f'"{antigravity_path}" --goto "{temp_path}"', shell=True)
+        else:
+            logger.warning(f"Unknown IDE: {ide}")
+    except FileNotFoundError:
+        logger.error(
+            f"IDE executable for '{ide}' not found. "
+            f"Make sure it is on your PATH or installed in a standard location."
+        )
+    except OSError as e:
+        logger.error(f"Failed to launch {ide}: {e}")
+
+
+class _PopupWebPage(QWebEnginePage):
+    """Custom page that intercepts snapsolve:// navigation for IDE integration."""
+
+    # noinspection PyPep8Naming
+    def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
+        if url.scheme() == "snapsolve" and url.host() == "open-in-ide":
+            parsed = urlparse(url.toString())
+            params = parse_qs(parsed.query)
+            ide = params.get("ide", [""])[0]
+            lang = params.get("lang", [""])[0]
+            code = params.get("code", [""])[0]
+
+            if ide and code:
+                threading.Thread(
+                    target=_open_code_in_ide,
+                    args=(ide, code, lang),
+                    daemon=True,
+                ).start()
+
+            return False  # Don't actually navigate
+
+        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+
+
 class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
     def __init__(self):
         super().__init__()
@@ -323,10 +433,12 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         self.top_bar.addWidget(self.close_btn)
         self.layout.addLayout(self.top_bar)
 
-        # WebEngine View for Markdown/Math
+        # WebEngine View for Markdown/Math — uses custom page for IDE interception
         self.web_view = QWebEngineView()
+        self._popup_page = _PopupWebPage(self.web_view)
+        self.web_view.setPage(self._popup_page)
         self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
+        self._popup_page.setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.setStyleSheet("background-color: transparent; border: none;")
         self.layout.addWidget(self.web_view)
 

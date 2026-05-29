@@ -84,12 +84,145 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        /* IDE context menu */
+        #ide-context-menu {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            min-width: 200px;
+            background: #21252b;
+            border: 1px solid #333840;
+            border-radius: 8px;
+            padding: 4px 0;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+        }
+        #ide-context-menu .menu-header {
+            padding: 6px 14px;
+            color: #636d83;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #333840;
+            margin-bottom: 2px;
+        }
+        #ide-context-menu .menu-item {
+            padding: 8px 14px;
+            color: #abb2bf;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 4px;
+            margin: 2px 4px;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        #ide-context-menu .menu-item:hover {
+            background-color: #2c313a;
+            color: #e5c07b;
+        }
+        #ide-context-menu .menu-item .icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div id="content"></div>
+
+    <!-- IDE context menu -->
+    <div id="ide-context-menu">
+        <div class="menu-header">Open in IDE</div>
+        <div class="menu-item" data-ide="pycharm">
+            <span class="icon">🧠</span> PyCharm
+        </div>
+        <div class="menu-item" data-ide="antigravity">
+            <span class="icon">🚀</span> Antigravity
+        </div>
+    </div>
+
     <script>
         mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+        // --- IDE context menu logic ---
+        (function() {
+            var contextMenu = document.getElementById('ide-context-menu');
+            var targetCodeBlock = null;
+
+            // Show custom context menu on right-click over pre/code blocks
+            document.addEventListener('contextmenu', function(e) {
+                var pre = e.target.closest('pre');
+                if (!pre) {
+                    contextMenu.style.display = 'none';
+                    return;
+                }
+
+                e.preventDefault();
+                targetCodeBlock = pre;
+
+                // Position the menu
+                var x = e.clientX;
+                var y = e.clientY;
+
+                contextMenu.style.display = 'block';
+
+                // Ensure menu doesn't go off-screen
+                var menuRect = contextMenu.getBoundingClientRect();
+                if (x + menuRect.width > window.innerWidth) {
+                    x = window.innerWidth - menuRect.width - 8;
+                }
+                if (y + menuRect.height > window.innerHeight) {
+                    y = window.innerHeight - menuRect.height - 8;
+                }
+
+                contextMenu.style.left = x + 'px';
+                contextMenu.style.top = y + 'px';
+            });
+
+            // Hide menu on click outside
+            document.addEventListener('click', function(e) {
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.style.display = 'none';
+                    targetCodeBlock = null;
+                }
+            });
+
+            // Hide on scroll
+            document.addEventListener('scroll', function() {
+                contextMenu.style.display = 'none';
+                targetCodeBlock = null;
+            });
+
+            // Handle menu item clicks
+            contextMenu.addEventListener('click', function(e) {
+                var item = e.target.closest('.menu-item');
+                if (!item || !targetCodeBlock) return;
+
+                var ide = item.getAttribute('data-ide');
+
+                // Extract code text from the pre block
+                var codeEl = targetCodeBlock.querySelector('code');
+                var codeText = codeEl ? codeEl.textContent : targetCodeBlock.textContent;
+
+                // Extract language from data-lang attribute or class
+                var lang = targetCodeBlock.getAttribute('data-lang') || '';
+                if (!lang && codeEl) {
+                    var langMatch = codeEl.className.match(/language-(\S+)/);
+                    if (langMatch) lang = langMatch[1];
+                }
+
+                // Navigate to custom URL scheme — Python intercepts this
+                var encoded = encodeURIComponent(codeText);
+                var encodedLang = encodeURIComponent(lang);
+                window.location.href = 'snapsolve://open-in-ide?ide=' + ide + '&lang=' + encodedLang + '&code=' + encoded;
+
+                contextMenu.style.display = 'none';
+                targetCodeBlock = null;
+            });
+        })();
 
         function updateContent(markdownText) {
             try {

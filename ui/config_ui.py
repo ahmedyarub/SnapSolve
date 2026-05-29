@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 
 # Add parent directory to path so imports work when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -62,6 +63,11 @@ class ConfigUI(QDialog):
         self.google_genai_api_key = QLineEdit(
             self.config.get("google_genai_api_key", "")
         )
+        
+        # IDE paths
+        default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
+        self.ide_pycharm_path = QLineEdit(self.config.get("ide_pycharm_path", "pycharm"))
+        self.ide_antigravity_path = QLineEdit(self.config.get("ide_antigravity_path", default_antigravity))
         self.profile_combo = QComboBox()
         self.profile_form = QWidget()
         self.prof_name = QLineEdit()
@@ -186,6 +192,20 @@ class ConfigUI(QDialog):
         if file_path:
             self.piper_model.setText(file_path)
 
+    def browse_pycharm_path(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select PyCharm Executable", "", "Executables (*.exe *.cmd *.bat);;All Files (*)"
+        )
+        if file_path:
+            self.ide_pycharm_path.setText(file_path)
+
+    def browse_antigravity_path(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Antigravity IDE Executable", "", "Executables (*.exe);;All Files (*)"
+        )
+        if file_path:
+            self.ide_antigravity_path.setText(file_path)
+
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
 
@@ -294,6 +314,21 @@ class ConfigUI(QDialog):
 
         self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
+
+        # IDE Paths
+        pycharm_layout = QHBoxLayout()
+        pycharm_layout.addWidget(self.ide_pycharm_path)
+        browse_pycharm_btn = QPushButton("Browse...")
+        browse_pycharm_btn.clicked.connect(self.browse_pycharm_path)
+        pycharm_layout.addWidget(browse_pycharm_btn)
+        layout.addRow("PyCharm Executable Path:", pycharm_layout)
+
+        antigravity_layout = QHBoxLayout()
+        antigravity_layout.addWidget(self.ide_antigravity_path)
+        browse_antigravity_btn = QPushButton("Browse...")
+        browse_antigravity_btn.clicked.connect(self.browse_antigravity_path)
+        antigravity_layout.addWidget(browse_antigravity_btn)
+        layout.addRow("Antigravity IDE Path:", antigravity_layout)
 
     def setup_profile_tab(self):
         layout = QVBoxLayout(self.profile_tab)
@@ -528,6 +563,11 @@ class ConfigUI(QDialog):
         )
         self.config["ollama_url"] = self.ollama_url.text()
         self.config["google_genai_api_key"] = self.google_genai_api_key.text()
+        self.config["ide_pycharm_path"] = self.ide_pycharm_path.text().strip() or "pycharm"
+        
+        default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
+        self.config["ide_antigravity_path"] = self.ide_antigravity_path.text().strip() or default_antigravity
+        
         self.config["opacity"] = self.opacity_slider.value() / 100.0
 
         self.config["tts_output_device_name"] = (

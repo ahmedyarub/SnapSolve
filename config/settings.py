@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+from pathlib import Path
+
 import pyaudio  # Import pyaudio
 
 CONFIG_FILE = os.path.join("config", "config.json")
@@ -162,6 +164,8 @@ def _get_default_config():
         "remote_control_port": 8080,
         "remote_mouse_idle_timeout": 3.0,
         "share_response_with_android": False,
+        "ide_pycharm_path": "pycharm",
+        "ide_antigravity_path": str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe"),
     }
 
 
