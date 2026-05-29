@@ -4,13 +4,14 @@ The Screen Capture & QA application provides several customizable features organ
 
 ## Controls & Configuration
 
-*   **Keyboard Shortcuts:** Customizable global hotkeys (e.g., `Ctrl+Alt+Shift+C`) trigger actions (like Capture, Reselect, Multi-select, Toggle Panel, New Session) without needing the app to be in focus.
+*   **Keyboard Shortcuts:** Customizable global hotkeys (e.g., `Ctrl+Alt+Shift+C`) trigger actions (like Capture, Reselect, Multi-select, Toggle Panel, New Session, Open URL, Session Browser, Quit) without needing the app to be in focus.
 *   **Control Panel:** An optional floating toolbar to visually trigger key actions and view status.
-*   **Configuration UI:** A user-friendly settings dialog with tabs for modifying Application Settings, Profile Settings, and Keyboard Shortcuts without manually editing JSON files.
+*   **Configuration UI:** A user-friendly settings dialog with tabs for modifying Application Settings, Profile Settings, Keyboard Shortcuts, Warmup Settings, and Remote Control settings without manually editing JSON files.
 *   **Background Mode:** Run the application minimized to the system tray, freeing up taskbar space.
 *   **Profiles:** Define and switch between distinct configurations (e.g., "Fast Image Processing", "Deep Text Analysis"). Each profile stores its specific `llm_engine`, model, `ocr_engine`, prompt, and fallback model settings.
 *   **Audio Device Configuration:** Configure specific audio input devices for speech recognition and output devices for TTS.
 *   **Session Browser:** A full-featured dialog to browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering. Accessible via hotkey (`Ctrl+Alt+Shift+B`) or from the control panel.
+*   **Quit App:** Graceful application exit via hotkey (`Ctrl+Alt+Shift+Q`) or system tray menu.
 
 ## Source (Data Gathering)
 
@@ -22,12 +23,13 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Multi-Select:** Capture multiple disparate areas of the screen and aggregate them into a single request.
 *   **Text or Image Input:** Depending on the setup, the application can extract raw text (using OCR) or send the raw image directly to vision-capable engines.
 *   **Audio Recording:** Background audio recording with visual feedback and automatic transcription.
+*   **Real-time Transcription:** WhisperLive integration for live subtitle display during recording, with configurable pause threshold and subtitle double-click to submit.
 
 ## Prompt & Enrichment
 
 *   **Chat Session History:** Maintains context over multiple queries. The conversation is saved locally, and the previous context is stitched into the prompt or passed via API (depending on the engine) to allow for conversational follow-ups.
 *   **Custom Prompting:** Allows defining custom instructions (via `config/prompts.json`) to dictate how the LLM should format or structure its response.
-*   **Context Stitching:** Configurable option to include conversation context in prompts for follow-up questions.
+*   **Context Stitching:** Configurable option to include conversation context in prompts for follow-up questions. Can be toggled at runtime via hotkey.
 
 ## Session Management
 
@@ -37,42 +39,71 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Tag Filtering:** Use the filter bar to search sessions by name, title, or tags.
 *   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. Associated images are removed as well.
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
+*   **Transcription Persistence:** Audio transcriptions are saved to text files alongside session data.
 
 ## Engine (Processing)
 
 *   **Multiple LLM Engines:**
     *   `gemini`: Uses the Google Gemini CLI.
-    *   `google-genai`: Uses the official Python SDK for Google GenAI.
+    *   `google-genai`: Uses the official Python SDK for Google GenAI with streaming and multi-turn history.
     *   `ollama`: Integrates with a local Ollama server, avoiding external network requests.
 *   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
-*   **Remote OCR:** Offload OCR processing to a remote PaddleOCR service.
-*   **Concurrent Execution & Warmup:** Models are preloaded (warmed up) during application startup for reduced latency.
+*   **Remote OCR:** Offload OCR processing to a remote PaddleOCR FastAPI service.
+*   **Concurrent Execution & Warmup:** Models are preloaded (warmed up) during application startup for reduced latency. Configurable warmup for OCR, LLM, TTS, speech recognition, and real-time transcription.
 *   **Speech Recognition:** Google Speech-to-Text integration for audio input processing with configurable warmup.
 
 ## Sink (Output Generation)
 
 *   **Popup Sink:** Displays responses in an unobtrusive, frameless window.
     *   Supports dynamic resizing based on text length.
-    *   Renders rich Markdown via QWebEngineView with marked.js, including bold, italics, lists, Markdown tables, syntax-highlighted code blocks, LaTeX math (KaTeX), and Mermaid diagrams.
+    *   Renders rich Markdown via QWebEngineView with marked.js, including bold, italics, lists, Markdown tables, LaTeX math (KaTeX), and Mermaid diagrams.
+    *   Syntax-highlighted code blocks via Shiki with dark theme integration.
     *   Configurable opacity for visual integration.
+    *   Draggable via title bar and resizable via edge/corner handles.
+    *   "Open in IDE" context menu — right-click any code block to open it in PyCharm or Antigravity IDE.
 *   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
     *   Support for multiple voice models (.onnx format).
     *   Configurable audio output devices.
     *   Model warmup for reduced latency.
+    *   Markdown stripping before synthesis.
 *   **Composite Output:** Simultaneous popup and audio output with synchronized streaming.
+
+## UI Features
+
+*   **Draggable Windows:** All overlay windows (popup, control panel, subtitles) can be dragged to any position on screen.
+*   **Resizable Popup:** The popup window supports edge and corner resizing with minimum size constraints.
+*   **Hide/Unhide All Widgets:** Toggle visibility of all overlay widgets at once via hotkey (`Ctrl+Alt+Shift+V`).
+*   **Stealth Mode (Hide from Capture):** Configurable option to exclude all SnapSolve windows from screen-capture APIs (OBS, video calls, Win+Shift+S, etc.) while remaining visible on the user's monitor. Uses `SetWindowDisplayAffinity` on Windows 10 2004+.
+*   **URL Viewer:** Open any URL directly in the popup's web view via hotkey (`Ctrl+Alt+U`), allowing quick reference without switching windows.
+*   **Real-time Subtitles:** WhisperLive-powered subtitle widget with fading effects, positioned at the bottom of the screen during audio recording.
+
+## Remote Control & Android Integration
+
+*   **WebSocket Server:** A WebSocket-based remote control server (`ws://0.0.0.0:8080`) for LAN-based Android control, with single-client enforcement and automatic state push.
+*   **Mouse Control:** Relative mouse movement, click (left/right/middle), double-click, drag (start/end), and scroll via the Android touchpad.
+*   **Physical Mouse Blocking:** Blocks physical mouse input while Android remote control is active using a `WH_MOUSE_LL` hook. Injected (pyautogui) events pass through. Automatically re-enables after a configurable idle timeout.
+*   **Action Dispatch:** Trigger any SnapSolve action (capture, reselect, multi-capture, cancel, cycle source, toggle panel, new session, etc.) from the Android app.
+*   **Button State Sync:** Real-time button visibility and state synchronization between the main app and the Android companion.
+*   **Text Input:** Type and submit text directly from the Android app via the `keyboard_type` message.
+*   **Response Image Sharing:** Capture and share response screenshots with the connected Android app over HTTP.
+*   **Configurable Mouse Sensitivity:** Adjustable mouse sensitivity for remote control touchpad.
+*   **Android Companion App:** Kotlin/Gradle companion app with touchpad-style mouse control, synchronized action buttons, auto-connect, and text input.
 
 ## Performance & Reliability
 
-*   **Engine Warmup:** Pre-loading of OCR, LLM, TTS, and speech recognition engines during startup.
+*   **Engine Warmup:** Pre-loading of OCR, LLM, TTS, speech recognition, and real-time transcription engines during startup, each independently configurable.
 *   **Concurrent Processing:** Parallel model execution for fallback scenarios and non-blocking operations.
 *   **Error Handling:** Graceful degradation on component failures with user-friendly error messages.
-*   **Thread Safety:** All UI updates from background threads are properly dispatched to the main thread.
+*   **Thread Safety:** All UI updates from background threads are properly dispatched to the main thread via Qt signals/slots.
 *   **Resource Management:** Efficient resource utilization with proper cleanup and state management.
+*   **DPI Awareness:** Windows DPI awareness enabled early in lifecycle to prevent coordinate mismatches between screen capture and UI overlays.
+*   **WebSocket Message Coalescing:** High-frequency mouse-move events are coalesced to process only the latest position, preventing backlog during remote control.
 
 ## Testing & Development
 
-*   **End-to-End Testing:** Comprehensive E2E tests that verify core functionality through automated UI interaction.
-*   **Sanity Tests:** Standalone test scripts for component verification (OCR, audio, etc.).
-*   **Audio Testing:** Support for virtual audio devices for TTS and speech recognition testing.
+*   **End-to-End Testing:** Comprehensive E2E tests that verify core functionality through automated UI interaction with image recognition.
+*   **Sanity Tests:** Standalone test scripts for component verification (OCR, audio, WhisperLive warmup, etc.).
+*   **Audio Testing:** Support for virtual audio devices (VB-Audio Virtual Cable) for TTS and speech recognition testing.
 *   **Automated UI Testing:** PyAutoGUI integration for automated UI interaction testing.
+*   **Static Analysis:** Ruff linting, Qodana, SonarQube, and Kotlin/Android lint via verification scripts.
