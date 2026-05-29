@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="shiki.bundle.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            color: white;
+            background-color: #1e1e1e;
+            margin: 0;
+            padding: 10px;
+            font-size: 14px;
+            overflow-x: hidden;
+        }
+        /* Markdown-generated pre>code (before Shiki replaces them) */
+        pre {
+            background-color: #0b1118;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid #1d2433;
+        }
+        pre code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            background-color: transparent;
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        /* Shiki-generated pre blocks — override inline background to match our theme */
+        pre.shiki {
+            background-color: #0b1118 !important;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid #1d2433;
+        }
+        pre.shiki code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            background-color: transparent;
+            padding: 0;
+        }
+        /* Language label for fenced code blocks */
+        pre[data-lang]::before {
+            content: attr(data-lang);
+            display: block;
+            margin: -10px -10px 8px -10px;
+            padding: 4px 14px;
+            font-size: 11px;
+            font-family: Arial, sans-serif;
+            color: #475267;
+            background-color: #080b11;
+            border-bottom: 1px solid #1d2433;
+            border-radius: 8px 8px 0 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        /* Inline code */
+        :not(pre) > code {
+            font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+            background-color: #0b1118;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #bfbdb6;
+            border: 1px solid #1d2433;
+        }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+        th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+        th { background-color: #333; }
+        a { color: #8be9fd; }
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+    </style>
+</head>
+<body>
+    <div id="content"></div>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+        function updateContent(markdownText) {
+            try {
+                if (!window.shikiHighlight && window.shikiReady) {
+                    // Wait for initialization
+                    window.shikiReady.then(() => updateContent(markdownText));
+                    return;
+                }
+
+                // Temporarily replace mermaid blocks so marked doesn't touch them
+                let mermaidBlocks = [];
+                let tempText = markdownText.replace(/```mermaid([\s\S]*?)```/g, function(match, p1) {
+                    mermaidBlocks.push(p1);
+                    return `<!--MERMAID_BLOCK_${mermaidBlocks.length - 1}-->`;
+                });
+
+                // Parse markdown
+                let html = marked.parse(tempText);
+
+                // Restore mermaid blocks
+                mermaidBlocks.forEach((block, index) => {
+                    html = html.replace(`<!--MERMAID_BLOCK_${index}-->`, `<div class="mermaid">${block}</div>`);
+                });
+
+                document.getElementById('content').innerHTML = html;
+
+                // Apply syntax highlighting via Shiki (async, inline styles)
+                document.querySelectorAll('pre code').forEach((el) => {
+                    const langMatch = el.className.match(/language-(\S+)/);
+                    const lang = langMatch ? langMatch[1] : null;
+                    if (lang) {
+                        el.parentElement.setAttribute('data-lang', lang);
+                    }
+                    const code = el.textContent;
+                    const highlighted = window.shikiHighlight ? window.shikiHighlight(code, lang) : null;
+                    if (highlighted) {
+                        const wrapper = document.createElement('div');
+                        wrapper.innerHTML = highlighted;
+                        const newPre = wrapper.firstElementChild;
+                        if (lang) {
+                            newPre.setAttribute('data-lang', lang);
+                        }
+                        el.parentElement.replaceWith(newPre);
+                    }
+                });
+
+                // Render Math
+                if (typeof renderMathInElement === 'function') {
+                    renderMathInElement(document.getElementById('content'), {
+                        delimiters: [
+                            {left: "$$", right: "$$", display: true},
+                            {left: "$", right: "$", display: false},
+                            {left: "\\(", right: "\\)", display: false},
+                            {left: "\\[", right: "\\]", display: true}
+                        ]
+                    });
+                }
+
+                // Render Mermaid
+                if (typeof mermaid !== 'undefined' && mermaid.init) {
+                    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+                }
+
+                // Scroll to bottom smoothly
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            } catch (err) {
+                document.getElementById('content').innerHTML = "<div style='color:red;'><b>Error in rendering:</b><br>" + err.toString() + "</div>";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -570,6 +570,13 @@ def handle_toggle_all_widgets():
     toggle_all_widgets()
 
 
+def handle_open_url():
+    """Open the URL input popup."""
+    from core.output import ui_signals
+
+    ui_signals.show_url_input.emit()
+
+
 def handle_cancel():
     global is_processing, is_multi_capturing, multi_capture_texts
     print("Cancel requested.")
@@ -1157,6 +1164,8 @@ def _register_config_hotkeys(config, active_profile, active_prompt_text):
             keyboard.add_hotkey(key, handle_cycle_source, args=(config, active_profile))
         elif action == "toggle_all_widgets":
             keyboard.add_hotkey(key, handle_toggle_all_widgets)
+        elif action == "open_url":
+            keyboard.add_hotkey(key, handle_open_url)
 
 
 def _register_keyboard_shortcuts(config, active_profile, active_prompt_text):

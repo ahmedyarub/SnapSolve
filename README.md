@@ -130,6 +130,12 @@ If you want to use real-time transcription via WhisperLive:
 
 For setup instructions, please refer to the [Setup & Installation section in REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md#setup--installation).
 
+### Option 8: Syntax Highlighting (No Setup Required)
+
+The application uses **Shiki** for high-quality, VS Code-like syntax highlighting in its Markdown popups.
+The Shiki engine and 32 common languages are pre-bundled into a local file (`core/web_assets/shiki.bundle.js`), meaning **no Node.js installation or setup is required to run the app**.
+If you wish to add new languages, change the theme, or rebuild the bundle, see [docs/syntax-highlighting.md](docs/syntax-highlighting.md).
+
 ## Supported Engines
 
 **LLM Engines (`llm_engine`):**

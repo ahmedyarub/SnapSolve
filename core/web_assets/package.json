@@ -1,0 +1,15 @@
+{
+  "name": "web_assets",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-shiki.mjs"
+  },
+  "devDependencies": {
+    "@shikijs/langs": "^3.7.0",
+    "@shikijs/themes": "^3.7.0",
+    "esbuild": "^0.25.5",
+    "shiki": "^3.7.0"
+  }
+}
