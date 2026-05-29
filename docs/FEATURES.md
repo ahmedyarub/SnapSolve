@@ -10,6 +10,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Background Mode:** Run the application minimized to the system tray, freeing up taskbar space.
 *   **Profiles:** Define and switch between distinct configurations (e.g., "Fast Image Processing", "Deep Text Analysis"). Each profile stores its specific `llm_engine`, model, `ocr_engine`, prompt, and fallback model settings.
 *   **Audio Device Configuration:** Configure specific audio input devices for speech recognition and output devices for TTS.
+*   **Session Browser:** A full-featured dialog to browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering. Accessible via hotkey (`Ctrl+Alt+Shift+B`) or from the control panel.
 
 ## Source (Data Gathering)
 
@@ -27,6 +28,15 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Chat Session History:** Maintains context over multiple queries. The conversation is saved locally, and the previous context is stitched into the prompt or passed via API (depending on the engine) to allow for conversational follow-ups.
 *   **Custom Prompting:** Allows defining custom instructions (via `config/prompts.json`) to dictate how the LLM should format or structure its response.
 *   **Context Stitching:** Configurable option to include conversation context in prompts for follow-up questions.
+
+## Session Management
+
+*   **Session Browser:** Browse all past sessions in a tree view with prompt excerpts as children. Click any prompt to view its full text and the formatted response rendered with Markdown, KaTeX, Shiki syntax highlighting, and Mermaid diagrams.
+*   **Session Renaming:** Right-click a session to rename it for easier identification.
+*   **Session Tagging:** Add comma-separated tags to sessions for categorization and future filtering.
+*   **Tag Filtering:** Use the filter bar to search sessions by name, title, or tags.
+*   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. Associated images are removed as well.
+*   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
 
 ## Engine (Processing)
 

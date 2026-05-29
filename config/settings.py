@@ -132,6 +132,7 @@ def _get_default_config():
             {"action": "toggle_stitching", "key": "ctrl+alt+shift+i"},
             {"action": "toggle_all_widgets", "key": "ctrl+alt+shift+v"},
             {"action": "open_url", "key": "ctrl+alt+u"},
+            {"action": "open_session_browser", "key": "ctrl+alt+shift+b"},
         ],
         "save_images": False,
         "save_transcriptions": True,
@@ -198,6 +199,7 @@ def _ensure_hotkey_actions(file_config):
         "toggle_panel": "ctrl+alt+p",
         "toggle_all_widgets": "ctrl+alt+shift+v",
         "open_url": "ctrl+alt+u",
+        "open_session_browser": "ctrl+alt+shift+b",
     }
 
     for action, default_key in required_actions.items():

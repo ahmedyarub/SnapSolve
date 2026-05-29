@@ -137,6 +137,7 @@ The Sink layer is responsible for taking the generated text and presenting it to
 *   `ui/`: PyQt6 dialog and overlay components.
     *   `config_ui.py`: Full configuration dialog (`ConfigUI`) with tabs for settings, profiles, shortcuts, warmup, and remote control.
     *   `selector.py`: Screen region selector overlay (`CoordinateSelector`) with DPI-aware coordinates.
+    *   `session_browser.py`: Session browser dialog (`SessionBrowserDialog`) for browsing past sessions with prompt/response viewing, renaming, and tagging.
 *   `config/`: Configuration files and parsing logic.
     *   `settings.py`: Config loading/saving, profile management, argument parsing, audio device helpers.
     *   `config.json` / `config.sample.json`: Active and sample configuration.

@@ -42,6 +42,8 @@ This application relies on a strictly decoupled architecture:
     *   `config_ui.py`: `ConfigUI(QDialog)` — full configuration dialog with tabs for settings, profiles,
       shortcuts, warmup, and remote control.
     *   `selector.py`: `CoordinateSelector(QWidget)` — screen region selector overlay with DPI-aware coordinates.
+    *   `session_browser.py`: `SessionBrowserDialog(QDialog)` — maximized session browser with tree view,
+      prompt/response panels, tag management, and filtering. Reuses `popup.html` for Markdown rendering.
 3.  **`config/`**: Configuration parsing and profile management.
     *   `settings.py`: Config loading/saving, profile management, argument parsing, audio device helpers.
     *   `config.json` / `config.sample.json`: Active and sample configuration files.
