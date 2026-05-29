@@ -19,6 +19,7 @@ from core.output import (
     show_popup,
     close_popup,
     toggle_control_panel,
+    toggle_all_widgets,
     set_app_callbacks,
     update_multi_state,
     set_active_source_ui,
@@ -111,7 +112,7 @@ def _show_status_popup(config, message, auto_close=None):
         show_popup(
             message,
             auto_close=auto_close,
-            opacity=config.get("popup_opacity", 0.8),
+            opacity=config.get("opacity", 0.8),
             is_result=False,
         )
 
@@ -270,7 +271,7 @@ def _process_capture_result(
         final_result,
         config.get("output_mode"),
         auto_close=config.get("auto_close_results", False),
-        opacity=config.get("popup_opacity", 0.8),
+        opacity=config.get("opacity", 0.8),
     )
 
     if config.get("share_response_with_android", False) and is_android_connected():
@@ -564,6 +565,11 @@ def handle_toggle_panel():
     toggle_control_panel()
 
 
+def handle_toggle_all_widgets():
+    """Hide or unhide all overlay widgets at once."""
+    toggle_all_widgets()
+
+
 def handle_cancel():
     global is_processing, is_multi_capturing, multi_capture_texts
     print("Cancel requested.")
@@ -598,7 +604,7 @@ def handle_start_record(config, enable_transcription):
                 {
                     "text": msg,
                     "auto_close": 3000,
-                    "opacity": config.get("popup_opacity", 0.8),
+                    "opacity": config.get("opacity", 0.8),
                     "is_result": False,
                 }
             )
@@ -621,7 +627,7 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
                 {
                     "text": msg,
                     "auto_close": None,
-                    "opacity": config.get("popup_opacity", 0.8),
+                    "opacity": config.get("opacity", 0.8),
                     "is_result": False,
                 }
             )
@@ -670,7 +676,7 @@ def handle_cycle_source(config, active_profile):
         new_source = TextSource()
 
     set_active_source_instance(new_source)
-    set_active_source_ui(new_source.name, opacity=config.get("popup_opacity", 0.8))
+    set_active_source_ui(new_source.name, opacity=config.get("opacity", 0.8))
     print(f"Source cycled to: {new_source.name}")
     _show_status_popup(
         config, f"Source changed to: {new_source.name.capitalize()}", auto_close=2000
@@ -952,7 +958,7 @@ def _initialize_ui(config, active_source, callbacks):
 
     set_active_source_ui(
         active_source.name if active_source else "text",
-        opacity=config.get("popup_opacity", 0.8),
+        opacity=config.get("opacity", 0.8),
     )
 
     if config.get("show_control_panel", False):
@@ -1149,6 +1155,8 @@ def _register_config_hotkeys(config, active_profile, active_prompt_text):
             )
         elif action == "cycle_source":
             keyboard.add_hotkey(key, handle_cycle_source, args=(config, active_profile))
+        elif action == "toggle_all_widgets":
+            keyboard.add_hotkey(key, handle_toggle_all_widgets)
 
 
 def _register_keyboard_shortcuts(config, active_profile, active_prompt_text):

@@ -53,6 +53,6 @@ class PopupSink(Sink):
         show_popup(
             current_text,
             auto_close=None,
-            opacity=self.config.get("popup_opacity", 0.8),
+            opacity=self.config.get("opacity", 0.8),
             is_result=True,
         )

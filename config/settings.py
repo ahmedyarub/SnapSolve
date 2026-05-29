@@ -130,6 +130,7 @@ def _get_default_config():
             {"action": "toggle_panel", "key": "ctrl+alt+shift+p"},
             {"action": "new_chat_session", "key": "ctrl+alt+shift+h"},
             {"action": "toggle_stitching", "key": "ctrl+alt+shift+i"},
+            {"action": "toggle_all_widgets", "key": "ctrl+alt+shift+v"},
         ],
         "save_images": False,
         "save_transcriptions": True,
@@ -140,7 +141,7 @@ def _get_default_config():
         "ollama_url": "http://localhost:11434",
         "google_genai_api_key": "",
         "auto_close_results": False,
-        "popup_opacity": 0.8,
+        "opacity": 0.8,
         "show_control_panel": False,
         "default_source": "text",
         "warmup_ocr": True,
@@ -194,6 +195,7 @@ def _ensure_hotkey_actions(file_config):
         "end_multi_capture": "ctrl+alt+shift+n",
         "cancel_multi_capture": "ctrl+alt+t",
         "toggle_panel": "ctrl+alt+p",
+        "toggle_all_widgets": "ctrl+alt+shift+v",
     }
 
     for action, default_key in required_actions.items():
@@ -227,6 +229,13 @@ def load_config():
     _migrate_legacy_config()
 
     file_config = _load_config_from_file()
+
+    # Migrate renamed key
+    if "popup_opacity" in file_config and "opacity" not in file_config:
+        file_config["opacity"] = file_config.pop("popup_opacity")
+    elif "popup_opacity" in file_config:
+        del file_config["popup_opacity"]
+
     config.update(file_config)
 
     return config
@@ -290,7 +299,7 @@ def parse_args():
         help="Do not auto close result popups",
     )
     parser.add_argument(
-        "--popup-opacity", type=float, help="Opacity of the popup (0.0 to 1.0)"
+        "--popup-opacity", type=float, help="Opacity of all overlay windows (0.0 to 1.0)"
     )
     parser.add_argument(
         "--fallback-language",
@@ -414,7 +423,7 @@ def _apply_basic_config(config, args):
         config["auto_close_results"] = False
 
     if args.popup_opacity is not None:
-        config["popup_opacity"] = args.popup_opacity
+        config["opacity"] = args.popup_opacity
 
     if args.show_control_panel:
         config["show_control_panel"] = True

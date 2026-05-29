@@ -22,8 +22,10 @@ from PyQt6.QtWidgets import (
     QApplication,
     QPushButton,
     QFileDialog,
+    QSlider,
 )
 
+from PyQt6.QtCore import Qt
 from config.settings import get_audio_devices
 
 
@@ -95,6 +97,15 @@ class ConfigUI(QDialog):
         self.warmup_sr = QCheckBox("Warmup Speech Recognition")
         self.warmup_realtime_transcription = QCheckBox("Warmup Real-time Transcription")
         self._current_profile_data = None
+
+        # Opacity slider
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setRange(10, 100)
+        self.opacity_slider.setValue(int(self.config.get("opacity", 0.8) * 100))
+        self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
+        self.opacity_slider.valueChanged.connect(
+            lambda v: self.opacity_label.setText(f"{v}%")
+        )
 
         # Remote Control tab widgets
         self.remote_control_tab = QWidget()
@@ -202,6 +213,12 @@ class ConfigUI(QDialog):
         mode_layout.addWidget(self.output_mode_popup)
         mode_layout.addWidget(self.output_mode_audio)
         layout.addRow("Output Mode:", mode_layout)
+
+        # Opacity
+        opacity_layout = QHBoxLayout()
+        opacity_layout.addWidget(self.opacity_slider)
+        opacity_layout.addWidget(self.opacity_label)
+        layout.addRow("Opacity:", opacity_layout)
 
         # TTS Piper settings
         piper_model_layout = QHBoxLayout()
@@ -462,6 +479,7 @@ class ConfigUI(QDialog):
             "end_multi_capture",
             "cancel_multi_capture",
             "toggle_panel",
+            "toggle_all_widgets",
             "new_chat_session",
             "toggle_stitching",
             "cycle_source",
@@ -508,6 +526,7 @@ class ConfigUI(QDialog):
         )
         self.config["ollama_url"] = self.ollama_url.text()
         self.config["google_genai_api_key"] = self.google_genai_api_key.text()
+        self.config["opacity"] = self.opacity_slider.value() / 100.0
 
         self.config["tts_output_device_name"] = (
             self.tts_output_device_combo.currentData()
