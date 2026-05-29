@@ -34,6 +34,7 @@ class UISignals(QObject):
     toggle_all_visibility = pyqtSignal()
     show_url_input = pyqtSignal()
     open_url = pyqtSignal(str)
+    open_session_browser = pyqtSignal()
 
 
 class SelectorSignals(QObject):
@@ -874,6 +875,13 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             "stitching", "🧵 Toggle Stitching", "toggle_stitching"
         )
         self.btn_cycle = create_btn("cycle", "🔄 Cycle Source", "cycle_source")
+
+        self.btn_sessions = QPushButton("📋 Sessions")
+        self.btn_sessions.setStyleSheet(btn_style)
+        self.btn_sessions.clicked.connect(lambda: ui_signals.open_session_browser.emit())
+        self.layout.addWidget(self.btn_sessions)
+        self.buttons["sessions"] = self.btn_sessions
+
         self.btn_cancel = create_btn(
             "cancel", "❌ Cancel", "cancel", style=cancel_btn_style
         )
@@ -881,7 +889,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_end_multi.hide()
         self.btn_cancel.hide()
 
-        self.resize(200, 300)
+        self.resize(200, 340)
 
     def _broadcast_state(self):
         from core.remote_control_server import set_ui_state
@@ -1175,10 +1183,17 @@ class UIManager(QObject):
         ui_signals.toggle_all_visibility.connect(self._on_toggle_all_visibility)
         ui_signals.show_url_input.connect(self._on_show_url_input)
         ui_signals.open_url.connect(self._on_open_url)
+        ui_signals.open_session_browser.connect(self._on_open_session_browser)
 
     def _on_open_url(self, url: str):
         self.popup._apply_opacity(self._global_opacity)
         self.popup.load_url(url)
+
+    @staticmethod
+    def _on_open_session_browser():
+        from ui.session_browser import open_session_browser
+
+        open_session_browser()
 
     def _on_show_url_input(self):
         self.url_input.update_position()

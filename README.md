@@ -10,6 +10,7 @@ answers, and provides responses via frameless popup notifications and/or local T
 * **Multiple LLM Backends:** Use Gemini (via CLI or Python SDK), Google GenAI API, or a local Ollama server.
 * **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
 * **Chat History:** Maintain conversational context over multiple queries with session management.
+* **Session Browser:** Browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering.
 * **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
 * **Advanced OCR:** Optional PaddleOCR integration for reliable text extraction before prompting.
 * **Flexible Output Sinks:** Render rich Markdown answers in a floating popup and/or read them aloud via TTS.
@@ -21,6 +22,7 @@ answers, and provides responses via frameless popup notifications and/or local T
 For a full, detailed breakdown of all features, see [FEATURES.md](docs/FEATURES.md).
 For technical details regarding how data flows through the application, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 For details regarding the real-time transcription feature, see [REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md).
+For details on the session browser, see [SESSION_BROWSER.md](docs/SESSION_BROWSER.md).
 
 ## Setup & Installation
 
@@ -365,6 +367,9 @@ Default hotkeys (configurable in `config.json`):
 * `Ctrl + Alt + Shift + P` - Toggle control panel
 * `Ctrl + Alt + Shift + H` - New chat session
 * `Ctrl + Alt + Shift + I` - Toggle context stitching
+* `Ctrl + Alt + Shift + V` - Toggle all widget visibility
+* `Ctrl + Alt + U` - Open URL input
+* `Ctrl + Alt + Shift + B` - Open session browser
 
 ## Background Mode
 

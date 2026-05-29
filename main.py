@@ -577,6 +577,13 @@ def handle_open_url():
     ui_signals.show_url_input.emit()
 
 
+def handle_open_session_browser():
+    """Open the session browser dialog."""
+    from core.output import ui_signals
+
+    ui_signals.open_session_browser.emit()
+
+
 def handle_cancel():
     global is_processing, is_multi_capturing, multi_capture_texts
     print("Cancel requested.")
@@ -1166,6 +1173,8 @@ def _register_config_hotkeys(config, active_profile, active_prompt_text):
             keyboard.add_hotkey(key, handle_toggle_all_widgets)
         elif action == "open_url":
             keyboard.add_hotkey(key, handle_open_url)
+        elif action == "open_session_browser":
+            keyboard.add_hotkey(key, handle_open_session_browser)
 
 
 def _register_keyboard_shortcuts(config, active_profile, active_prompt_text):

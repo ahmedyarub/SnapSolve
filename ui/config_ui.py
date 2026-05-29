@@ -483,6 +483,7 @@ class ConfigUI(QDialog):
             "new_chat_session",
             "toggle_stitching",
             "cycle_source",
+            "open_session_browser",
         ]
 
         hotkeys_config = self.config.get("hotkeys", [])

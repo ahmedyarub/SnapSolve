@@ -59,7 +59,6 @@ class SessionManager:
                 f"[SessionManager] Created new transcription file: {self.transcription_file}"
             )
 
-        self._save_session_data([])
         print(f"[SessionManager] Started new session: {self.current_session_id}")
         return self.current_session_id
 
@@ -230,9 +229,24 @@ class SessionManager:
             return
 
         path = os.path.join(SESSIONS_DIR, f"{self.current_session_id}.json")
+
+        # Preserve existing name/tags from file if present
+        existing_name = None
+        existing_tags: List[str] = []
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                    existing_name = existing.get("name")
+                    existing_tags = existing.get("tags", [])
+            except (json.JSONDecodeError, IOError):
+                pass
+
         data = {
             "id": self.current_session_id,
             "title": self.title,
+            "name": existing_name,
+            "tags": existing_tags,
             "updated_at": time.time(),
             "history": history,
         }
@@ -254,3 +268,106 @@ class SessionManager:
     def cleanup(self):
         """Perform any necessary cleanup."""
         self._close_transcription_file()
+
+    @staticmethod
+    def list_all_sessions() -> List[Dict[str, Any]]:
+        """Returns lightweight metadata for all sessions, sorted by updated_at descending."""
+        sessions = []
+        if not os.path.exists(SESSIONS_DIR):
+            return sessions
+
+        for filename in os.listdir(SESSIONS_DIR):
+            if not filename.endswith(".json"):
+                continue
+            path = os.path.join(SESSIONS_DIR, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                sessions.append({
+                    "id": data.get("id", filename.replace(".json", "")),
+                    "title": data.get("title"),
+                    "name": data.get("name"),
+                    "tags": data.get("tags", []),
+                    "updated_at": data.get("updated_at", 0),
+                    "interaction_count": len(data.get("history", [])),
+                })
+            except (json.JSONDecodeError, IOError):
+                continue
+
+        # Filter out empty sessions (no interactions)
+        sessions = [s for s in sessions if s["interaction_count"] > 0]
+
+        sessions.sort(key=lambda s: s["updated_at"], reverse=True)
+        return sessions
+
+    @staticmethod
+    def load_session_data(session_id: str) -> Optional[Dict[str, Any]]:
+        """Loads full session JSON including history."""
+        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    @staticmethod
+    def rename_session(session_id: str, new_name: str):
+        """Updates the name field of a session."""
+        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["name"] = new_name
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"[SessionManager] Failed to rename session {session_id}: {e}")
+
+    @staticmethod
+    def set_session_tags(session_id: str, tags: List[str]):
+        """Updates the tags field of a session."""
+        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["tags"] = tags
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"[SessionManager] Failed to set tags for session {session_id}: {e}")
+
+    @staticmethod
+    def delete_session(session_id: str) -> bool:
+        """Deletes a session and its associated images. Returns True if deleted successfully."""
+        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        if not os.path.exists(path):
+            return False
+
+        # Remove referenced images
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for interaction in data.get("history", []):
+                image_path = interaction.get("image")
+                if image_path and os.path.exists(image_path):
+                    try:
+                        os.remove(image_path)
+                    except OSError as img_err:
+                        logger.warning(f"[SessionManager] Failed to delete image {image_path}: {img_err}")
+        except (json.JSONDecodeError, IOError):
+            pass  # Still attempt to delete the session file
+
+        # Remove session JSON file
+        try:
+            os.remove(path)
+            logger.info(f"[SessionManager] Deleted session: {session_id}")
+            return True
+        except OSError as e:
+            logger.error(f"[SessionManager] Failed to delete session {session_id}: {e}")
+            return False

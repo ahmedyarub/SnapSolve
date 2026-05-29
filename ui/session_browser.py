@@ -1,0 +1,615 @@
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
+from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QVBoxLayout,
+    QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTextEdit,
+    QLineEdit,
+    QLabel,
+    QMenu,
+    QInputDialog,
+    QMessageBox,
+    QStatusBar,
+    QWidget,
+    QApplication,
+    QAbstractItemView,
+)
+
+from core.session_manager import SessionManager
+
+
+# --- Tag badge colors (cycled for variety) ---
+_TAG_COLORS = [
+    "#e06c75", "#61afef", "#98c379", "#d19a66", "#c678dd",
+    "#56b6c2", "#e5c07b", "#be5046", "#7ec8e3", "#c3e88d",
+]
+
+
+def _tag_color(tag: str) -> str:
+    """Deterministic color for a tag string."""
+    return _TAG_COLORS[hash(tag) % len(_TAG_COLORS)]
+
+
+class SessionBrowserDialog(QDialog):
+    """Maximized dialog for browsing past sessions, prompts, and formatted responses."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle("Session Browser — SnapSolve")
+
+        # Standard window with minimize/maximize/close + always on top
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+
+        # Load app icon (same as system tray)
+        icon_path = Path(__file__).parent.parent / "assets" / "icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+        else:
+            self.setWindowIcon(QIcon())
+
+        # Instance attributes
+        self._sessions_meta: list[dict] = []
+        self._loaded_sessions: dict[str, dict] = {}
+        self._current_session_id: Optional[str] = None
+        self._response_loaded = False
+        self._pending_response_js: list[str] = []
+
+        # Build UI
+        self._build_ui()
+        self._apply_dark_theme()
+        self._load_sessions()
+
+    # ------------------------------------------------------------------ #
+    #  UI construction
+    # ------------------------------------------------------------------ #
+
+    def _build_ui(self):
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # --- Filter bar ---
+        filter_bar = QHBoxLayout()
+        filter_bar.setContentsMargins(12, 8, 12, 4)
+        filter_icon = QLabel("🔍")
+        filter_icon.setStyleSheet("font-size: 16px; background: transparent;")
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter by tag or session name…")
+        self.filter_input.setClearButtonEnabled(True)
+        self.filter_input.textChanged.connect(self._apply_filter)
+        filter_bar.addWidget(filter_icon)
+        filter_bar.addWidget(self.filter_input)
+        root_layout.addLayout(filter_bar)
+
+        # --- Main horizontal splitter ---
+        self.h_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left: session tree
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self.tree.setIndentation(20)
+        self.tree.setAnimated(True)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
+        self.tree.currentItemChanged.connect(self._on_tree_selection)
+        self.h_splitter.addWidget(self.tree)
+
+        # Delete key shortcut
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.tree)
+        delete_shortcut.activated.connect(self._handle_delete_selected)
+
+        # Right: vertical splitter (prompt above, response below)
+        self.v_splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # Prompt panel
+        prompt_container = QWidget()
+        prompt_layout = QVBoxLayout(prompt_container)
+        prompt_layout.setContentsMargins(4, 4, 4, 0)
+        prompt_layout.setSpacing(2)
+        prompt_header = QLabel("📝 Prompt")
+        prompt_header.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #61afef; padding: 4px 8px;"
+            " background: transparent;"
+        )
+        prompt_layout.addWidget(prompt_header)
+        self.prompt_view = QTextEdit()
+        self.prompt_view.setReadOnly(True)
+        prompt_layout.addWidget(self.prompt_view)
+        self.v_splitter.addWidget(prompt_container)
+
+        # Response panel (QWebEngineView reusing popup.html)
+        response_container = QWidget()
+        response_layout = QVBoxLayout(response_container)
+        response_layout.setContentsMargins(4, 0, 4, 4)
+        response_layout.setSpacing(2)
+        response_header = QLabel("💬 Response")
+        response_header.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #98c379; padding: 4px 8px;"
+            " background: transparent;"
+        )
+        response_layout.addWidget(response_header)
+        self.response_view = QWebEngineView()
+        self.response_view.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
+        self.response_view.page().setBackgroundColor(QColor(30, 30, 30))
+        self.response_view.loadFinished.connect(self._on_response_loaded)
+        response_layout.addWidget(self.response_view)
+        self.v_splitter.addWidget(response_container)
+
+        # Default split: 30% prompt, 70% response
+        self.v_splitter.setSizes([250, 550])
+
+        self.h_splitter.addWidget(self.v_splitter)
+
+        # Default split: 30% tree, 70% content
+        self.h_splitter.setSizes([350, 850])
+
+        root_layout.addWidget(self.h_splitter, stretch=1)
+
+        # --- Status bar ---
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet(
+            "QStatusBar { background: #21252b; color: #636d83; font-size: 12px;"
+            " border-top: 1px solid #333840; padding: 2px 8px; }"
+        )
+        root_layout.addWidget(self.status_bar)
+
+        # Load the popup.html for response rendering
+        assets_dir = Path(__file__).parent.parent / "core" / "web_assets"
+        popup_html = assets_dir / "popup.html"
+        self.response_view.setUrl(QUrl.fromLocalFile(str(popup_html)))
+
+    # ------------------------------------------------------------------ #
+    #  Dark theme
+    # ------------------------------------------------------------------ #
+
+    def _apply_dark_theme(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #282c34;
+                color: #abb2bf;
+            }
+            QSplitter::handle {
+                background-color: #333840;
+            }
+            QSplitter::handle:horizontal { width: 3px; }
+            QSplitter::handle:vertical   { height: 3px; }
+            QTreeWidget {
+                background-color: #21252b;
+                color: #abb2bf;
+                border: none;
+                font-size: 13px;
+                padding: 4px;
+            }
+            QTreeWidget::item {
+                padding: 4px 6px;
+                border-radius: 4px;
+            }
+            QTreeWidget::item:selected {
+                background-color: #2c313a;
+                color: #e5c07b;
+            }
+            QTreeWidget::item:hover {
+                background-color: #2c313a;
+            }
+            QTextEdit {
+                background-color: #1e2127;
+                color: #c8ccd4;
+                border: 1px solid #333840;
+                border-radius: 6px;
+                font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+                font-size: 13px;
+                padding: 8px;
+                selection-background-color: #3e4451;
+            }
+            QLineEdit {
+                background-color: #21252b;
+                color: #abb2bf;
+                border: 1px solid #333840;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                selection-background-color: #3e4451;
+            }
+            QLineEdit:focus {
+                border-color: #528bff;
+            }
+            QWebEngineView {
+                border: 1px solid #333840;
+                border-radius: 6px;
+            }
+            /* Scrollbar styling */
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar:horizontal {
+                background: transparent;
+                height: 8px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #555;
+                border-radius: 4px;
+                min-width: 20px;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0;
+            }
+        """)
+
+    # ------------------------------------------------------------------ #
+    #  Data loading
+    # ------------------------------------------------------------------ #
+
+    def _load_sessions(self):
+        self._sessions_meta = SessionManager.list_all_sessions()
+        self._populate_tree()
+
+    def _populate_tree(self, filter_text: str = ""):
+        self.tree.clear()
+        filter_lower = filter_text.strip().lower()
+
+        total_prompts = 0
+        visible_sessions = 0
+
+        for idx, meta in enumerate(self._sessions_meta):
+            # Filter logic: match on name, title, or tags
+            if filter_lower:
+                searchable = " ".join([
+                    meta.get("name") or "",
+                    meta.get("title") or "",
+                    " ".join(meta.get("tags", [])),
+                ]).lower()
+                if filter_lower not in searchable:
+                    continue
+
+            visible_sessions += 1
+
+            # Build root item text
+            dt = datetime.fromtimestamp(meta["updated_at"])
+            date_str = dt.strftime("%Y-%m-%d  %H:%M")
+            display_name = meta.get("name") or meta.get("title") or "(untitled)"
+            root_text = f"📁  {date_str}  —  {display_name}"
+
+            root_item = QTreeWidgetItem([root_text])
+            root_item.setData(0, Qt.ItemDataRole.UserRole, meta["id"])
+            root_item.setData(0, Qt.ItemDataRole.UserRole + 1, "session")
+
+            # Font for root items
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(10)
+            root_item.setFont(0, font)
+
+            if meta["interaction_count"] == 0:
+                root_item.setForeground(0, QColor("#636d83"))
+
+            # Add tag badges as a tooltip and suffix
+            tags = meta.get("tags", [])
+            if tags:
+                tag_parts = []
+                for t in tags:
+                    tag_parts.append(f"[{t}]")
+                root_item.setText(0, root_text + "  " + " ".join(tag_parts))
+                root_item.setToolTip(0, "Tags: " + ", ".join(tags))
+
+                # Color the tag text
+                for t in tags:
+                    color = _tag_color(t)
+                    # We'll use the foreground of the item for tag visualization
+                    # Since QTreeWidgetItem doesn't support rich text natively,
+                    # tags are shown in brackets. Use tooltip for full info.
+                    root_item.setToolTip(0, "Tags: " + ", ".join(tags))
+
+            self.tree.addTopLevelItem(root_item)
+
+            # Load interaction excerpts (lazy — only populate children for first load)
+            self._populate_session_children(root_item, meta["id"])
+            total_prompts += meta["interaction_count"]
+
+            # Expand only the latest session (first in sorted order)
+            if idx == 0 and not filter_lower:
+                root_item.setExpanded(True)
+
+        self.status_bar.showMessage(
+            f"{visible_sessions} sessions  •  {total_prompts} prompts"
+        )
+
+    def _populate_session_children(self, root_item: QTreeWidgetItem, session_id: str):
+        """Add prompt excerpt children to a session root item."""
+        data = self._get_session_data(session_id)
+        if not data:
+            return
+
+        history = data.get("history", [])
+        for i, interaction in enumerate(history):
+            prompt = interaction.get("prompt", "")
+            excerpt = prompt.replace("\n", " ").strip()[:100]
+            if len(prompt.strip()) > 100:
+                excerpt += "…"
+            if not excerpt:
+                excerpt = "(empty prompt)"
+
+            child = QTreeWidgetItem([f"💬  {excerpt}"])
+            child.setData(0, Qt.ItemDataRole.UserRole, session_id)
+            child.setData(0, Qt.ItemDataRole.UserRole + 1, "prompt")
+            child.setData(0, Qt.ItemDataRole.UserRole + 2, i)
+
+            child_font = QFont()
+            child_font.setPointSize(9)
+            child.setFont(0, child_font)
+            child.setForeground(0, QColor("#8b95a7"))
+
+            root_item.addChild(child)
+
+    def _get_session_data(self, session_id: str) -> Optional[dict]:
+        """Get session data, using cache."""
+        if session_id not in self._loaded_sessions:
+            data = SessionManager.load_session_data(session_id)
+            if data:
+                self._loaded_sessions[session_id] = data
+        return self._loaded_sessions.get(session_id)
+
+    # ------------------------------------------------------------------ #
+    #  Tree interaction
+    # ------------------------------------------------------------------ #
+
+    def _on_tree_selection(self, current: QTreeWidgetItem, _previous: QTreeWidgetItem):
+        if current is None:
+            return
+
+        item_type = current.data(0, Qt.ItemDataRole.UserRole + 1)
+        if item_type != "prompt":
+            # Clicked a session root — clear panels
+            self.prompt_view.clear()
+            self._render_response("")
+            return
+
+        session_id = current.data(0, Qt.ItemDataRole.UserRole)
+        prompt_index = current.data(0, Qt.ItemDataRole.UserRole + 2)
+
+        data = self._get_session_data(session_id)
+        if not data:
+            return
+
+        history = data.get("history", [])
+        if prompt_index < 0 or prompt_index >= len(history):
+            return
+
+        interaction = history[prompt_index]
+        self.prompt_view.setPlainText(interaction.get("prompt", ""))
+        self._render_response(interaction.get("response", ""))
+
+    def _render_response(self, markdown_text: str):
+        """Render markdown response in the QWebEngineView using popup.html's updateContent."""
+        js_text = json.dumps(markdown_text)
+        js_code = f"updateContent({js_text});"
+
+        if self._response_loaded:
+            self.response_view.page().runJavaScript(js_code)
+        else:
+            self._pending_response_js.clear()
+            self._pending_response_js.append(js_code)
+
+    def _on_response_loaded(self, ok: bool):
+        self._response_loaded = True
+        for js in self._pending_response_js:
+            self.response_view.page().runJavaScript(js)
+        self._pending_response_js.clear()
+
+    # ------------------------------------------------------------------ #
+    #  Context menu (rename / tags)
+    # ------------------------------------------------------------------ #
+
+    def _show_context_menu(self, position):
+        item = self.tree.itemAt(position)
+        if item is None:
+            return
+
+        item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if item_type != "session":
+            # For prompt items, find the parent session
+            parent = item.parent()
+            if parent and parent.data(0, Qt.ItemDataRole.UserRole + 1) == "session":
+                item = parent
+            else:
+                return
+
+        session_id = item.data(0, Qt.ItemDataRole.UserRole)
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #21252b;
+                color: #abb2bf;
+                border: 1px solid #333840;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #2c313a;
+                color: #e5c07b;
+            }
+        """)
+
+        rename_action = menu.addAction("✏️  Rename Session")
+        tags_action = menu.addAction("🏷️  Edit Tags")
+        menu.addSeparator()
+        delete_action = menu.addAction("🗑️  Delete Session")
+
+        # Check if multiple sessions are selected
+        selected_session_ids = self._get_selected_session_ids()
+        if len(selected_session_ids) > 1:
+            delete_action.setText(f"🗑️  Delete {len(selected_session_ids)} Sessions")
+
+        action = menu.exec(self.tree.viewport().mapToGlobal(position))
+
+        if action == rename_action:
+            self._handle_rename(session_id, item)
+        elif action == tags_action:
+            self._handle_edit_tags(session_id, item)
+        elif action == delete_action:
+            if len(selected_session_ids) > 1:
+                self._handle_delete_sessions(selected_session_ids)
+            else:
+                self._handle_delete_sessions([session_id])
+
+    def _handle_rename(self, session_id: str, tree_item: QTreeWidgetItem):
+        data = self._get_session_data(session_id)
+        current_name = ""
+        if data:
+            current_name = data.get("name") or data.get("title") or ""
+
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Session", "New name:", text=current_name
+        )
+        if ok and new_name.strip():
+            SessionManager.rename_session(session_id, new_name.strip())
+            # Invalidate cache
+            self._loaded_sessions.pop(session_id, None)
+            # Refresh tree
+            self._load_sessions()
+
+    def _handle_edit_tags(self, session_id: str, tree_item: QTreeWidgetItem):
+        data = self._get_session_data(session_id)
+        current_tags = []
+        if data:
+            current_tags = data.get("tags", [])
+
+        tags_str, ok = QInputDialog.getText(
+            self,
+            "Edit Tags",
+            "Tags (comma-separated):",
+            text=", ".join(current_tags),
+        )
+        if ok:
+            new_tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+            SessionManager.set_session_tags(session_id, new_tags)
+            # Invalidate cache
+            self._loaded_sessions.pop(session_id, None)
+            # Refresh tree
+            self._load_sessions()
+
+    # ------------------------------------------------------------------ #
+    #  Delete
+    # ------------------------------------------------------------------ #
+
+    def _get_selected_session_ids(self) -> list[str]:
+        """Get unique session IDs from all selected tree items."""
+        session_ids: list[str] = []
+        seen: set[str] = set()
+        for item in self.tree.selectedItems():
+            item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if item_type == "session":
+                sid = item.data(0, Qt.ItemDataRole.UserRole)
+            else:
+                parent = item.parent()
+                if parent:
+                    sid = parent.data(0, Qt.ItemDataRole.UserRole)
+                else:
+                    continue
+            if sid and sid not in seen:
+                seen.add(sid)
+                session_ids.append(sid)
+        return session_ids
+
+    def _handle_delete_selected(self):
+        """Handle Delete key press — delete all selected sessions."""
+        session_ids = self._get_selected_session_ids()
+        if session_ids:
+            self._handle_delete_sessions(session_ids)
+
+    def _handle_delete_sessions(self, session_ids: list[str]):
+        """Delete one or more sessions with confirmation."""
+        count = len(session_ids)
+        if count == 0:
+            return
+
+        if count == 1:
+            data = self._get_session_data(session_ids[0])
+            name = ""
+            if data:
+                name = data.get("name") or data.get("title") or session_ids[0][:8]
+            msg = f"Delete session \"{name}\" and all its contents?\n\nThis action cannot be undone."
+        else:
+            msg = f"Delete {count} selected sessions and all their contents?\n\nThis action cannot be undone."
+
+        reply = QMessageBox.warning(
+            self,
+            "Confirm Deletion",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted = 0
+        for sid in session_ids:
+            if SessionManager.delete_session(sid):
+                self._loaded_sessions.pop(sid, None)
+                deleted += 1
+
+        # Clear panels and refresh
+        self.prompt_view.clear()
+        self._render_response("")
+        self._load_sessions()
+        self.status_bar.showMessage(f"Deleted {deleted} session(s)", 5000)
+
+    # ------------------------------------------------------------------ #
+    #  Filter
+    # ------------------------------------------------------------------ #
+
+    def _apply_filter(self, text: str):
+        self._populate_tree(filter_text=text)
+        # Expand all when filtering
+        if text.strip():
+            for i in range(self.tree.topLevelItemCount()):
+                self.tree.topLevelItem(i).setExpanded(True)
+
+    # ------------------------------------------------------------------ #
+    #  Show maximized
+    # ------------------------------------------------------------------ #
+
+    # noinspection PyPep8Naming
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.isMaximized():
+            self.showMaximized()
+
+
+def open_session_browser(parent: Optional[QWidget] = None):
+    """Create and show the session browser dialog."""
+    dialog = SessionBrowserDialog(parent)
+    dialog.exec()
