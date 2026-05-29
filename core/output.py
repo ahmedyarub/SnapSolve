@@ -410,6 +410,69 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
                 ::-webkit-scrollbar-track { background: #1e1e1e; }
                 ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
                 ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+                /* --- highlight.js token overrides for richer Python highlighting --- */
+                /* self, cls — italic to stand out from regular variables */
+                .hljs-variable.language_ {
+                    color: #ff79c6;
+                    font-style: italic;
+                }
+                /* Class names — bold bright green */
+                .hljs-title.class_ {
+                    color: #50fa7b;
+                    font-weight: bold;
+                }
+                /* Inherited class names */
+                .hljs-title.class_.inherited__ {
+                    color: #8aff97;
+                    font-weight: normal;
+                    font-style: italic;
+                }
+                /* Function / method names */
+                .hljs-title.function_ {
+                    color: #66d9ef;
+                }
+                /* Function parameters */
+                .hljs-params {
+                    color: #ffb86c;
+                    font-style: italic;
+                }
+                /* Member attributes / properties (e.g. obj.attr) */
+                .hljs-property {
+                    color: #8be9fd;
+                }
+                /* Built-in types and functions (print, len, int, str, etc.) */
+                .hljs-built_in {
+                    color: #a1efe4;
+                    font-style: italic;
+                }
+                /* Type annotations */
+                .hljs-type {
+                    color: #bd93f9;
+                }
+                /* Regular variables */
+                .hljs-variable {
+                    color: #f8f8f2;
+                }
+                /* Constants (UPPER_CASE) */
+                .hljs-variable.constant_ {
+                    color: #bd93f9;
+                }
+                /* Decorators (@property, @staticmethod) */
+                .hljs-meta,
+                .hljs-meta .hljs-keyword {
+                    color: #50fa7b;
+                    font-weight: bold;
+                }
+                /* Numbers — distinct orange-purple */
+                .hljs-number {
+                    color: #bd93f9;
+                }
+                /* Boolean and None literals */
+                .hljs-literal {
+                    color: #bd93f9;
+                    font-style: italic;
+                }
             </style>
         </head>
         <body>
