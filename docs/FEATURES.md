@@ -35,13 +35,20 @@ The Screen Capture & QA application provides several customizable features organ
 
 ## Session Management
 
-*   **Session Browser:** Browse all past sessions in a tree view with prompt excerpts as children. Click any prompt to view its full text and the formatted response rendered with Markdown, KaTeX, Shiki syntax highlighting, and Mermaid diagrams.
+*   **Per-Session Folder Structure:** Each session is stored in its own folder (`sessions/<uuid>/`) containing:
+    *   `session.json` — session metadata and interaction history
+    *   `images/` — captured OCR images named by interaction index
+    *   `transcription.txt` — speaker-attributed transcription log
+*   **Speaker Name Attribution:** Transcription segments are prefixed with the configured speaker name (e.g., `[interviewer] Hello world`). The speaker name is configurable via the Settings UI and stored per-session and per-interaction.
+*   **Image Saving:** Captured images are automatically saved to the session's `images/` folder (enabled by default, configurable via Settings UI).
+*   **Legacy Session Migration:** Existing flat-file sessions (`sessions/<uuid>.json`) are transparently migrated to the new folder structure on first access.
+*   **Session Browser:** Browse all past sessions in a tree view with source-type icons (🎤 audio, 🖼️ image, 💬 text). Click any prompt to view its full text with speaker attribution, source type, and attached image indicators, plus the formatted response rendered with Markdown, KaTeX, Shiki syntax highlighting, and Mermaid diagrams.
 *   **Session Renaming:** Right-click a session to rename it for easier identification.
 *   **Session Tagging:** Add comma-separated tags to sessions for categorization and future filtering.
 *   **Tag Filtering:** Use the filter bar to search sessions by name, title, or tags.
-*   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. Associated images are removed as well.
+*   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. The entire session folder is removed.
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
-*   **Transcription Persistence:** Audio transcriptions are saved to text files alongside session data.
+*   **Transcription Persistence:** Audio transcriptions are saved to per-session transcription files with speaker attribution.
 
 ## Engine (Processing)
 

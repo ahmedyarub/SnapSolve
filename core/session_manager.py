@@ -9,12 +9,39 @@ from typing import List, Dict, Any, Optional
 import logging
 
 SESSIONS_DIR = "sessions"
-IMAGES_DIR = os.path.join(SESSIONS_DIR, "images")
-TRANSCRIPTIONS_DIR = os.path.join(SESSIONS_DIR, "transcriptions")
+
+# Legacy shared directories (kept for migration compatibility)
+LEGACY_IMAGES_DIR = os.path.join(SESSIONS_DIR, "images")
+LEGACY_TRANSCRIPTIONS_DIR = os.path.join(SESSIONS_DIR, "transcriptions")
 
 DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 logger = logging.getLogger(__name__)
+
+
+def _session_dir(session_id: str) -> str:
+    """Return the per-session directory path: sessions/<session_id>/"""
+    return os.path.join(SESSIONS_DIR, session_id)
+
+
+def _session_json_path(session_id: str) -> str:
+    """Return the session JSON path: sessions/<session_id>/session.json"""
+    return os.path.join(_session_dir(session_id), "session.json")
+
+
+def _session_images_dir(session_id: str) -> str:
+    """Return the per-session images directory: sessions/<session_id>/images/"""
+    return os.path.join(_session_dir(session_id), "images")
+
+
+def _session_transcription_path(session_id: str) -> str:
+    """Return the per-session transcription file: sessions/<session_id>/transcription.txt"""
+    return os.path.join(_session_dir(session_id), "transcription.txt")
+
+
+def _legacy_session_json_path(session_id: str) -> str:
+    """Return the legacy flat-file session path: sessions/<session_id>.json"""
+    return os.path.join(SESSIONS_DIR, f"{session_id}.json")
 
 
 def _atomic_json_write(path: str, data: Any) -> None:
@@ -41,19 +68,77 @@ def _atomic_json_write(path: str, data: Any) -> None:
         raise
 
 
+def _migrate_legacy_session(session_id: str) -> bool:
+    """Migrate a legacy flat-file session into the new per-session folder structure.
+
+    Moves ``sessions/<uuid>.json`` → ``sessions/<uuid>/session.json`` and
+    relocates any referenced images from the shared ``sessions/images/`` directory
+    into the per-session ``sessions/<uuid>/images/`` folder.
+
+    Returns True if migration was performed, False if no legacy file found.
+    """
+    legacy_path = _legacy_session_json_path(session_id)
+    if not os.path.exists(legacy_path):
+        return False
+
+    new_dir = _session_dir(session_id)
+    new_images = _session_images_dir(session_id)
+    new_json = _session_json_path(session_id)
+
+    # Already migrated (both exist — shouldn't happen, but be safe)
+    if os.path.exists(new_json):
+        return False
+
+    try:
+        os.makedirs(new_dir, exist_ok=True)
+        os.makedirs(new_images, exist_ok=True)
+
+        # Read legacy data
+        with open(legacy_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Relocate referenced images
+        for interaction in data.get("history", []):
+            old_image = interaction.get("image")
+            if old_image and os.path.exists(old_image):
+                image_filename = os.path.basename(old_image)
+                new_image_path = os.path.join(new_images, image_filename)
+                try:
+                    shutil.move(old_image, new_image_path)
+                    # Store relative path from session dir
+                    interaction["image"] = os.path.join("images", image_filename)
+                except Exception as e:
+                    logger.warning(f"[SessionManager] Failed to migrate image {old_image}: {e}")
+
+        # Write to new location
+        _atomic_json_write(new_json, data)
+
+        # Remove legacy file
+        try:
+            os.remove(legacy_path)
+        except OSError as e:
+            logger.warning(f"[SessionManager] Failed to remove legacy file {legacy_path}: {e}")
+
+        logger.info(f"[SessionManager] Migrated legacy session {session_id} to folder structure")
+        return True
+
+    except Exception as e:
+        logger.error(f"[SessionManager] Failed to migrate session {session_id}: {e}")
+        return False
+
+
 class SessionManager:
     def __init__(self, config: dict):
         self.config = config
-        self.save_images = config.get("save_images", False)
+        self.save_images = config.get("save_images", True)
         self.save_transcriptions = config.get("save_transcriptions", True)
-        self.current_session_id = None
-        self.title = None
-        self.transcription_file = None
+        self.speaker_name = config.get("speaker_name", "interviewer")
+        self.current_session_id: Optional[str] = None
+        self.title: Optional[str] = None
+        self.transcription_file: Optional[str] = None
 
-        # Ensure directories exist
+        # Ensure base sessions directory exists
         os.makedirs(SESSIONS_DIR, exist_ok=True)
-        os.makedirs(IMAGES_DIR, exist_ok=True)
-        os.makedirs(TRANSCRIPTIONS_DIR, exist_ok=True)
 
         self._init_session()
 
@@ -67,6 +152,11 @@ class SessionManager:
         if not self.current_session_id:
             self.start_new_session()
 
+    def _ensure_session_dirs(self, session_id: str):
+        """Create the per-session directory structure."""
+        os.makedirs(_session_dir(session_id), exist_ok=True)
+        os.makedirs(_session_images_dir(session_id), exist_ok=True)
+
     def start_new_session(self) -> str:
         """Starts a completely new session and returns its ID."""
         self.current_session_id = str(uuid.uuid4())
@@ -75,11 +165,12 @@ class SessionManager:
         # Close old transcription file if open
         self._close_transcription_file()
 
-        # Setup new transcription file
+        # Create per-session directory structure
+        self._ensure_session_dirs(self.current_session_id)
+
+        # Setup new transcription file inside session folder
         if self.save_transcriptions:
-            timestamp = datetime.now().strftime(DATE_FORMAT)
-            filename = f"transcription_{timestamp}.txt"
-            self.transcription_file = os.path.join(TRANSCRIPTIONS_DIR, filename)
+            self.transcription_file = _session_transcription_path(self.current_session_id)
             logger.debug(
                 f"[SessionManager] Created new transcription file: {self.transcription_file}"
             )
@@ -88,17 +179,25 @@ class SessionManager:
         return self.current_session_id
 
     def _load_session(self, session_id: str):
-        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
-        if os.path.exists(path):
+        # Try new-style path first, then legacy
+        new_path = _session_json_path(session_id)
+        legacy_path = _legacy_session_json_path(session_id)
+
+        if os.path.exists(new_path) or os.path.exists(legacy_path):
+            # Migrate if legacy
+            if not os.path.exists(new_path) and os.path.exists(legacy_path):
+                _migrate_legacy_session(session_id)
+
             self.current_session_id = session_id
 
-            # Setup new transcription file for resumed session to append new transcriptions
+            # Ensure session dirs exist
+            self._ensure_session_dirs(session_id)
+
+            # Setup transcription file inside session folder
             if self.save_transcriptions:
-                timestamp = datetime.now().strftime(DATE_FORMAT)
-                filename = f"transcription_resumed_{session_id}_{timestamp}.txt"
-                self.transcription_file = os.path.join(TRANSCRIPTIONS_DIR, filename)
+                self.transcription_file = _session_transcription_path(session_id)
                 logger.debug(
-                    f"[SessionManager] Resumed session, created transcription file: {self.transcription_file}"
+                    f"[SessionManager] Resumed session, transcription file: {self.transcription_file}"
                 )
 
             print(f"[SessionManager] Resumed session: {session_id}")
@@ -108,27 +207,48 @@ class SessionManager:
             )
 
     def _load_last_session(self):
-        files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith(".json")]
-        if not files:
+        # Scan for new-style sessions (folders with session.json)
+        sessions = []
+
+        if not os.path.exists(SESSIONS_DIR):
+            return
+
+        for entry in os.listdir(SESSIONS_DIR):
+            entry_path = os.path.join(SESSIONS_DIR, entry)
+
+            # New-style: directory with session.json
+            session_json = os.path.join(entry_path, "session.json")
+            if os.path.isdir(entry_path) and os.path.exists(session_json):
+                sessions.append((entry, os.path.getmtime(session_json)))
+                continue
+
+            # Legacy: <uuid>.json file
+            if entry.endswith(".json") and os.path.isfile(entry_path):
+                session_id = entry.replace(".json", "")
+                sessions.append((session_id, os.path.getmtime(entry_path)))
+
+        if not sessions:
             return
 
         # Sort by modification time, newest first
-        files.sort(
-            key=lambda x: os.path.getmtime(os.path.join(SESSIONS_DIR, x)), reverse=True
-        )
+        sessions.sort(key=lambda x: x[1], reverse=True)
 
-        last_file = files[0]
-        self.current_session_id = last_file.replace(".json", "")
+        last_session_id = sessions[0][0]
+        self.current_session_id = last_session_id
 
-        # Setup new transcription file for resumed session to append new transcriptions
+        # Migrate if legacy
+        legacy_path = _legacy_session_json_path(last_session_id)
+        if not os.path.exists(_session_json_path(last_session_id)) and os.path.exists(legacy_path):
+            _migrate_legacy_session(last_session_id)
+
+        # Ensure session dirs exist
+        self._ensure_session_dirs(last_session_id)
+
+        # Setup transcription file inside session folder
         if self.save_transcriptions:
-            timestamp = datetime.now().strftime(DATE_FORMAT)
-            filename = (
-                f"transcription_resumed_{self.current_session_id}_{timestamp}.txt"
-            )
-            self.transcription_file = os.path.join(TRANSCRIPTIONS_DIR, filename)
+            self.transcription_file = _session_transcription_path(last_session_id)
             logger.debug(
-                f"[SessionManager] Resumed last session, created transcription file: {self.transcription_file}"
+                f"[SessionManager] Resumed last session, transcription file: {self.transcription_file}"
             )
 
         print(f"[SessionManager] Resumed last session: {self.current_session_id}")
@@ -138,7 +258,7 @@ class SessionManager:
         if not self.current_session_id:
             return []
 
-        path = os.path.join(SESSIONS_DIR, f"{self.current_session_id}.json")
+        path = _session_json_path(self.current_session_id)
         if not os.path.exists(path):
             return []
 
@@ -153,7 +273,7 @@ class SessionManager:
     def append_interaction(
         self,
         prompt: str,
-        image_path: Optional[str],
+        image_path: Optional[str | List[str]],
         response: str,
         extracted_text: Optional[str],
         source_name: str = "text",
@@ -166,24 +286,40 @@ class SessionManager:
             # Simple title generation: take the first 50 chars of the prompt
             self.title = prompt.strip().split("\n")[0][:50]
 
-        interaction = {
+        interaction: Dict[str, Any] = {
             "timestamp": time.time(),
             "prompt": prompt,
             "response": response,
             "extracted_text": extracted_text,
             "source": source_name,
+            "speaker_name": self.speaker_name,
         }
 
-        if image_path and self.save_images and os.path.exists(image_path):
-            # Copy image to sessions/images
-            ext = os.path.splitext(image_path)[1] or ".png"
-            image_filename = f"{uuid.uuid4()}{ext}"
-            new_image_path = os.path.join(IMAGES_DIR, image_filename)
-            try:
-                shutil.copy2(image_path, new_image_path)
-                interaction["image"] = new_image_path
-            except Exception as e:
-                print(f"[SessionManager] Warning: failed to save image: {e}")
+        if image_path and self.save_images:
+            assert self.current_session_id is not None
+            images_dir = _session_images_dir(self.current_session_id)
+            os.makedirs(images_dir, exist_ok=True)
+
+            paths_to_save = [image_path] if isinstance(image_path, str) else image_path
+            saved_images = []
+
+            for i, p in enumerate(paths_to_save):
+                if os.path.exists(p):
+                    ext = os.path.splitext(p)[1] or ".png"
+                    suffix = f"_{i}" if len(paths_to_save) > 1 else ""
+                    image_filename = f"interaction_{len(history)}{suffix}{ext}"
+                    new_image_path = os.path.join(images_dir, image_filename)
+                    try:
+                        shutil.copy2(p, new_image_path)
+                        saved_images.append(os.path.join("images", image_filename))
+                    except Exception as e:
+                        print(f"[SessionManager] Warning: failed to save image: {e}")
+
+            if saved_images:
+                if len(saved_images) == 1:
+                    interaction["image"] = saved_images[0]
+                else:
+                    interaction["image"] = saved_images
 
         # Ensure transcription is saved to text file only for audio inputs
         if (
@@ -199,24 +335,29 @@ class SessionManager:
         history.append(interaction)
         self._save_session_data(history)
 
-    def append_transcription_segment(self, segment_text: str):
-        """Appends a completed transcription segment to the active transcription file."""
+    def append_transcription_segment(self, segment_text: str, speaker_name: Optional[str] = None):
+        """Appends a completed transcription segment to the active transcription file.
+
+        Prefixes the segment with ``[speaker_name]`` for attribution.
+        """
         if (
             not self.save_transcriptions
             or not self.transcription_file
             or not segment_text
         ):
             logger.debug(
-                f"[SessionManager] Cannot append segment. save_trans={self.save_transcriptions}, file={self.transcription_file}, text='{segment_text}'"
+                f"[SessionManager] Cannot append segment. save_trans={self.save_transcriptions}, "
+                f"file={self.transcription_file}, text='{segment_text}'"
             )
             return
 
+        name = speaker_name or self.speaker_name
         try:
             with open(self.transcription_file, "a", encoding="utf-8") as f:
-                # We simply append the completed segment text on a new line
-                f.write(f"{segment_text}\n")
+                f.write(f"[{name}] {segment_text}\n")
             logger.debug(
-                f"[SessionManager] Appended segment to {self.transcription_file}: '{segment_text}'"
+                f"[SessionManager] Appended segment to {self.transcription_file}: "
+                f"'[{name}] {segment_text}'"
             )
         except IOError as e:
             print(
@@ -229,7 +370,7 @@ class SessionManager:
     def _save_transcription_to_file(
         self, _prompt: str, response: str, _extracted_text: Optional[str]
     ):
-        """Legacy method to save interactions. We don't write the user prompt here if it's handled segment-by-segment."""
+        """Save AI response to transcription file with speaker attribution."""
         if not self.transcription_file:
             logger.debug(
                 "[SessionManager] Cannot save interaction. transcription_file is None."
@@ -239,9 +380,8 @@ class SessionManager:
         try:
             with open(self.transcription_file, "a", encoding="utf-8") as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # Add a visual separator and the AI response
                 f.write(f"\n--- AI Response ({timestamp}) ---\n")
-                f.write(f"{response}\n\n--- User ---\n")
+                f.write(f"{response}\n\n--- [{self.speaker_name}] ---\n")
             logger.debug(
                 f"[SessionManager] Saved AI response to {self.transcription_file}"
             )
@@ -253,7 +393,10 @@ class SessionManager:
         if not self.current_session_id:
             return
 
-        path = os.path.join(SESSIONS_DIR, f"{self.current_session_id}.json")
+        path = _session_json_path(self.current_session_id)
+
+        # Ensure session directory exists
+        self._ensure_session_dirs(self.current_session_id)
 
         # Preserve existing name/tags from file if present
         existing_name = None
@@ -272,6 +415,8 @@ class SessionManager:
             "title": self.title,
             "name": existing_name,
             "tags": existing_tags,
+            "speaker_name": self.speaker_name,
+            "transcription_file": "transcription.txt" if self.transcription_file and os.path.exists(self.transcription_file) else None,
             "updated_at": time.time(),
             "history": history,
         }
@@ -295,23 +440,66 @@ class SessionManager:
 
     @staticmethod
     def list_all_sessions() -> List[Dict[str, Any]]:
-        """Returns lightweight metadata for all sessions, sorted by updated_at descending."""
+        """Returns lightweight metadata for all sessions, sorted by updated_at descending.
+
+        Scans for both new-style (folder-based) and legacy (flat-file) sessions.
+        Legacy sessions are transparently migrated on access.
+        """
         sessions = []
+        seen_ids: set[str] = set()
+
         if not os.path.exists(SESSIONS_DIR):
             return sessions
 
-        for filename in os.listdir(SESSIONS_DIR):
-            if not filename.endswith(".json"):
+        for entry in os.listdir(SESSIONS_DIR):
+            entry_path = os.path.join(SESSIONS_DIR, entry)
+
+            # New-style: directory with session.json
+            session_json = os.path.join(entry_path, "session.json")
+            if os.path.isdir(entry_path) and os.path.exists(session_json):
+                try:
+                    with open(session_json, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    session_id = data.get("id", entry)
+                    seen_ids.add(session_id)
+                    sessions.append({
+                        "id": session_id,
+                        "title": data.get("title"),
+                        "name": data.get("name"),
+                        "tags": data.get("tags", []),
+                        "speaker_name": data.get("speaker_name", "interviewer"),
+                        "updated_at": data.get("updated_at", 0),
+                        "interaction_count": len(data.get("history", [])),
+                    })
+                except (json.JSONDecodeError, IOError):
+                    continue
                 continue
-            path = os.path.join(SESSIONS_DIR, filename)
+
+            # Legacy: <uuid>.json file
+            if not entry.endswith(".json") or not os.path.isfile(entry_path):
+                continue
+
+            session_id = entry.replace(".json", "")
+            if session_id in seen_ids:
+                continue
+
+            # Attempt migration
+            _migrate_legacy_session(session_id)
+
+            # After migration, try to read from new location
+            migrated_path = _session_json_path(session_id)
+            read_path = migrated_path if os.path.exists(migrated_path) else entry_path
+
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(read_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                seen_ids.add(session_id)
                 sessions.append({
-                    "id": data.get("id", filename.replace(".json", "")),
+                    "id": data.get("id", session_id),
                     "title": data.get("title"),
                     "name": data.get("name"),
                     "tags": data.get("tags", []),
+                    "speaker_name": data.get("speaker_name", "interviewer"),
                     "updated_at": data.get("updated_at", 0),
                     "interaction_count": len(data.get("history", [])),
                 })
@@ -326,22 +514,48 @@ class SessionManager:
 
     @staticmethod
     def load_session_data(session_id: str) -> Optional[Dict[str, Any]]:
-        """Loads full session JSON including history."""
-        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
-        if not os.path.exists(path):
-            return None
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return None
+        """Loads full session JSON including history.
+
+        Checks new-style path first, falls back to legacy, and migrates if needed.
+        """
+        # Try new-style path first
+        new_path = _session_json_path(session_id)
+        if os.path.exists(new_path):
+            try:
+                with open(new_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+        # Fall back to legacy
+        legacy_path = _legacy_session_json_path(session_id)
+        if os.path.exists(legacy_path):
+            # Migrate, then read from new location
+            _migrate_legacy_session(session_id)
+            migrated_path = _session_json_path(session_id)
+            read_path = migrated_path if os.path.exists(migrated_path) else legacy_path
+            try:
+                with open(read_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+        return None
 
     @staticmethod
     def rename_session(session_id: str, new_name: str):
         """Updates the name field of a session."""
-        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        path = _session_json_path(session_id)
+
+        # Fall back to legacy path
+        if not os.path.exists(path):
+            legacy = _legacy_session_json_path(session_id)
+            if os.path.exists(legacy):
+                _migrate_legacy_session(session_id)
+
         if not os.path.exists(path):
             return
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -353,9 +567,17 @@ class SessionManager:
     @staticmethod
     def set_session_tags(session_id: str, tags: List[str]):
         """Updates the tags field of a session."""
-        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+        path = _session_json_path(session_id)
+
+        # Fall back to legacy path
+        if not os.path.exists(path):
+            legacy = _legacy_session_json_path(session_id)
+            if os.path.exists(legacy):
+                _migrate_legacy_session(session_id)
+
         if not os.path.exists(path):
             return
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -366,14 +588,27 @@ class SessionManager:
 
     @staticmethod
     def delete_session(session_id: str) -> bool:
-        """Deletes a session and its associated images. Returns True if deleted successfully."""
-        path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
-        if not os.path.exists(path):
+        """Deletes a session and all its associated files. Returns True if deleted successfully."""
+        session_dir = _session_dir(session_id)
+
+        # New-style: delete entire session folder
+        if os.path.isdir(session_dir):
+            try:
+                shutil.rmtree(session_dir)
+                logger.info(f"[SessionManager] Deleted session folder: {session_id}")
+                return True
+            except OSError as e:
+                logger.error(f"[SessionManager] Failed to delete session folder {session_id}: {e}")
+                return False
+
+        # Legacy: delete flat JSON file and referenced images
+        legacy_path = _legacy_session_json_path(session_id)
+        if not os.path.exists(legacy_path):
             return False
 
-        # Remove referenced images
+        # Remove referenced images from legacy shared folder
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(legacy_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             for interaction in data.get("history", []):
                 image_path = interaction.get("image")
@@ -381,14 +616,16 @@ class SessionManager:
                     try:
                         os.remove(image_path)
                     except OSError as img_err:
-                        logger.warning(f"[SessionManager] Failed to delete image {image_path}: {img_err}")
+                        logger.warning(
+                            f"[SessionManager] Failed to delete image {image_path}: {img_err}"
+                        )
         except (json.JSONDecodeError, IOError):
             pass  # Still attempt to delete the session file
 
         # Remove session JSON file
         try:
-            os.remove(path)
-            logger.info(f"[SessionManager] Deleted session: {session_id}")
+            os.remove(legacy_path)
+            logger.info(f"[SessionManager] Deleted legacy session: {session_id}")
             return True
         except OSError as e:
             logger.error(f"[SessionManager] Failed to delete session {session_id}: {e}")

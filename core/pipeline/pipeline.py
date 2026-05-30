@@ -155,6 +155,10 @@ def _retrieve_data_from_source(
             source, coords, text, status_callback, cancel_event
         )
         print(f"Retrieved text from source: {extracted_text}")
+
+        if hasattr(source, "_temp_files") and source._temp_files:
+            image_path = source._temp_files[-1]
+
         return extracted_text, image_path, is_image
     except (ValueError, OCRCancelledError) as e:
         return _handle_text_retrieval_error(source, coords, text, cancel_event, str(e))
@@ -389,7 +393,7 @@ def _determine_final_result(
 def _save_to_session(
     session_manager,
     prompt: str,
-    image_path: Optional[str],
+    image_path: Optional[str | list[str]],
     final_result: str,
     extracted_text: Optional[str],
     source_name: str,
@@ -419,6 +423,7 @@ def process_pipeline(
     fallback_llm: LLMEngine = None,
     coords=None,
     text=None,
+    image_paths=None,
     cancel_event: threading.Event = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
@@ -433,7 +438,7 @@ def process_pipeline(
 
     # 1. Text/Image Retrieval
     try:
-        extracted_text, image_path, is_image = _retrieve_data_from_source(
+        extracted_text, source_image_path, is_image = _retrieve_data_from_source(
             source, coords, text, status_callback, cancel_event
         )
     except Exception as e:
@@ -441,6 +446,16 @@ def process_pipeline(
 
     if cancel_event.is_set():
         return PIPELINE_CANCELLED_MSG
+
+    combined_image_paths = []
+    if image_paths:
+        combined_image_paths.extend(image_paths)
+    if source_image_path:
+        combined_image_paths.append(source_image_path)
+    if not combined_image_paths:
+        combined_image_paths = None
+    elif len(combined_image_paths) == 1:
+        combined_image_paths = combined_image_paths[0]
 
     # 2. Prompt Augmentation
     prompt = _build_prompt(prompt_text, extracted_text)
@@ -451,10 +466,10 @@ def process_pipeline(
 
     # 3. LLM Execution (with Fallback Concurrency)
     if not fallback_llm:
-        return _execute_llm_without_fallback(
+        final_result = _execute_llm_without_fallback(
             llm,
             prompt,
-            image_path,
+            combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             status_callback,
             enable_stitching,
@@ -463,6 +478,10 @@ def process_pipeline(
             max_retries=max_retries,
             base_delay=base_delay,
         )
+        _save_to_session(
+            session_manager, prompt, combined_image_paths, final_result, extracted_text, source_name
+        )
+        return final_result
 
     results = {}
     lock = threading.Lock()
@@ -490,7 +509,7 @@ def process_pipeline(
         args=(
             llm,
             prompt,
-            image_path,
+            combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             status_callback,
             enable_stitching,
@@ -512,7 +531,7 @@ def process_pipeline(
         args=(
             fallback_llm,
             prompt,
-            image_path,
+            combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             None,
             enable_stitching,
@@ -543,7 +562,7 @@ def process_pipeline(
     final_result = _determine_final_result(results, main_success, fallback_thread)
 
     _save_to_session(
-        session_manager, prompt, image_path, final_result, extracted_text, source_name
+        session_manager, prompt, combined_image_paths, final_result, extracted_text, source_name
     )
 
     return final_result

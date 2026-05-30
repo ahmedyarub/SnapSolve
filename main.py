@@ -173,7 +173,7 @@ def _ensure_ocr_engine(active_profile, status_callback=None):
 
 
 def _execute_text_pipeline(
-    config, active_profile, prompt_text, status_update, text=None
+    config, active_profile, prompt_text, status_update, text=None, image_paths=None
 ):
     """Execute text pipeline."""
     global llm_engine_instance, fallback_llm_engine_instance, audio_sink_instance
@@ -204,6 +204,7 @@ def _execute_text_pipeline(
         if "fallback_llm_engine_instance" in globals()
         else None,
         text=text,
+        image_paths=image_paths,
         cancel_event=cancel_event,
         max_retries=config.get("llm_max_retries", 3),
         base_delay=config.get("llm_retry_base_delay", 5),
@@ -398,10 +399,11 @@ def _check_multi_capture_requirements(config, active_profile):
 
 def _initialize_multi_capture():
     """Initialize multi-capture mode."""
-    global is_multi_capturing, multi_capture_texts
+    global is_multi_capturing, multi_capture_texts, multi_capture_images
     if not is_multi_capturing:
         is_multi_capturing = True
         multi_capture_texts = []
+        multi_capture_images = []
         update_multi_state(True)
 
 
@@ -412,18 +414,21 @@ def _perform_multi_capture_ocr(active_profile, coords, status_update):
     temp_source = ScreenshotSource()
     temp_source.ocr_engine = ocr_engine_instance
     extracted_text = None
+    image_path = None
     try:
         extracted_text = temp_source.get_text(
             coords=coords,
             status_callback=status_update,
             cancel_event=cancel_event,
         )
+        if hasattr(temp_source, "_temp_files") and temp_source._temp_files:
+            image_path = temp_source._temp_files[-1]
     except Exception as ocr_error:
         status_update(f"Error during OCR: {str(ocr_error)}")
     finally:
         temp_source.cleanup_all()
 
-    return extracted_text
+    return extracted_text, image_path
 
 
 def _handle_multi_capture_ocr(active_profile, coords, config):
@@ -434,20 +439,23 @@ def _handle_multi_capture_ocr(active_profile, coords, config):
 
     status_update("Capturing screen...")
 
-    extracted_text = _perform_multi_capture_ocr(active_profile, coords, status_update)
+    extracted_text, image_path = _perform_multi_capture_ocr(active_profile, coords, status_update)
 
     if cancel_event.is_set():
         print("Multi-capture OCR was cancelled.")
         return None
 
-    if extracted_text:
-        multi_capture_texts.append(extracted_text)
+    if extracted_text or image_path:
+        if extracted_text:
+            multi_capture_texts.append(extracted_text)
+        if image_path:
+            multi_capture_images.append(image_path)
         status_update(
-            f"Captured {len(multi_capture_texts)} images... Multiple capture mode"
+            f"Captured {len(multi_capture_texts)} text blocks, {len(multi_capture_images)} images... Multiple capture mode"
         )
     else:
         status_update(
-            f"No text found. Captured {len(multi_capture_texts)} images... Multiple capture mode"
+            f"No text found. Captured {len(multi_capture_images)} images... Multiple capture mode"
         )
 
     return extracted_text
@@ -478,7 +486,7 @@ def handle_multi_capture(config, active_profile):
     set_processing(True)
 
     def _multi_capture():
-        global is_multi_capturing, multi_capture_texts
+        global is_multi_capturing, multi_capture_texts, multi_capture_images
         if not _check_multi_capture_requirements(config, active_profile):
             return
 
@@ -500,7 +508,7 @@ def _check_multi_capture_texts(config, capture_texts):
 
 
 def handle_end_multi_capture(config, active_profile, active_prompt_text):
-    global is_processing, is_multi_capturing, multi_capture_texts
+    global is_processing, is_multi_capturing, multi_capture_texts, multi_capture_images
     if is_processing:
         return
 
@@ -516,7 +524,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
     update_multi_state(False)
 
     def _end_multi_capture():
-        global is_multi_capturing, multi_capture_texts
+        global is_multi_capturing, multi_capture_texts, multi_capture_images
         try:
             if not _check_multi_capture_texts(config, multi_capture_texts):
                 is_multi_capturing = False
@@ -534,6 +542,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 active_prompt_text,
                 status_update,
                 text=combined_text,
+                image_paths=multi_capture_images if multi_capture_images else None,
             )
 
         except Exception as multi_error:
@@ -543,6 +552,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             set_processing(False)
             is_multi_capturing = False
             multi_capture_texts = []
+            multi_capture_images = []
 
     threading.Thread(target=_end_multi_capture, daemon=True).start()
 

@@ -284,10 +284,11 @@ class SoundSource(Source):
             and getattr(self.session_manager, "transcription_file", None)
         ):
             try:
+                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
                 with open(
                     self.session_manager.transcription_file, "a", encoding="utf-8"
                 ) as f:
-                    f.write("\n--- User ---\n")
+                    f.write(f"\n--- [{speaker}] ---\n")
             except Exception as e:
                 logger.error(f"Failed to write initial transcription separator: {e}")
 
@@ -378,8 +379,9 @@ class SoundSource(Source):
         if self._current_utterance_text:
             self._last_transcription_text += self._current_utterance_text + " "
             if self.session_manager:
+                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
                 self.session_manager.append_transcription_segment(
-                    self._current_utterance_text
+                    self._current_utterance_text, speaker_name=speaker
                 )
             self._current_utterance_text = ""
 
@@ -428,8 +430,9 @@ class SoundSource(Source):
         if self._current_utterance_text:
             self._last_transcription_text += self._current_utterance_text
             if self.session_manager:
+                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
                 self.session_manager.append_transcription_segment(
-                    self._current_utterance_text
+                    self._current_utterance_text, speaker_name=speaker
                 )
 
     def _process_realtime_transcription(self):

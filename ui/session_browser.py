@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
+from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut, QDesktopServices
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QTextEdit,
+    QTextBrowser,
     QLineEdit,
     QLabel,
     QMenu,
@@ -131,7 +132,9 @@ class SessionBrowserDialog(QDialog):
             " background: transparent;"
         )
         prompt_layout.addWidget(prompt_header)
-        self.prompt_view = QTextEdit()
+        self.prompt_view = QTextBrowser()
+        self.prompt_view.setOpenLinks(False)
+        self.prompt_view.anchorClicked.connect(QDesktopServices.openUrl)
         self.prompt_view.setReadOnly(True)
         prompt_layout.addWidget(self.prompt_view)
         self.v_splitter.addWidget(prompt_container)
@@ -360,7 +363,16 @@ class SessionBrowserDialog(QDialog):
             if not excerpt:
                 excerpt = "(empty prompt)"
 
-            child = QTreeWidgetItem([f"💬  {excerpt}"])
+            # Source type icon
+            source = interaction.get("source", "text")
+            if source == "audio":
+                icon = "🎤"
+            elif source == "image" or interaction.get("image"):
+                icon = "🖼️"
+            else:
+                icon = "💬"
+
+            child = QTreeWidgetItem([f"{icon}  {excerpt}"])
             child.setData(0, Qt.ItemDataRole.UserRole, session_id)
             child.setData(0, Qt.ItemDataRole.UserRole + 1, "prompt")
             child.setData(0, Qt.ItemDataRole.UserRole + 2, i)
@@ -407,7 +419,69 @@ class SessionBrowserDialog(QDialog):
             return
 
         interaction = history[prompt_index]
-        self.prompt_view.setPlainText(interaction.get("prompt", ""))
+
+        # Show speaker name in prompt header
+        speaker = interaction.get("speaker_name", "")
+        prompt_text = interaction.get("prompt", "")
+
+        import os
+        from core.session_manager import _session_dir
+        import html
+
+        # Build prompt display with metadata
+        display_parts = []
+        if speaker:
+            display_parts.append(f"<b>[{html.escape(speaker)}]</b>")
+
+        source = interaction.get("source", "text")
+        if source != "text":
+            display_parts.append(f"<i>({html.escape(source)})</i>")
+
+        images_data = interaction.get("image", [])
+        if isinstance(images_data, str):
+            images_data = [images_data] if images_data else []
+
+        for img in images_data:
+            abs_image_path = os.path.abspath(os.path.join(_session_dir(session_id), img))
+            abs_image_path_fwd = abs_image_path.replace(os.sep, '/')
+            file_url = f"file:///{abs_image_path_fwd}"
+            display_parts.append(f"📎 <a href='{file_url}' style='color: #61afef;'>{html.escape(img)}</a>")
+
+        transcription_file = data.get("transcription_file")
+        if transcription_file:
+            abs_trans_path = os.path.abspath(os.path.join(_session_dir(session_id), transcription_file))
+            if os.path.exists(abs_trans_path):
+                trans_url = f"file:///{abs_trans_path.replace(os.sep, '/')}"
+                display_parts.append(f"📝 <a href='{trans_url}' style='color: #98c379;'>{html.escape(transcription_file)}</a>")
+
+        header = "  ".join(display_parts)
+        prompt_html = html.escape(prompt_text).replace("\n", "<br>")
+
+        full_prompt = f'''
+        <div style="font-family: monospace; font-size: 13px;">
+            <div style="margin-bottom: 8px;">{header}</div>
+            <div style="border-top: 1px solid #555; margin-bottom: 8px;"></div>
+            <div>{prompt_html}</div>
+        </div>
+        ''' if header else f'<div style="font-family: monospace; font-size: 13px;">{prompt_html}</div>'
+
+        for img in images_data:
+            abs_image_path = os.path.abspath(os.path.join(_session_dir(session_id), img))
+            abs_image_path_fwd = abs_image_path.replace(os.sep, '/')
+            
+            from PyQt6.QtGui import QImageReader
+            reader = QImageReader(abs_image_path)
+            size = reader.size()
+            
+            # Default to a reasonable width if read fails
+            img_w = size.width() if size.width() > 0 else 800
+            
+            # Scale down to fit the panel nicely, but keep it large ("expanded")
+            display_width = min(img_w, 750) 
+            
+            full_prompt += f"<br><br><img src='{abs_image_path_fwd}' width='{display_width}'>"
+
+        self.prompt_view.setHtml(full_prompt)
         self._render_response(interaction.get("response", ""))
 
     def _render_response(self, markdown_text: str):

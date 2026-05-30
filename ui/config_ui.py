@@ -98,6 +98,10 @@ class ConfigUI(QDialog):
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
+        self.save_images = QCheckBox("Save Captured Images to Session")
+        self.speaker_name = QLineEdit(
+            self.config.get("speaker_name", "interviewer")
+        )
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
         self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_tts = QCheckBox("Warmup TTS Engine")
@@ -303,6 +307,18 @@ class ConfigUI(QDialog):
             self.config.get("save_transcriptions", True)
         )
         layout.addRow("Save Transcriptions:", self.save_transcriptions)
+
+        self.save_images.setChecked(
+            self.config.get("save_images", True)
+        )
+        layout.addRow("Save Images:", self.save_images)
+
+        self.speaker_name.setPlaceholderText("e.g. interviewer")
+        self.speaker_name.setToolTip(
+            "Name attributed to the speaker in transcription files.\n"
+            "Each transcription segment will be prefixed with [name]."
+        )
+        layout.addRow("Speaker Name:", self.speaker_name)
 
         # Background Mode
         self.background_mode.setChecked(self.config.get("background", False))
@@ -597,6 +613,8 @@ class ConfigUI(QDialog):
         self.config["hide_from_capture"] = self.hide_from_capture.isChecked()
         self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
+        self.config["save_images"] = self.save_images.isChecked()
+        self.config["speaker_name"] = self.speaker_name.text().strip() or "interviewer"
         self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
         self.config["warmup_llm"] = self.warmup_llm.isChecked()
         self.config["warmup_tts"] = self.warmup_tts.isChecked()

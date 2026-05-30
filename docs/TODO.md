@@ -3,7 +3,6 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Stealth Mode (Hide from Capture)**: Windows can be excluded from screen-capture APIs (OBS, video calls, Win+Shift+S) while remaining visible on the user's monitor.
 - [x] **Remote Control Server (Android)**: WebSocket-based remote control server enabling an Android companion app to control mouse, trigger actions, and receive UI state updates over LAN.
 - [x] **Open Code in IDE**: Right-click any code block in the popup to open it directly in PyCharm or Antigravity IDE, with language-aware temp file creation.
 - [x] **WebSocket Migration**: Migrated remote control server from HTTP polling to WebSocket for lower latency, real-time state push, and message coalescing for high-frequency mouse events.
@@ -13,6 +12,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Android App Response Viewer**: Display rendered Markdown responses directly in the Android app.
 - [x] **Session Browser**: Full-featured session browser dialog with tree view, prompt/response panels, tag management, filtering, renaming, and multi-delete.
 - [x] **LLM Retry Mechanism**: Automatic retry with exponential backoff (up to 3 attempts) on transient LLM errors (503, rate limits, connection issues). Configurable via `llm_max_retries` and `llm_retry_base_delay`.
+- [x] **Elaborate Session Structure**: Per-session folder hierarchy (`sessions/<uuid>/`) with `session.json`, `images/`, and `transcription.txt`. Speaker name attribution in transcription segments. Source-type icons in session browser. Transparent migration of legacy flat-file sessions.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -41,7 +41,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Touch Gestures**: Add pinch-to-zoom and multi-finger gestures on the Android touchpad.
 
 ## Session & Data Management
-- [ ] **Elaborate Session Structure**: Create a richer session folder structure that includes:
+- [x] **Elaborate Session Structure**: Create a richer session folder structure that includes:
     - Transcription with speaker name attribution
     - Captured OCR images
     - Response images

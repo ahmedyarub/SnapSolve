@@ -26,6 +26,7 @@ MAIN_SCRIPT_ARGS = [
     f"--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}",
     f"--audio-input-device-name={TTS_INPUT_DEVICE_NAME}",
     "--default-source=text",
+    "--output-mode=both",
 ]
 SERVICE_SCRIPT_PATH = "services/ocr_service.py"
 ERROR_RESPONSES = ["No speech recognized."]
