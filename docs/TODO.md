@@ -18,6 +18,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
 - [ ] **Asynchronous Remote OCR Service**: When the remote OCR source is enabled, start the service asynchronously. Disable the capture and multi-select buttons until the service port is successfully polled. Ensure that if the app starts the service, it correctly kills it upon exiting.
 - [ ] **Application Initialization State**: Introduce a "Ready" popup indicating that initialization has finished. Prevent showing the control panel or accepting keyboard shortcuts until the application is fully loaded.
+- [ ] **Better Parsing of Verification Results**: Improve parsing and formatting of verification script (`verify.ps1`/`verify.sh`) output to provide clearer, more structured results.
 
 ## UI/UX Enhancements
 - [ ] **Popup Sizing Stability**: Fix the issue where small prompt popups dynamically change sizes (starting large and subsequently shrinking).
@@ -27,10 +28,15 @@ This document tracks planned features, enhancements, and known issues that need 
 ## Processing & Integration
 - [ ] **Text-to-Speech (TTS) Improvements**: Enhance the TTS feature to read one sentence at a time, and include UI controls (buttons) to skip forward or backward through the spoken sentences.
 - [ ] **Grammar & Accuracy Corrections**: Introduce a dedicated feature/button to analyze and correct the grammar or factual accuracy of the extracted or generated text.
+- [ ] **Personalized Answers**: Add personalized answer capabilities that tailor LLM responses based on user preferences, context, or user profile. Allow users to include external context (files, documents, URLs) in the prompt to provide additional background information to the LLM.
+- [ ] **Jira & Confluence Integration**: Explore and implement integration with Jira and Confluence for importing context, creating tickets, or publishing results.
 - [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
 - [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
+- [ ] **Summarize Audio Conversation**: Add the ability to summarize an entire audio conversation/session, producing a concise summary of the full transcription.
 
 ## Audio & Speech Features
+- [ ] **Transcription Language Selection**: Allow users to choose the transcription language instead of hardcoding English (`lang="en"`). Expose this setting in the config UI and pass it to the WhisperLive client.
+- [ ] **Optional Translation Language**: Allow users to choose an optional translation language for real-time transcription. WhisperLive already supports translation on the server side — expose this via config and UI.
 - [ ] **Multiple Language Support**: Add support for multiple languages in speech recognition and TTS.
 - [ ] **Audio Level Visualization**: Add real-time audio level visualization during recording.
 - [ ] **Fix Recording from Meetup Calls**: Investigate and fix issues with recording audio from Meetup/virtual meeting applications.
@@ -48,6 +54,10 @@ This document tracks planned features, enhancements, and known issues that need 
     - Prompts and response text
     - Organized in a clean folder hierarchy per session
     - Update the session browser UI to support browsing and displaying all of these artifacts.
+
+## Developer Workflow
+- [ ] **Claude Code with Skills & Git Worktrees**: Integrate Claude Code with skill files (power skills) and git worktrees for more efficient AI-assisted development.
+- [ ] **E2E Tests in Claude Code**: Run end-to-end tests in Claude Code after each development task to catch regressions early.
 
 ## Testing & Quality Assurance
 - [ ] **Cross-Platform Testing**: Improve testing coverage for different operating systems (Windows, macOS, Linux).
