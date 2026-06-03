@@ -35,7 +35,13 @@
   "warmup_llm": false,
   "warmup_tts": false,
   "warmup_realtime_transcription": false,
+  "save_images": true,
+  "save_transcriptions": true,
+  "speaker_name": "interviewer",
   "realtime_transcription": true,
+  "transcription_language": "en",
+  "tts_language": "en",
+  "translation_language": "",
   "ocr_config": {
     "remote_ocr_host": "127.0.0.1",
     "port": 8000

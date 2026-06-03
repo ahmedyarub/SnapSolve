@@ -28,6 +28,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Real-time Transcription:** WhisperLive integration for live subtitle display during recording, with configurable pause threshold and subtitle double-click to submit.
 *   **Transcription Language Selection:** Configurable transcription language (27 languages + auto-detect) exposed in config UI, control panel (audio mode), Android app, and CLI (`--transcription-language`). Passed to both WhisperLive and Google Speech Recognition.
 *   **TTS Language Selection:** Separate text-to-speech language setting available in config UI, CLI (`--tts-language`), and test_sound sanity test. Maps to Piper TTS voice models per language.
+*   **Translation Language:** Optional real-time translation of transcribed audio into a configurable target language. When enabled, WhisperLive translates completed segments and subtitles display the translated text. Configurable via config UI (`Translation Language` dropdown), control panel (audio mode), and CLI (`--translation-language`). Set to empty/"None" to disable.
 
 ## Prompt & Enrichment
 

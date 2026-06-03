@@ -99,6 +99,7 @@ class ConfigUI(QDialog):
         self.shortcuts_tab = None
         self.profile_tab = None
         self.app_tab = None
+        self.audio_tab = QWidget()
 
         self.llm_tab = QWidget()
         self.tabs = QTabWidget()
@@ -115,6 +116,7 @@ class ConfigUI(QDialog):
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.transcription_language = QComboBox()
         self.tts_language = QComboBox()
+        self.translation_language = QComboBox()
         self.save_images = QCheckBox("Save Captured Images to Session")
         self.speaker_name = QLineEdit(
             self.config.get("speaker_name", "interviewer")
@@ -184,6 +186,7 @@ class ConfigUI(QDialog):
         self.shortcuts_tab = QWidget()
 
         self.tabs.addTab(self.app_tab, "Application Settings")
+        self.tabs.addTab(self.audio_tab, "Audio & Speech")
         self.tabs.addTab(self.profile_tab, "Profile Settings")
         self.tabs.addTab(self.llm_tab, "LLM Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
@@ -191,6 +194,7 @@ class ConfigUI(QDialog):
         self.tabs.addTab(self.remote_control_tab, "Remote Control")
 
         self.setup_app_tab()
+        self.setup_audio_tab()
         self.setup_profile_tab()
         self.setup_llm_tab()
         self.setup_warmup_tab()
@@ -272,89 +276,10 @@ class ConfigUI(QDialog):
         opacity_layout.addWidget(self.opacity_label)
         layout.addRow("Opacity:", opacity_layout)
 
-        # TTS Piper settings
-        piper_model_layout = QHBoxLayout()
-        piper_model_layout.addWidget(self.piper_model)
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self.browse_piper_model)
-        piper_model_layout.addWidget(browse_btn)
-        layout.addRow("Piper Voice Model Path:", piper_model_layout)
-
-        self.tts_output_device_combo.addItem("Default System Output", None)
-
-        audio_devices = get_audio_devices()
-        for device in audio_devices:
-            self.tts_output_device_combo.addItem(device["name"], device["name"])
-
-        current_device_name = self.config.get("tts_output_device_name", None)
-
-        if current_device_name is not None:
-            idx = self.tts_output_device_combo.findData(current_device_name)
-            if idx >= 0:
-                self.tts_output_device_combo.setCurrentIndex(idx)
-
-        layout.addRow("TTS Output Device:", self.tts_output_device_combo)
-
-        # Audio Input Device
-        self.audio_input_device_combo.addItem("Default System Input", None)
-
-        try:
-            from config.settings import get_audio_input_devices
-
-            input_audio_devices = get_audio_input_devices()
-            for device in input_audio_devices:
-                self.audio_input_device_combo.addItem(device["name"], device["name"])
-        except Exception as e:
-            print(f"Failed to load audio input devices: {e}")
-
-        current_input_device_name = self.config.get("audio_input_device_name", None)
-        if current_input_device_name is not None:
-            idx = self.audio_input_device_combo.findData(current_input_device_name)
-            if idx >= 0:
-                self.audio_input_device_combo.setCurrentIndex(idx)
-
-        layout.addRow("Audio Input Device:", self.audio_input_device_combo)
-
-        self.realtime_transcription.setChecked(
-            self.config.get("realtime_transcription", True)
-        )
-        layout.addRow("Real-time Transcription:", self.realtime_transcription)
-
-        # Transcription language
-        current_trans_lang = self.config.get("transcription_language", "en")
-        for display_name, code in TRANSCRIPTION_LANGUAGES:
-            self.transcription_language.addItem(display_name, code)
-        trans_idx = self.transcription_language.findData(current_trans_lang)
-        if trans_idx >= 0:
-            self.transcription_language.setCurrentIndex(trans_idx)
-        layout.addRow("Transcription Language:", self.transcription_language)
-
-        # TTS language (same list minus auto-detect)
-        current_tts_lang = self.config.get("tts_language", "en")
-        for display_name, code in TRANSCRIPTION_LANGUAGES:
-            if code:  # Skip "Auto-detect" for TTS
-                self.tts_language.addItem(display_name, code)
-        tts_idx = self.tts_language.findData(current_tts_lang)
-        if tts_idx >= 0:
-            self.tts_language.setCurrentIndex(tts_idx)
-        layout.addRow("TTS Language:", self.tts_language)
-
-        self.save_transcriptions.setChecked(
-            self.config.get("save_transcriptions", True)
-        )
-        layout.addRow("Save Transcriptions:", self.save_transcriptions)
-
         self.save_images.setChecked(
             self.config.get("save_images", True)
         )
         layout.addRow("Save Images:", self.save_images)
-
-        self.speaker_name.setPlaceholderText("e.g. interviewer")
-        self.speaker_name.setToolTip(
-            "Name attributed to the speaker in transcription files.\n"
-            "Each transcription segment will be prefixed with [name]."
-        )
-        layout.addRow("Speaker Name:", self.speaker_name)
 
         # Background Mode
         self.background_mode.setChecked(self.config.get("background", False))
@@ -386,6 +311,124 @@ class ConfigUI(QDialog):
         browse_antigravity_btn.clicked.connect(self.browse_antigravity_path)
         antigravity_layout.addWidget(browse_antigravity_btn)
         layout.addRow("Antigravity IDE Path:", antigravity_layout)
+
+    def setup_audio_tab(self):
+        """Build the Audio & Speech tab.
+
+        Contains TTS settings, audio devices, transcription/translation
+        language, and speech recognition options.
+        """
+        layout = QFormLayout(self.audio_tab)
+
+        # --- TTS Settings ---
+        layout.addRow(QLabel("<b>Text-to-Speech</b>"))
+
+        # TTS Piper settings
+        piper_model_layout = QHBoxLayout()
+        piper_model_layout.addWidget(self.piper_model)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_piper_model)
+        piper_model_layout.addWidget(browse_btn)
+        layout.addRow("Piper Voice Model Path:", piper_model_layout)
+
+        self.tts_output_device_combo.addItem("Default System Output", None)
+
+        audio_devices = get_audio_devices()
+        for device in audio_devices:
+            self.tts_output_device_combo.addItem(device["name"], device["name"])
+
+        current_device_name = self.config.get("tts_output_device_name", None)
+
+        if current_device_name is not None:
+            idx = self.tts_output_device_combo.findData(current_device_name)
+            if idx >= 0:
+                self.tts_output_device_combo.setCurrentIndex(idx)
+
+        layout.addRow("TTS Output Device:", self.tts_output_device_combo)
+
+        # TTS language
+        current_tts_lang = self.config.get("tts_language", "en")
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            if code:  # Skip "Auto-detect" for TTS
+                self.tts_language.addItem(display_name, code)
+        tts_idx = self.tts_language.findData(current_tts_lang)
+        if tts_idx >= 0:
+            self.tts_language.setCurrentIndex(tts_idx)
+        layout.addRow("TTS Language:", self.tts_language)
+
+        # --- Speech Recognition ---
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Speech Recognition</b>"))
+
+        # Audio Input Device
+        self.audio_input_device_combo.addItem("Default System Input", None)
+
+        try:
+            from config.settings import get_audio_input_devices  # noqa: PLC0415
+
+            input_audio_devices = get_audio_input_devices()
+            for device in input_audio_devices:
+                self.audio_input_device_combo.addItem(device["name"], device["name"])
+        except Exception as e:
+            print(f"Failed to load audio input devices: {e}")
+
+        current_input_device_name = self.config.get("audio_input_device_name", None)
+        if current_input_device_name is not None:
+            idx = self.audio_input_device_combo.findData(current_input_device_name)
+            if idx >= 0:
+                self.audio_input_device_combo.setCurrentIndex(idx)
+
+        layout.addRow("Audio Input Device:", self.audio_input_device_combo)
+
+        # Transcription language
+        current_trans_lang = self.config.get("transcription_language", "en")
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            self.transcription_language.addItem(display_name, code)
+        trans_idx = self.transcription_language.findData(current_trans_lang)
+        if trans_idx >= 0:
+            self.transcription_language.setCurrentIndex(trans_idx)
+        layout.addRow("Transcription Language:", self.transcription_language)
+
+        self.realtime_transcription.setChecked(
+            self.config.get("realtime_transcription", True)
+        )
+        layout.addRow("Real-time Transcription:", self.realtime_transcription)
+
+        # --- Translation ---
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Translation</b>"))
+
+        # Translation language
+        current_translation_lang = self.config.get("translation_language", "")
+        self.translation_language.addItem("None (disabled)", "")
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            if code:  # Skip "Auto-detect" for translation
+                self.translation_language.addItem(display_name, code)
+        translation_idx = self.translation_language.findData(current_translation_lang)
+        if translation_idx >= 0:
+            self.translation_language.setCurrentIndex(translation_idx)
+        self.translation_language.setToolTip(
+            "When set, WhisperLive translates the transcribed audio\n"
+            "into the selected language in real-time.\n"
+            "Subtitles will show the translated text."
+        )
+        layout.addRow("Translation Language:", self.translation_language)
+
+        # --- Session ---
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Session</b>"))
+
+        self.save_transcriptions.setChecked(
+            self.config.get("save_transcriptions", True)
+        )
+        layout.addRow("Save Transcriptions:", self.save_transcriptions)
+
+        self.speaker_name.setPlaceholderText("e.g. interviewer")
+        self.speaker_name.setToolTip(
+            "Name attributed to the speaker in transcription files.\n"
+            "Each transcription segment will be prefixed with [name]."
+        )
+        layout.addRow("Speaker Name:", self.speaker_name)
 
     def setup_llm_tab(self):
         """Build the LLM Settings tab.
@@ -653,6 +696,9 @@ class ConfigUI(QDialog):
         )
         self.config["tts_language"] = (
             self.tts_language.currentData() or "en"
+        )
+        self.config["translation_language"] = (
+            self.translation_language.currentData() or ""
         )
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["save_images"] = self.save_images.isChecked()

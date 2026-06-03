@@ -1021,6 +1021,16 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.layout.addWidget(self.lang_combo)
         self.lang_combo.hide()
 
+        # Translation status label (visible only in audio mode)
+        self.translation_label = QLabel("")
+        self.translation_label.setStyleSheet(
+            "QLabel { background-color: rgba(45, 45, 45, 180); color: #aaa;"
+            " border: none; padding: 4px; border-radius: 4px; font-size: 11px;}"
+        )
+        self.translation_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.translation_label)
+        self.translation_label.hide()
+
         self.btn_end_multi.hide()
         self.btn_cancel.hide()
 
@@ -1070,6 +1080,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_multi.setVisible(is_image)
         self.btn_record.setVisible(is_audio)
         self.lang_combo.setVisible(is_audio)
+        self.translation_label.setVisible(is_audio)
         self.adjustSize()
         self.update_position()
         self._broadcast_state()
@@ -1086,6 +1097,28 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             self.lang_combo.blockSignals(True)
             self.lang_combo.setCurrentIndex(idx)
             self.lang_combo.blockSignals(False)
+
+    def update_translation_label(self, lang_code: str):
+        """Update the translation status label to reflect the current setting."""
+        if lang_code:
+            from ui.config_ui import TRANSCRIPTION_LANGUAGES  # noqa: PLC0415
+            # Look up the display name
+            display = lang_code
+            for display_name, code in TRANSCRIPTION_LANGUAGES:
+                if code == lang_code:
+                    display = display_name
+                    break
+            self.translation_label.setText(f"🌐 Translating → {display}")
+            self.translation_label.setStyleSheet(
+                "QLabel { background-color: rgba(45, 45, 45, 180); color: #7fdbca;"
+                " border: none; padding: 4px; border-radius: 4px; font-size: 11px;}"
+            )
+        else:
+            self.translation_label.setText("")
+            self.translation_label.setStyleSheet(
+                "QLabel { background-color: rgba(45, 45, 45, 180); color: #aaa;"
+                " border: none; padding: 4px; border-radius: 4px; font-size: 11px;}"
+            )
 
     def set_processing_state(self, is_processing):
         if not self.is_multi_selecting:
@@ -1382,12 +1415,15 @@ class UIManager(QObject):
         self.panel._apply_opacity(opacity)
         self.panel.set_source(source_name)
 
-        # Sync the language combo from config when switching to audio
+        # Sync the language combos from config when switching to audio
         if source_name == "audio":
             from config.settings import load_config  # noqa: PLC0415
             cfg = load_config()
             self.panel.set_transcription_language_value(
                 cfg.get("transcription_language", "en")
+            )
+            self.panel.update_translation_label(
+                cfg.get("translation_language", "")
             )
 
         if source_name == "text":

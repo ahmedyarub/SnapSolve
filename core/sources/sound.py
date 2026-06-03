@@ -120,6 +120,12 @@ class SoundSource(Source):
         self.realtime_transcription = True
         self._last_segment_start = -1.0
 
+        # Translation related
+        self._translation_language: str = ""
+        self._last_translated_text = ""
+        self._current_translated_utterance = ""
+        self._last_translated_segment_start = -1.0
+
     def warmup(self):
         if WhisperLiveTranscriptionClient is None:
             logger.error("WhisperLive client not imported. Cannot perform warmup.")
@@ -164,6 +170,10 @@ class SoundSource(Source):
         self._last_transcription_text = ""
         self._current_utterance_text = ""
         self._last_segment_start = -1.0
+        self._last_translated_text = ""
+        self._current_translated_utterance = ""
+        self._last_translated_segment_start = -1.0
+        self._translation_language = self.config.get("translation_language", "")
 
         # Override transcription setting if explicitly provided
         if enable_transcription is not None:
@@ -187,7 +197,9 @@ class SoundSource(Source):
 
         if self.realtime_transcription:
             self._record_thread = threading.Thread(
-                target=self._record_and_transcribe_worker, daemon=True
+                target=self._record_and_transcribe_worker,
+                args=(status_callback,),
+                daemon=True
             )
         else:
             self._record_thread = threading.Thread(
@@ -256,6 +268,24 @@ class SoundSource(Source):
         """Initialize transcription client."""
         try:
             transcription_lang = self.config.get("transcription_language", "en") or None
+            translation_lang = self._translation_language
+
+            # Skip translation if target matches transcription language (no-op)
+            if translation_lang and translation_lang == transcription_lang:
+                logger.info(
+                    "Translation target '%s' matches transcription language — skipping translation",
+                    translation_lang,
+                )
+                translation_lang = ""
+
+            # Build translation kwargs
+            translate_kwargs: dict = {}
+            if translation_lang:
+                translate_kwargs["enable_translation"] = True
+                translate_kwargs["target_language"] = translation_lang
+                translate_kwargs["translation_callback"] = self._on_translation_result
+                logger.info("Translation enabled — target language: %s", translation_lang)
+
             self.transcription_client = WhisperLiveTranscriptionClient(
                 host="localhost",
                 port=9090,
@@ -263,6 +293,7 @@ class SoundSource(Source):
                 use_vad=True,
                 transcription_callback=self._on_transcription_result,
                 no_speech_thresh=0.4,
+                **translate_kwargs,
             )
             return True
         except Exception as e:
@@ -270,10 +301,14 @@ class SoundSource(Source):
             self.is_recording = False
             return False
 
-    @staticmethod
-    def _wait_for_client_ready(client, timeout=15):
+    def _wait_for_client_ready(self, client, timeout=15, status_callback=None):
         """Wait for client to be ready."""
         start_time = time.time()
+        if timeout > 15:
+            msg = "Downloading translation model (may take 5+ mins the first time)..."
+            logger.info(msg)
+            if status_callback:
+                status_callback(msg)
 
         while not client.recording:
             if getattr(client, "server_error", False):
@@ -360,8 +395,8 @@ class SoundSource(Source):
                 logger.error(f"Error closing WhisperLive client: {e}")
             self.transcription_client = None
 
-    def _record_and_transcribe_worker(self):
-        """Connects to WhisperLive and streams microphone audio for transcription."""
+    def _record_and_transcribe_worker(self, status_callback=None):
+        """Streams audio to WhisperLive."""
         if not self._ensure_whisperlive_service():
             return
 
@@ -369,7 +404,9 @@ class SoundSource(Source):
             return
 
         client = self.transcription_client.client
-        if not self._wait_for_client_ready(client):
+        # Allow more time when translation is enabled (server loads/downloads M2M100 model)
+        timeout = 600 if self._translation_language else 15
+        if not self._wait_for_client_ready(client, timeout=timeout, status_callback=status_callback):
             self.is_recording = False
             return
 
@@ -400,14 +437,16 @@ class SoundSource(Source):
     def _process_new_segment(self, text, start):
         """Process new segment."""
         self._finalize_current_utterance()
-        show_subtitle(text)
+        if not self._translation_language:
+            show_subtitle(text)
         self._last_segment_start = start
         self._current_utterance_text = text
 
     def _process_segment_update(self, text):
         """Process segment update."""
         if text != self._current_utterance_text:
-            update_subtitle(text, append=False)
+            if not self._translation_language:
+                update_subtitle(text, append=False)
             self._current_utterance_text = text
 
     def _on_transcription_result(self, _, segments):
@@ -428,6 +467,32 @@ class SoundSource(Source):
                 self._process_new_segment(text, start)
             elif start == self._last_segment_start:
                 self._process_segment_update(text)
+
+    def _on_translation_result(self, _, segments):
+        """Callback from WhisperLive client with translated segments."""
+        logger.debug(f"Received translated segments: {segments}")
+        if not segments:
+            return
+
+        for segment in segments:
+            text = segment["text"].strip()
+            start = float(segment.get("start", 0.0))
+
+            if not text:
+                continue
+
+            if start > self._last_translated_segment_start:
+                # New translated segment — finalize previous
+                if self._current_translated_utterance:
+                    self._last_translated_text += self._current_translated_utterance + " "
+                show_subtitle(text)
+                self._last_translated_segment_start = start
+                self._current_translated_utterance = text
+            elif start == self._last_translated_segment_start:
+                # Update of current translated segment
+                if text != self._current_translated_utterance:
+                    update_subtitle(text, append=False)
+                    self._current_translated_utterance = text
 
     def _stop_recording_thread(self):
         """Stop recording thread."""
@@ -451,9 +516,17 @@ class SoundSource(Source):
         """Process realtime transcription."""
         self._finalize_last_utterance()
 
-        if not self._current_utterance_text:
+        # Finalize any remaining translated utterance
+        if self._current_translated_utterance:
+            self._last_translated_text += self._current_translated_utterance
+
+        has_content = self._current_utterance_text or self._current_translated_utterance
+        if not has_content:
             threading.Timer(5.0, clear_subtitles).start()
 
+        # Return translated text if translation was active, otherwise original
+        if self._translation_language and self._last_translated_text.strip():
+            return self._last_translated_text.strip()
         return self._last_transcription_text.strip()
 
     def _process_simple_recording(self):
