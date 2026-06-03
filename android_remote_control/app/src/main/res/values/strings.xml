@@ -38,4 +38,37 @@
     <!-- SharedPreferences keys (not shown in UI, used internally) -->
     <string name="pref_key_ip" translatable="false">pref_server_ip</string>
     <string name="pref_key_port" translatable="false">pref_server_port</string>
+
+    <!-- Transcription language selector -->
+    <string name="label_transcription_lang">🌐 Language:</string>
+
+    <string-array name="transcription_languages">
+        <item>Auto-detect</item>
+        <item>English</item>
+        <item>Spanish</item>
+        <item>French</item>
+        <item>German</item>
+        <item>Italian</item>
+        <item>Portuguese</item>
+        <item>Russian</item>
+        <item>Chinese</item>
+        <item>Japanese</item>
+        <item>Korean</item>
+        <item>Arabic</item>
+        <item>Hindi</item>
+        <item>Turkish</item>
+        <item>Polish</item>
+        <item>Dutch</item>
+        <item>Swedish</item>
+        <item>Czech</item>
+        <item>Romanian</item>
+        <item>Hungarian</item>
+        <item>Ukrainian</item>
+        <item>Greek</item>
+        <item>Hebrew</item>
+        <item>Thai</item>
+        <item>Vietnamese</item>
+        <item>Indonesian</item>
+        <item>Malay</item>
+    </string-array>
 </resources>

@@ -26,6 +26,8 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Audio Recording:** Background audio recording with visual feedback and automatic transcription.
 *   **Voice Activity Detection:** Automatic start/stop of recording based on detected voice activity.
 *   **Real-time Transcription:** WhisperLive integration for live subtitle display during recording, with configurable pause threshold and subtitle double-click to submit.
+*   **Transcription Language Selection:** Configurable transcription language (27 languages + auto-detect) exposed in config UI, control panel (audio mode), Android app, and CLI (`--transcription-language`). Passed to both WhisperLive and Google Speech Recognition.
+*   **TTS Language Selection:** Separate text-to-speech language setting available in config UI, CLI (`--tts-language`), and test_sound sanity test. Maps to Piper TTS voice models per language.
 
 ## Prompt & Enrichment
 

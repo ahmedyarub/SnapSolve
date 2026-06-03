@@ -483,6 +483,22 @@ def _handle_response_image_ack() -> dict:
     return {"type": "response", "status": "acknowledged"}
 
 
+def _handle_set_transcription_language(data: dict, app_config: dict[str, Any]) -> dict:
+    """Set the transcription language from the Android client."""
+    lang = data.get("language", "en")
+    app_config["transcription_language"] = lang
+    try:
+        from config.settings import save_config  # noqa: PLC0415
+        save_config(app_config)
+    except Exception as exc:
+        logger.error("Failed to save config after language change: %s", exc)
+    # Also update the panel combo on the main thread
+    from core.output import ui_signals  # noqa: PLC0415
+    ui_signals.set_transcription_language.emit(lang)
+    logger.info("Transcription language set to '%s' via remote control", lang)
+    return {"type": "response", "status": "success", "action": "set_transcription_language", "language": lang}
+
+
 # ---------------------------------------------------------------------------
 # WebSocket server
 # ---------------------------------------------------------------------------
@@ -730,6 +746,9 @@ class RemoteControlServer:
             "mouse_scroll": lambda: _handle_mouse_scroll(data, self.app_config),
             "keyboard_type": lambda: _handle_keyboard_type(data, self.app_config),
             "response_image_ack": lambda: _handle_response_image_ack(),
+            "set_transcription_language": lambda: _handle_set_transcription_language(
+                data, self.app_config
+            ),
         }
 
         handler = handlers.get(msg_type)
@@ -764,6 +783,7 @@ class RemoteControlServer:
             "type": "state_update",
             "buttons": state,
             "has_new_response_image": has_image,
+            "transcription_language": self.app_config.get("transcription_language", "en"),
         })
 
         try:

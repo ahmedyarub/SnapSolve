@@ -40,6 +40,21 @@ def load_json(path, default):
     return default
 
 
+# Shared language list used by config UI and control panel
+TRANSCRIPTION_LANGUAGES: list[tuple[str, str]] = [
+    ("Auto-detect", ""),
+    ("English", "en"), ("Spanish", "es"), ("French", "fr"),
+    ("German", "de"), ("Italian", "it"), ("Portuguese", "pt"),
+    ("Russian", "ru"), ("Chinese", "zh"), ("Japanese", "ja"),
+    ("Korean", "ko"), ("Arabic", "ar"), ("Hindi", "hi"),
+    ("Turkish", "tr"), ("Polish", "pl"), ("Dutch", "nl"),
+    ("Swedish", "sv"), ("Czech", "cs"), ("Romanian", "ro"),
+    ("Hungarian", "hu"), ("Ukrainian", "uk"), ("Greek", "el"),
+    ("Hebrew", "he"), ("Thai", "th"), ("Vietnamese", "vi"),
+    ("Indonesian", "id"), ("Malay", "ms"),
+]
+
+
 class ConfigUI(QDialog):
     def __init__(self, config_path, models_path, profiles_path, prompts_path):
         super().__init__()
@@ -98,6 +113,8 @@ class ConfigUI(QDialog):
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
+        self.transcription_language = QComboBox()
+        self.tts_language = QComboBox()
         self.save_images = QCheckBox("Save Captured Images to Session")
         self.speaker_name = QLineEdit(
             self.config.get("speaker_name", "interviewer")
@@ -302,6 +319,25 @@ class ConfigUI(QDialog):
             self.config.get("realtime_transcription", True)
         )
         layout.addRow("Real-time Transcription:", self.realtime_transcription)
+
+        # Transcription language
+        current_trans_lang = self.config.get("transcription_language", "en")
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            self.transcription_language.addItem(display_name, code)
+        trans_idx = self.transcription_language.findData(current_trans_lang)
+        if trans_idx >= 0:
+            self.transcription_language.setCurrentIndex(trans_idx)
+        layout.addRow("Transcription Language:", self.transcription_language)
+
+        # TTS language (same list minus auto-detect)
+        current_tts_lang = self.config.get("tts_language", "en")
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            if code:  # Skip "Auto-detect" for TTS
+                self.tts_language.addItem(display_name, code)
+        tts_idx = self.tts_language.findData(current_tts_lang)
+        if tts_idx >= 0:
+            self.tts_language.setCurrentIndex(tts_idx)
+        layout.addRow("TTS Language:", self.tts_language)
 
         self.save_transcriptions.setChecked(
             self.config.get("save_transcriptions", True)
@@ -612,6 +648,12 @@ class ConfigUI(QDialog):
         self.config["show_control_panel"] = self.show_control_panel.isChecked()
         self.config["hide_from_capture"] = self.hide_from_capture.isChecked()
         self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
+        self.config["transcription_language"] = (
+            self.transcription_language.currentData() or "en"
+        )
+        self.config["tts_language"] = (
+            self.tts_language.currentData() or "en"
+        )
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["save_images"] = self.save_images.isChecked()
         self.config["speaker_name"] = self.speaker_name.text().strip() or "interviewer"

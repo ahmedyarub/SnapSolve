@@ -23,7 +23,7 @@ interface RemoteControlListener {
     fun onDisconnected(reason: String)
 
     /** Called when the server pushes a UI state update. */
-    fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean)
+    fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean, transcriptionLanguage: String?)
 
     /** Called when a network or protocol error occurs. */
     fun onError(message: String)
@@ -267,6 +267,15 @@ class RemoteControlClient {
     fun ackResponseImage(): Boolean =
         send(JSONObject().put("type", "response_image_ack"))
 
+    /**
+     * Set the transcription language on the server.
+     *
+     * @param language BCP-47 language code (e.g. "en", "es", "fr").
+     * @return `true` if the message was enqueued.
+     */
+    fun setTranscriptionLanguage(language: String): Boolean =
+        send(JSONObject().put("type", "set_transcription_language").put("language", language))
+
     // -------------------------------------------------------------------------
     // Internal
     // -------------------------------------------------------------------------
@@ -292,7 +301,8 @@ class RemoteControlClient {
                 "state_update" -> {
                     val buttons = json.optJSONObject("buttons")
                     val hasNewImage = json.optBoolean("has_new_response_image", false)
-                    listener?.onStateUpdate(buttons, hasNewImage)
+                    val transLang = json.optString("transcription_language", null)
+                    listener?.onStateUpdate(buttons, hasNewImage, transLang)
                 }
 
                 "error" -> {

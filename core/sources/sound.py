@@ -37,6 +37,17 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Short language code → BCP-47 locale for Google Speech Recognition
+_GOOGLE_LANGUAGE_MAP: dict[str, str] = {
+    "en": "en-US", "es": "es-ES", "fr": "fr-FR", "de": "de-DE",
+    "it": "it-IT", "pt": "pt-BR", "ru": "ru-RU", "zh": "zh-CN",
+    "ja": "ja-JP", "ko": "ko-KR", "ar": "ar-SA", "hi": "hi-IN",
+    "tr": "tr-TR", "pl": "pl-PL", "nl": "nl-NL", "sv": "sv-SE",
+    "cs": "cs-CZ", "ro": "ro-RO", "hu": "hu-HU", "uk": "uk-UA",
+    "el": "el-GR", "he": "he-IL", "th": "th-TH", "vi": "vi-VN",
+    "id": "id-ID", "ms": "ms-MY",
+}
+
 
 def is_whisperlive_service_online(host="localhost", port=9090):
     """Check if WhisperLive service is online by checking if port is open."""
@@ -244,10 +255,11 @@ class SoundSource(Source):
     def _initialize_transcription_client(self):
         """Initialize transcription client."""
         try:
+            transcription_lang = self.config.get("transcription_language", "en") or None
             self.transcription_client = WhisperLiveTranscriptionClient(
                 host="localhost",
                 port=9090,
-                lang="en",
+                lang=transcription_lang,
                 use_vad=True,
                 transcription_callback=self._on_transcription_result,
                 no_speech_thresh=0.4,
@@ -455,7 +467,9 @@ class SoundSource(Source):
             audio_data = sr.AudioData(
                 b"".join(self.audio_frames), self._sample_rate, self._sample_width
             )
-            text = self.recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            transcription_lang = self.config.get("transcription_language", "en")
+            google_lang = _GOOGLE_LANGUAGE_MAP.get(transcription_lang, transcription_lang)
+            text = self.recognizer.recognize_google(audio_data, language=google_lang)  # type: ignore[attr-defined]
             return text
         except sr.UnknownValueError:
             logger.info("Speech Recognition could not understand audio")

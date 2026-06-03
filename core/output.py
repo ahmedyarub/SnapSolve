@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QLabel,
     QLineEdit,
+    QComboBox,
 )
 
 
@@ -40,6 +41,7 @@ class UISignals(QObject):
     show_url_input = pyqtSignal()
     open_url = pyqtSignal(str)
     open_session_browser = pyqtSignal()
+    set_transcription_language = pyqtSignal(str)
 
 
 class SelectorSignals(QObject):
@@ -998,6 +1000,27 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             "cancel", "❌ Cancel", "cancel", style=cancel_btn_style
         )
 
+        # Transcription language selector (visible only in audio mode)
+        from ui.config_ui import TRANSCRIPTION_LANGUAGES  # noqa: PLC0415
+        lang_combo_style = (
+            "QComboBox { background-color: rgba(45, 45, 45, 180); color: white;"
+            " border: none; padding: 4px; border-radius: 4px; font-size: 12px;}"
+            " QComboBox::drop-down { border: none; }"
+            " QComboBox QAbstractItemView { background-color: #2d2d2d; color: white;"
+            " selection-background-color: #3e3e3e; }"
+        )
+        self.lang_combo = QComboBox()
+        self.lang_combo.setStyleSheet(lang_combo_style)
+        for display_name, code in TRANSCRIPTION_LANGUAGES:
+            self.lang_combo.addItem(display_name, code)
+        # Default to English
+        en_idx = self.lang_combo.findData("en")
+        if en_idx >= 0:
+            self.lang_combo.setCurrentIndex(en_idx)
+        self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        self.layout.addWidget(self.lang_combo)
+        self.lang_combo.hide()
+
         self.btn_end_multi.hide()
         self.btn_cancel.hide()
 
@@ -1046,9 +1069,23 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_reselect.setVisible(is_image)
         self.btn_multi.setVisible(is_image)
         self.btn_record.setVisible(is_audio)
+        self.lang_combo.setVisible(is_audio)
         self.adjustSize()
         self.update_position()
         self._broadcast_state()
+
+    def _on_language_changed(self, _index: int):
+        """Emit signal when the user changes the transcription language."""
+        lang_code = self.lang_combo.currentData() or ""
+        ui_signals.set_transcription_language.emit(lang_code)
+
+    def set_transcription_language_value(self, lang_code: str):
+        """Set the combo to a specific language code without triggering the signal."""
+        idx = self.lang_combo.findData(lang_code)
+        if idx >= 0:
+            self.lang_combo.blockSignals(True)
+            self.lang_combo.setCurrentIndex(idx)
+            self.lang_combo.blockSignals(False)
 
     def set_processing_state(self, is_processing):
         if not self.is_multi_selecting:
@@ -1296,6 +1333,7 @@ class UIManager(QObject):
         ui_signals.show_url_input.connect(self._on_show_url_input)
         ui_signals.open_url.connect(self._on_open_url)
         ui_signals.open_session_browser.connect(self._on_open_session_browser)
+        ui_signals.set_transcription_language.connect(self._on_set_transcription_language)
 
     def _on_open_url(self, url: str):
         self.popup._apply_opacity(self._global_opacity)
@@ -1344,6 +1382,14 @@ class UIManager(QObject):
         self.panel._apply_opacity(opacity)
         self.panel.set_source(source_name)
 
+        # Sync the language combo from config when switching to audio
+        if source_name == "audio":
+            from config.settings import load_config  # noqa: PLC0415
+            cfg = load_config()
+            self.panel.set_transcription_language_value(
+                cfg.get("transcription_language", "en")
+            )
+
         if source_name == "text":
             self.text_input._apply_opacity(opacity)
             self.text_input.show()
@@ -1351,6 +1397,13 @@ class UIManager(QObject):
             self.text_input.text_edit.setFocus()
         else:
             self.text_input.hide()
+
+    def _on_set_transcription_language(self, lang_code: str):
+        """Persist transcription language to config and save."""
+        from config.settings import load_config, save_config  # noqa: PLC0415
+        cfg = load_config()
+        cfg["transcription_language"] = lang_code
+        save_config(cfg)
 
     def _on_set_processing_state(self, is_processing):
         self.panel.set_processing_state(is_processing)

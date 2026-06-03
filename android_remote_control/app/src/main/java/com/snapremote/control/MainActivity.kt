@@ -6,6 +6,9 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Spinner
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -65,6 +68,14 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     private lateinit var newChatButton: MaterialButton
     private lateinit var cancelButton: MaterialButton
     private lateinit var typeTextButton: MaterialButton
+    private lateinit var langSpinner: Spinner
+
+    // Language codes matching the spinner entries (see strings.xml)
+    private val langCodes = arrayOf(
+        "", "en", "es", "fr", "de", "it", "pt", "ru", "zh",
+        "ja", "ko", "ar", "hi", "tr", "pl", "nl", "sv",
+        "cs", "ro", "hu", "uk", "el", "he", "th", "vi", "id", "ms",
+    )
 
     // -------------------------------------------------------------------------
     // State
@@ -75,6 +86,9 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
 
     /** Whether the client is currently connected to the server. */
     private var isConnected = false
+
+    /** Suppress feedback loop when syncing the language spinner from a server push. */
+    private var suppressLangSync = false
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -92,6 +106,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         restoreSavedAddress()
         setupConnectButton()
         setupActionButtons()
+        setupLanguageSpinner()
         setConnected(false) // Start in disconnected state
         attemptAutoConnect()
     }
@@ -126,6 +141,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         newChatButton = findViewById(R.id.newChatButton)
         cancelButton = findViewById(R.id.cancelButton)
         typeTextButton = findViewById(R.id.typeTextButton)
+        langSpinner = findViewById(R.id.langSpinner)
 
         touchpadView.setRemoteControlClient(remoteControlClient)
     }
@@ -244,10 +260,13 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         }
     }
 
-    override fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean) {
+    override fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean, transcriptionLanguage: String?) {
         runOnUiThread {
             if (buttons != null) {
                 updateButtonStates(buttons)
+            }
+            if (transcriptionLanguage != null) {
+                syncLanguageSpinner(transcriptionLanguage)
             }
         }
         if (hasNewResponseImage) {
@@ -322,6 +341,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
             newChatButton, cancelButton, typeTextButton,
         )
         actionButtons.forEach { it.isEnabled = connected }
+        langSpinner.isEnabled = connected
 
         touchpadView.visibility = if (connected) View.VISIBLE else View.INVISIBLE
     }
@@ -387,6 +407,47 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     private fun setStatusConnecting() {
         statusTextView.text = getString(R.string.status_connecting)
         statusTextView.setTextColor(ContextCompat.getColor(this, R.color.text_hint))
+    }
+
+    // -------------------------------------------------------------------------
+    // Language spinner
+    // -------------------------------------------------------------------------
+
+    private fun setupLanguageSpinner() {
+        val adapter = ArrayAdapter.createFromResource(
+            this,
+            R.array.transcription_languages,
+            android.R.layout.simple_spinner_item,
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        langSpinner.adapter = adapter
+        // Default to English (index 1 — 0 is Auto-detect)
+        langSpinner.setSelection(1)
+
+        langSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                if (suppressLangSync) {
+                    suppressLangSync = false
+                    return
+                }
+                if (isConnected && pos in langCodes.indices) {
+                    remoteControlClient.setTranscriptionLanguage(langCodes[pos])
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    /**
+     * Sync the spinner to match the language pushed by the server,
+     * without re-sending the value back.
+     */
+    private fun syncLanguageSpinner(langCode: String) {
+        val idx = langCodes.indexOf(langCode)
+        if (idx >= 0 && idx != langSpinner.selectedItemPosition) {
+            suppressLangSync = true
+            langSpinner.setSelection(idx)
+        }
     }
 
     private fun showTypeTextDialog() {

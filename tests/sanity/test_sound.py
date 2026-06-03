@@ -44,6 +44,27 @@ if whisperlive_path not in sys.path:
 
 from whisper_live.client import TranscriptionClient as WhisperLiveTranscriptionClient  # noqa: E402
 
+# --- Language data (self-contained, no imports from main app) ---
+# (display_name, whisper_code, google_locale, piper_model_basename)
+_LANGUAGES = [
+    ("English", "en", "en-US", "en_US-lessac-high.onnx"),
+    ("Spanish", "es", "es-ES", "es_ES-davefx-medium.onnx"),
+    ("French", "fr", "fr-FR", "fr_FR-upmc-medium.onnx"),
+    ("German", "de", "de-DE", "de_DE-thorsten-high.onnx"),
+    ("Italian", "it", "it-IT", "it_IT-riccardo-x_low.onnx"),
+    ("Portuguese", "pt", "pt-BR", "pt_BR-faber-medium.onnx"),
+    ("Russian", "ru", "ru-RU", "ru_RU-irina-medium.onnx"),
+    ("Chinese", "zh", "zh-CN", "zh_CN-huayan-medium.onnx"),
+    ("Japanese", "ja", "ja-JP", ""),
+    ("Korean", "ko", "ko-KR", ""),
+    ("Arabic", "ar", "ar-SA", "ar_JO-kareem-medium.onnx"),
+    ("Hindi", "hi", "hi-IN", ""),
+    ("Turkish", "tr", "tr-TR", "tr_TR-dfki-medium.onnx"),
+    ("Polish", "pl", "pl-PL", "pl_PL-darkman-medium.onnx"),
+    ("Dutch", "nl", "nl-NL", "nl_NL-mls-medium.onnx"),
+    ("Swedish", "sv", "sv-SE", "sv_SE-nst-medium.onnx"),
+]
+
 
 def is_whisperlive_service_online(host="localhost", port=9090):
     """Check if WhisperLive service is online by checking if port is open."""
@@ -172,6 +193,8 @@ class SoundTestApp(QMainWindow):
         self.settings_file = "sound_test_settings.json"
         self.DEVICE_SELECTION_ERROR = "Please select both input and output devices."
         self.UNKNOWN_DEVICE_NAME = "Unknown Device"
+        self.selected_whisper_lang = "en"
+        self.selected_google_locale = "en-US"
 
         self.is_recording = False
         self.is_transcribing = False
@@ -192,6 +215,7 @@ class SoundTestApp(QMainWindow):
         self.playback_only_btn = QPushButton()
         self.recording_btn = QPushButton()
         self.transcription_btn = QPushButton()
+        self.lang_combo = QComboBox()
 
         self.init_ui()
 
@@ -214,6 +238,15 @@ class SoundTestApp(QMainWindow):
 
         self.populate_devices()
         self.load_settings()
+
+        # Language Selection
+        lang_layout = QHBoxLayout()
+        lang_layout.addWidget(QLabel("Language:"))
+        for display_name, code, _glocale, _piper in _LANGUAGES:
+            self.lang_combo.addItem(display_name, code)
+        self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_layout.addWidget(self.lang_combo)
+        layout.addLayout(lang_layout)
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
@@ -298,6 +331,7 @@ class SoundTestApp(QMainWindow):
                     settings = json.load(f)
                     last_out = settings.get("last_out_index")
                     last_in = settings.get("last_in_index")
+                    last_lang = settings.get("language", "en")
 
                     if last_out is not None:
                         idx = self.out_combo.findData(last_out)
@@ -308,6 +342,11 @@ class SoundTestApp(QMainWindow):
                         idx = self.in_combo.findData(last_in)
                         if idx >= 0:
                             self.in_combo.setCurrentIndex(idx)
+
+                    lang_idx = self.lang_combo.findData(last_lang)
+                    if lang_idx >= 0:
+                        self.lang_combo.setCurrentIndex(lang_idx)
+
                 logging.debug("Settings loaded successfully.")
             except Exception as e:
                 logging.error(f"Failed to load settings: {e}")
@@ -315,11 +354,30 @@ class SoundTestApp(QMainWindow):
     def save_settings(self, out_idx, in_idx):
         logging.debug("Saving last selected devices...")
         try:
+            lang_code = self.lang_combo.currentData() or "en"
             with open(self.settings_file, "w") as f:
-                json.dump({"last_out_index": out_idx, "last_in_index": in_idx}, f)
+                json.dump(
+                    {"last_out_index": out_idx, "last_in_index": in_idx, "language": lang_code},
+                    f,
+                )
             logging.debug("Settings saved successfully.")
         except Exception as e:
             logging.error(f"Failed to save settings: {e}")
+
+    def _on_language_changed(self, index):
+        """Update TTS model and recognition language when the combo changes."""
+        if index < 0 or index >= len(_LANGUAGES):
+            return
+        display_name, code, google_locale, piper_basename = _LANGUAGES[index]
+        self.selected_whisper_lang = code
+        self.selected_google_locale = google_locale
+        if piper_basename:
+            self.piper_model = piper_basename
+            if not os.path.exists(piper_basename):
+                self.log(f"⚠ Piper model '{piper_basename}' not found locally. TTS may fail for {display_name}.")
+        else:
+            self.log(f"ℹ No Piper TTS model available for {display_name}. TTS playback will be skipped.")
+            self.piper_model = ""
 
     def log(self, message):
         logging.info(message)
@@ -624,7 +682,7 @@ class SoundTestApp(QMainWindow):
                 self.transcription_client = WhisperLiveTranscriptionClient(
                     host="localhost",
                     port=9090,
-                    lang="en",
+                    lang=self.selected_whisper_lang,
                     model="large-v3",
                     use_vad=True,
                     mute_audio_playback=True,
@@ -985,7 +1043,9 @@ class SoundTestApp(QMainWindow):
             b"".join(self.audio_frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH
         )
         try:
-            recognized_text = recognizer.recognize_google(audio_data)  # type: ignore[attr-defined]
+            recognized_text = recognizer.recognize_google(
+                audio_data, language=self.selected_google_locale
+            )  # type: ignore[attr-defined]
             self.signals.update_heard.emit(recognized_text)
             self.signals.log_message.emit("Recognition successful.")
 

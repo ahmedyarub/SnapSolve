@@ -159,6 +159,8 @@ def _get_default_config():
         "audio_input_device_name": None,
         "realtime_transcription": True,
         "transcription_pause_threshold": 1.0,
+        "transcription_language": "en",
+        "tts_language": "en",
         # Remote control server (Android app integration)
         "enable_remote_control": False,
         "remote_control_host": "0.0.0.0",
@@ -386,6 +388,16 @@ def parse_args():
         type=float,
         help="Pause threshold in seconds for real-time transcription (default: 1.0)",
     )
+    parser.add_argument(
+        "--transcription-language",
+        type=str,
+        help="Language code for speech recognition / transcription (e.g., en, es, fr)",
+    )
+    parser.add_argument(
+        "--tts-language",
+        type=str,
+        help="Language code for text-to-speech (e.g., en, es, fr)",
+    )
 
     return parser.parse_args()
 
@@ -491,6 +503,12 @@ def _apply_transcription_config(config, args):
 
     if args.transcription_pause_threshold is not None:
         config["transcription_pause_threshold"] = args.transcription_pause_threshold
+
+    if args.transcription_language is not None:
+        config["transcription_language"] = args.transcription_language
+
+    if args.tts_language is not None:
+        config["tts_language"] = args.tts_language
 
 
 def get_config():
