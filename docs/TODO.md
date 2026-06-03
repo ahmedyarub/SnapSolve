@@ -31,11 +31,11 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Personalized Answers**: Add personalized answer capabilities that tailor LLM responses based on user preferences, context, or user profile. Allow users to include external context (files, documents, URLs) in the prompt to provide additional background information to the LLM.
 - [ ] **Jira & Confluence Integration**: Explore and implement integration with Jira and Confluence for importing context, creating tickets, or publishing results.
 - [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
-- [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
 - [ ] **Summarize Audio Conversation**: Add the ability to summarize an entire audio conversation/session, producing a concise summary of the full transcription.
 
 ## Audio & Speech Features
-- [ ] **Transcription Language Selection**: Allow users to choose the transcription language instead of hardcoding English (`lang="en"`). Expose this setting in the config UI and pass it to the WhisperLive client.
+- [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
+- [ ] **Transcription Language Selection**: Allow users to choose the transcription language instead of hardcoding English (`lang="en"`). Expose this setting in the config UI, control panel, and Android app, and then pass it to the WhisperLive client.
 - [ ] **Optional Translation Language**: Allow users to choose an optional translation language for real-time transcription. WhisperLive already supports translation on the server side — expose this via config and UI.
 - [ ] **Multiple Language Support**: Add support for multiple languages in speech recognition and TTS.
 - [ ] **Audio Level Visualization**: Add real-time audio level visualization during recording.
@@ -45,15 +45,6 @@ This document tracks planned features, enhancements, and known issues that need 
 ## Remote Control & Android Integration
 - [ ] **Android Session Browsing**: Allow browsing sessions and retrieving response images directly in the Android app.
 - [ ] **Touch Gestures**: Add pinch-to-zoom and multi-finger gestures on the Android touchpad.
-
-## Session & Data Management
-- [x] **Elaborate Session Structure**: Create a richer session folder structure that includes:
-    - Transcription with speaker name attribution
-    - Captured OCR images
-    - Response images
-    - Prompts and response text
-    - Organized in a clean folder hierarchy per session
-    - Update the session browser UI to support browsing and displaying all of these artifacts.
 
 ## Developer Workflow
 - [ ] **Claude Code with Skills & Git Worktrees**: Integrate Claude Code with skill files (power skills) and git worktrees for more efficient AI-assisted development.
