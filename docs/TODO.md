@@ -25,8 +25,13 @@ This document tracks planned features, enhancements, and known issues that need 
 ## Processing & Integration
 - [ ] **Text-to-Speech (TTS) Improvements**: Enhance the TTS feature to read one sentence at a time, and include UI controls (buttons) to skip forward or backward through the spoken sentences.
 - [ ] **Grammar & Accuracy Corrections**: Introduce a dedicated feature/button to analyze and correct the grammar or factual accuracy of the extracted or generated text.
-- [ ] **Personalized Answers**: Add personalized answer capabilities that tailor LLM responses based on user preferences, context, or user profile. Allow users to include external context (files, documents, URLs) in the prompt to provide additional background information to the LLM.
-- [ ] **Jira & Confluence Integration**: Explore and implement integration with Jira and Confluence for importing context, creating tickets, or publishing results.
+- [ ] **Personalized Answers**: Add personalized answer capabilities that tailor LLM responses based on user preferences or user profile.
+- [ ] **Context & Integrations Architecture**: Implement a dual-path context injection system for LLMs:
+    - [ ] **Bounded Context (Interviews)**: Add UI and `SessionManager` capability to attach local folders. Serialize folder contents directly into the LLM system prompt for zero-latency context loading.
+    - [ ] **Agentic Context (Projects)**: Implement a Model Context Protocol (MCP) Client to enable lazy tool-calling.
+    - [ ] **MCP Servers Setup**: Configure settings to connect to standard open-source MCP servers for Jira, Confluence, and large local filesystems.
+    - [ ] **LLM Engine Updates**: Update LLM engines to support dynamic tool calling so models can query external data sources based on audio/OCR triggers.
+    - [ ] **Antigravity CLI Integration**: Create an `AntigravityCLIEngine` that wraps the local CLI binary, allowing it to act autonomously on local folders during sessions using live transcripts/OCR as input.
 - [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
 - [ ] **Summarize Audio Conversation**: Add the ability to summarize an entire audio conversation/session, producing a concise summary of the full transcription.
 
