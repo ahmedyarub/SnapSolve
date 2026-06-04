@@ -458,13 +458,7 @@ def process_pipeline(
         combined_image_paths = combined_image_paths[0]
 
     # 2. Prompt Augmentation
-    include_transcribed = True
-    if session_manager:
-        ctx = session_manager.get_context_config()
-        include_transcribed = ctx.get("include_transcribed_text", True)
-        
-    prompt_extracted = extracted_text if include_transcribed else None
-    prompt = _build_prompt(prompt_text, prompt_extracted)
+    prompt = _build_prompt(prompt_text, extracted_text)
     print(f"Submitted prompt: {prompt}")
 
     # Store prompt for IDE context injection (Open in IDE prepends it as a comment)

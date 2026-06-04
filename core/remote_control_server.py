@@ -290,7 +290,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         return {"type": "error", "message": "Action parameter is required"}
 
     # Import inside the function to avoid circular-import issues at module load.
-    from main import (  # noqa: PLC0415
+    from app.handlers import (  # noqa: PLC0415
         handle_cancel,
         handle_capture,
         handle_cycle_source,
