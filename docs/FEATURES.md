@@ -79,7 +79,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   Syntax-highlighted code blocks via Shiki with dark theme integration.
     *   Configurable opacity for visual integration.
     *   Draggable via title bar and resizable via edge/corner handles.
-    *   "Open in IDE" context menu — right-click any code block to open it in PyCharm or Antigravity IDE.
+    *   "Open in IDE" context menu — right-click any code block to open it in PyCharm or Antigravity IDE. The user's prompt is automatically prepended as a language-appropriate block comment so AI agents in the IDE know what was generated.
     *   Proper state reset between consecutive LLM responses.
 *   **Audio Sink (TTS):** Uses local Text-to-Speech (Piper) to read the answer aloud asynchronously, allowing you to hear the response without breaking your workflow.
     *   Support for multiple voice models (.onnx format).

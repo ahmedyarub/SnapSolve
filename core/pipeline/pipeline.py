@@ -467,6 +467,10 @@ def process_pipeline(
     prompt = _build_prompt(prompt_text, prompt_extracted)
     print(f"Submitted prompt: {prompt}")
 
+    # Store prompt for IDE context injection (Open in IDE prepends it as a comment)
+    from core.output import set_last_user_prompt
+    set_last_user_prompt(prompt)
+
     if cancel_event.is_set():
         return PIPELINE_CANCELLED_MSG
 

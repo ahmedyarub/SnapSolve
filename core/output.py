@@ -54,6 +54,13 @@ class SelectorSignals(QObject):
 ui_signals = UISignals()
 selector_signals = SelectorSignals()
 _app_callbacks = {}
+_last_user_prompt: str | None = None
+
+
+def set_last_user_prompt(prompt: str | None) -> None:
+    """Store the latest user prompt so it can be injected into IDE-opened files."""
+    global _last_user_prompt
+    _last_user_prompt = prompt
 
 
 def _apply_display_affinity(widget, exclude: bool = True) -> bool:
@@ -340,6 +347,54 @@ _LANG_EXTENSIONS: dict[str, str] = {
     "svelte": ".svelte",
 }
 
+# --- Language → block comment style mapping ---
+# Maps normalized language keys to (start, end) comment delimiters.
+# Languages with only line-comments use a synthetic block built from line prefixes.
+_LANG_BLOCK_COMMENT: dict[str, tuple[str, str | None]] = {
+    # C-style block comments
+    ".js": ("/*", "*/"), ".ts": ("/*", "*/"), ".java": ("/*", "*/"),
+    ".c": ("/*", "*/"), ".cpp": ("/*", "*/"), ".cs": ("/*", "*/"),
+    ".go": ("/*", "*/"), ".rs": ("/*", "*/"), ".kt": ("/*", "*/"),
+    ".swift": ("/*", "*/"), ".php": ("/*", "*/"), ".scss": ("/*", "*/"),
+    ".less": ("/*", "*/"), ".css": ("/*", "*/"), ".dart": ("/*", "*/"),
+    ".groovy": ("/*", "*/"), ".scala": ("/*", "*/"),
+    ".jsx": ("/*", "*/"), ".tsx": ("/*", "*/"),
+    ".vue": ("<!--", "-->"), ".svelte": ("<!--", "-->"),
+    ".html": ("<!--", "-->"), ".xml": ("<!--", "-->"),
+    ".md": ("<!--", "-->"),
+    # Hash-style line comments (synthesized block)
+    ".py": ("#", None), ".rb": ("#", None), ".sh": ("#", None),
+    ".ps1": ("#", None), ".r": ("#", None), ".pl": ("#", None),
+    ".yaml": ("#", None), ".toml": ("#", None),
+    # SQL
+    ".sql": ("/*", "*/"),
+    # Lua
+    ".lua": ("--[[", "]]"),
+    # Batch
+    ".bat": ("REM ", None),
+}
+
+
+def _wrap_prompt_as_comment(prompt: str, ext: str) -> str:
+    """Wrap *prompt* in a language-appropriate block comment for *ext*."""
+    delimiters = _LANG_BLOCK_COMMENT.get(ext)
+    if not delimiters:
+        # Unknown language — fall back to generic C-style
+        delimiters = ("/*", "*/")
+
+    start, end = delimiters
+    lines = prompt.splitlines()
+
+    if end is None:
+        # Line-comment style: prefix every line
+        header = f"{start} AI Prompt / Context:"
+        commented = [header] + [f"{start} {line}" if line.strip() else start for line in lines]
+        return "\n".join(commented) + "\n\n"
+    else:
+        # Block-comment style
+        inner = "\n".join(f"  {line}" if line.strip() else "" for line in lines)
+        return f"{start}\n  AI Prompt / Context:\n\n{inner}\n{end}\n\n"
+
 
 def _get_extension_for_language(lang: str) -> str:
     """Map a code-fence language tag to a file extension."""
@@ -347,9 +402,23 @@ def _get_extension_for_language(lang: str) -> str:
 
 
 def _open_code_in_ide(ide: str, code: str, lang: str):
-    """Write *code* to a temp file and open it in the specified IDE."""
+    """Write *code* to a temp file and open it in the specified IDE.
+
+    When a user prompt is available (stored in the module-level
+    ``_last_user_prompt``), it is prepended to the file as a
+    language-appropriate block comment so that AI agents in the
+    external IDE have context about what was created.
+    """
     logger = logging.getLogger(__name__)
     ext = _get_extension_for_language(lang)
+
+    # Prepend prompt context as a block comment if available
+    prompt = _last_user_prompt
+    if prompt:
+        comment_block = _wrap_prompt_as_comment(prompt, ext)
+        file_content = comment_block + code
+    else:
+        file_content = code
 
     try:
         import hashlib
@@ -358,7 +427,7 @@ def _open_code_in_ide(ide: str, code: str, lang: str):
         os.makedirs(temp_dir, exist_ok=True)
         temp_path = os.path.join(temp_dir, f"snippet_{content_hash}{ext}")
         with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(code)
+            f.write(file_content)
     except OSError as e:
         logger.error(f"Failed to write temp file for IDE: {e}")
         return
