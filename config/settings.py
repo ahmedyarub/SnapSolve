@@ -173,6 +173,8 @@ def _get_default_config():
         # LLM retry on transient errors (503, rate limits, etc.)
         "llm_max_retries": 3,
         "llm_retry_base_delay": 5,
+        # Maximum number of prompts to keep in text input history
+        "max_prompt_history": 100,
     }
 
 

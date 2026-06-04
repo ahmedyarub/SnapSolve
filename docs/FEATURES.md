@@ -17,7 +17,7 @@ The Screen Capture & QA application provides several customizable features organ
 ## Source (Data Gathering)
 
 *   **Multiple Input Sources:**
-    *   **Text Input:** Direct text entry via the control panel for questions and queries.
+    *   **Text Input:** Direct text entry via the control panel for questions and queries. Supports browsing previously submitted prompts with Up/Down arrow keys. Consecutive duplicate prompts are automatically deduplicated. History is persisted across sessions in `config/prompt_history.json`.
     *   **Image Capture:** Fast screen capture of user-defined rectangular areas.
     *   **Audio Input:** Real-time audio recording with speech recognition using Google Speech-to-Text.
 *   **Coordinate Reselection:** Easily draw a new bounding box to update the capture area while the application is running.
