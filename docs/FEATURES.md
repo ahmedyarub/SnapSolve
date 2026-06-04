@@ -22,6 +22,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   **Audio Input:** Real-time audio recording with speech recognition using Google Speech-to-Text.
 *   **Coordinate Reselection:** Easily draw a new bounding box to update the capture area while the application is running.
 *   **Multi-Select:** Capture multiple disparate areas of the screen and aggregate them into a single request.
+*   **OCR-to-Text-Box (Autosubmit):** An "Autosubmit" checkbox on the control panel (visible in image/OCR mode, enabled by default) controls how OCR'd text is handled. When **enabled**, captured text is sent directly to the LLM as before. When **disabled**, OCR'd text is placed into the text input box for review and editing before manual submission. In multi-capture mode with Autosubmit off, each capture incrementally appends text to the text box, and "End Multi" leaves the accumulated text for the user to review — it does not submit automatically. The text box appears on first OCR capture and disappears after submission or manual close.
 *   **Text or Image Input:** Depending on the setup, the application can extract raw text (using OCR) or send the raw image directly to vision-capable engines.
 *   **Audio Recording:** Background audio recording with visual feedback and automatic transcription.
 *   **Voice Activity Detection:** Automatic start/stop of recording based on detected voice activity.

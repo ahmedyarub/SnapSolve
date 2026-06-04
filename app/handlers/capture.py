@@ -151,6 +151,43 @@ def _execute_capture_pipeline(
 
 
 # ---------------------------------------------------------------------------
+# OCR-to-text-box (Autosubmit OFF)
+# ---------------------------------------------------------------------------
+def _execute_ocr_to_textbox(config, active_profile):
+    """Perform OCR and send the extracted text to the text input widget."""
+    from core.output import send_ocr_text_to_input
+    from core.sources import ScreenshotSource
+
+    status_update = _make_status_callback(config)
+    status_update("Capturing screen...")
+
+    _ensure_ocr_engine(active_profile, status_callback=status_update)
+
+    temp_source = ScreenshotSource()
+    temp_source.ocr_engine = state.ocr_engine_instance
+    try:
+        extracted_text = temp_source.get_text(
+            coords=config.get("coordinates"),
+            status_callback=status_update,
+            cancel_event=state.cancel_event,
+        )
+    except Exception as e:
+        _show_status_popup(config, f"OCR error: {e}", auto_close=5000)
+        return
+    finally:
+        temp_source.cleanup_all()
+
+    if state.cancel_event.is_set():
+        print("OCR-to-textbox was cancelled.")
+        return
+
+    if extracted_text:
+        send_ocr_text_to_input(extracted_text)
+    else:
+        _show_status_popup(config, "OCR found no text.", auto_close=3000)
+
+
+# ---------------------------------------------------------------------------
 # Public handler
 # ---------------------------------------------------------------------------
 def handle_capture(config, active_profile, active_prompt_text):
@@ -168,6 +205,18 @@ def handle_capture(config, active_profile, active_prompt_text):
         return
 
     set_processing(True)
+
+    from core.output import is_autosubmit_enabled
+
+    if not is_autosubmit_enabled():
+        print("OCR to text box (Autosubmit OFF)...")
+        _run_in_processing_thread(
+            config,
+            lambda: _execute_ocr_to_textbox(config, active_profile),
+            error_label="OCR to text box",
+        )
+        return
+
     print("Capturing and processing...")
 
     status_update = _make_status_callback(config)

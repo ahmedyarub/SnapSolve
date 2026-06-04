@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QComboBox,
+    QCheckBox,
 )
 
 
@@ -44,6 +45,7 @@ class UISignals(QObject):
     open_context_manager = pyqtSignal()
     set_transcription_language = pyqtSignal(str)
     update_chat_sessions_btn = pyqtSignal(bool)
+    ocr_text_to_input = pyqtSignal(str)
 
 
 class SelectorSignals(QObject):
@@ -1057,6 +1059,18 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_capture = create_btn("capture", "📸 Capture", "capture")
         self.btn_reselect = create_btn("reselect", "🎯 Reselect", "reselect")
         self.btn_multi = create_btn("multi", "➕ Multi-select", "multi_capture")
+
+        # Autosubmit checkbox — when unchecked, OCR text goes to text box for review
+        chk_style = (
+            "QCheckBox { background-color: transparent; color: white;"
+            " padding: 4px; font-size: 13px; }"
+            " QCheckBox::indicator { width: 16px; height: 16px; }"
+        )
+        self.chk_autosubmit = QCheckBox("Autosubmit")
+        self.chk_autosubmit.setStyleSheet(chk_style)
+        self.chk_autosubmit.setChecked(True)
+        self.layout.addWidget(self.chk_autosubmit)
+
         self.btn_end_multi = create_btn(
             "end_multi", "✅ End Multi", "end_multi_capture"
         )
@@ -1160,6 +1174,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_capture.setVisible(is_image)
         self.btn_reselect.setVisible(is_image)
         self.btn_multi.setVisible(is_image)
+        self.chk_autosubmit.setVisible(is_image)
         self.btn_record.setVisible(is_audio)
         self.lang_combo.setVisible(is_audio)
         self.translation_label.setVisible(is_audio)
@@ -1233,6 +1248,12 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             f" border: none; padding: 8px; border-radius: 4px; font-size: 14px;}}"
             f" QPushButton:hover {{ background-color: rgba(220, 20, 60, {alpha_int}); }}"
         )
+        chk_style = (
+            f"QCheckBox {{ background-color: transparent; color: white;"
+            f" padding: 4px; font-size: 13px; }}"
+            f" QCheckBox::indicator {{ width: 16px; height: 16px; }}"
+        )
+        self.chk_autosubmit.setStyleSheet(chk_style)
         for name, btn in self.buttons.items():
             if name == "cancel":
                 btn.setStyleSheet(cancel_style)
@@ -1450,6 +1471,22 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
         if not is_processing:
             self.text_edit.setFocus()
 
+    def set_ocr_text(self, text: str):
+        """Populate the text box with OCR'd text.
+
+        If the text box already has content, appends the new text with a
+        double-newline separator to preserve user edits.
+        """
+        current = self.text_edit.toPlainText()
+        if current.strip():
+            self.text_edit.setPlainText(current + "\n\n" + text)
+        else:
+            self.text_edit.setPlainText(text)
+        # Move cursor to end
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.text_edit.setTextCursor(cursor)
+
 
 class UrlInputWidget(DraggableWidgetMixin, QWidget):
     def __init__(self):
@@ -1567,6 +1604,7 @@ class UIManager(QObject):
         ui_signals.open_context_manager.connect(self._on_open_context_manager)
         ui_signals.set_transcription_language.connect(self._on_set_transcription_language)
         ui_signals.update_chat_sessions_btn.connect(self._on_update_chat_sessions_btn)
+        ui_signals.ocr_text_to_input.connect(self._on_ocr_text_to_input)
 
     def _on_update_chat_sessions_btn(self, enabled: bool):
         self.panel.chat_sessions_enabled = enabled
@@ -1598,6 +1636,18 @@ class UIManager(QObject):
         self.url_input.raise_()
         self.url_input.activateWindow()
         self.url_input.line_edit.setFocus()
+
+    def _on_ocr_text_to_input(self, text: str):
+        """Populate the text input widget with OCR'd text and show it."""
+        assert self.text_input is not None
+        self.text_input._apply_opacity(self._global_opacity)
+        self.text_input.set_ocr_text(text)
+        if not self.text_input.isVisible():
+            self.text_input.update_position()
+            self.text_input.show()
+        self.text_input.raise_()
+        self.text_input.activateWindow()
+        self.text_input.text_edit.setFocus()
 
     # noinspection PyPep8Naming
     def eventFilter(self, obj, event):
@@ -1645,6 +1695,8 @@ class UIManager(QObject):
             self.text_input.update_position()
             self.text_input.text_edit.setFocus()
         else:
+            # In image mode the text input is shown on-demand by OCR-to-text-box;
+            # for audio/other modes it is also hidden.
             self.text_input.hide()
 
     def _on_set_transcription_language(self, lang_code: str):
@@ -1782,6 +1834,22 @@ def share_response_screenshot():
 
 def set_chat_sessions_btn_state(enabled: bool):
     ui_signals.update_chat_sessions_btn.emit(enabled)
+
+
+def send_ocr_text_to_input(text: str):
+    """Send OCR'd text to the text input widget (thread-safe)."""
+    ui_signals.ocr_text_to_input.emit(text)
+
+
+def is_autosubmit_enabled() -> bool:
+    """Check if the Autosubmit checkbox is checked on the control panel.
+
+    Safe to call from any thread — reads the widget state directly.
+    Returns True (default) when the panel is not available.
+    """
+    if ui_manager is not None and ui_manager.panel is not None:
+        return ui_manager.panel.chk_autosubmit.isChecked()
+    return True
 
 
 def show_subtitle(text: str):

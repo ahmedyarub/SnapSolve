@@ -77,6 +77,10 @@ def _handle_multi_capture_ocr(active_profile, coords, config):
     if extracted_text or image_path:
         if extracted_text:
             state.multi_capture_texts.append(extracted_text)
+            # When Autosubmit is OFF, incrementally send OCR text to the text box
+            from core.output import is_autosubmit_enabled, send_ocr_text_to_input
+            if not is_autosubmit_enabled():
+                send_ocr_text_to_input(extracted_text)
         if image_path:
             state.multi_capture_images.append(image_path)
         status_update(
@@ -159,6 +163,15 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
             if not _check_multi_capture_texts(config, state.multi_capture_texts):
                 state.is_multi_capturing = False
                 update_multi_state(False)
+                return
+
+            from core.output import is_autosubmit_enabled
+
+            if not is_autosubmit_enabled():
+                # Autosubmit OFF — text is already in the text box from
+                # incremental sends.  Just reset multi-capture state and let
+                # the user review / edit / submit manually.
+                print("Multi-capture ended (Autosubmit OFF) — text left in text box.")
                 return
 
             combined_text = "\n\n".join(state.multi_capture_texts)
