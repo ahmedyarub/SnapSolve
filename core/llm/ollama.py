@@ -80,7 +80,7 @@ class OllamaEngine(LLMEngine):
         self,
         prompt: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -94,7 +94,7 @@ class OllamaEngine(LLMEngine):
         if status_callback:
             status_callback("Processing text with Ollama...")
 
-        full_prompt = self._prepare_prompt(prompt, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
 
         payload = {"model": self.model, "prompt": full_prompt, "stream": False}
 
@@ -105,7 +105,7 @@ class OllamaEngine(LLMEngine):
         prompt: str,
         image_path: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -119,7 +119,7 @@ class OllamaEngine(LLMEngine):
         if status_callback:
             status_callback("Processing image with Ollama...")
 
-        full_prompt = self._prepare_prompt(prompt, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
 
         payload = {"model": self.model, "prompt": full_prompt, "stream": False}
 

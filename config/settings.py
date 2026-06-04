@@ -27,7 +27,7 @@ def load_profiles():
             "model": "gemini-2.5-flash-lite",
             "ocr_engine": "none",
             "prompt_id": "default",
-            "enable_stitching": True,
+            "enable_chat_sessions": True,
         }
     ]
 
@@ -131,7 +131,7 @@ def _get_default_config():
             {"action": "cancel_multi_capture", "key": "ctrl+alt+t"},
             {"action": "toggle_panel", "key": "ctrl+alt+shift+p"},
             {"action": "new_chat_session", "key": "ctrl+alt+shift+h"},
-            {"action": "toggle_stitching", "key": "ctrl+alt+shift+i"},
+            {"action": "toggle_chat_sessions", "key": "ctrl+alt+shift+i"},
             {"action": "toggle_all_widgets", "key": "ctrl+alt+shift+v"},
             {"action": "open_url", "key": "ctrl+alt+u"},
             {"action": "open_session_browser", "key": "ctrl+alt+shift+b"},
@@ -145,7 +145,7 @@ def _get_default_config():
         "piper_model": "en_US-lessac-medium.onnx",
         "active_profile_id": "prof1",
         "ollama_url": "http://localhost:11434",
-        "google_genai_api_key": "",
+        "gemini_api_key": "",
         "auto_close_results": False,
         "opacity": 0.8,
         "show_control_panel": False,
@@ -306,7 +306,7 @@ def parse_args():
         type=str,
         help="Ollama API URL (default: http://localhost:11434)",
     )
-    parser.add_argument("--google-genai-api_key", type=str, help="Google GenAI API Key")
+    parser.add_argument("--gemini-api-key", type=str, help="Gemini API Key")
     parser.add_argument(
         "--auto-close-results", action="store_true", help="Auto close result popups"
     )
@@ -404,6 +404,16 @@ def parse_args():
         type=str,
         help="Target language code for real-time translation (e.g., en, es, fr). Empty to disable.",
     )
+    parser.add_argument(
+        "--enable-chat-sessions",
+        action="store_true",
+        help="Enable chat sessions",
+    )
+    parser.add_argument(
+        "--disable-chat-sessions",
+        action="store_true",
+        help="Disable chat sessions",
+    )
 
     return parser.parse_args()
 
@@ -446,8 +456,8 @@ def _apply_basic_config(config, args):
     if args.ollama_url:
         config["ollama_url"] = args.ollama_url
 
-    if args.google_genai_api_key:
-        config["google_genai_api_key"] = args.google_genai_api_key
+    if args.gemini_api_key:
+        config["gemini_api_key"] = args.gemini_api_key
 
     if args.auto_close_results:
         config["auto_close_results"] = True
@@ -470,6 +480,11 @@ def _apply_basic_config(config, args):
 
     if args.default_source:
         config["default_source"] = args.default_source
+
+    if args.enable_chat_sessions:
+        config["enable_chat_sessions"] = True
+    elif args.disable_chat_sessions:
+        config["enable_chat_sessions"] = False
 
 
 def _apply_warmup_config(config, args):

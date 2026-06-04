@@ -31,7 +31,7 @@ This document tracks planned features, enhancements, and known issues that need 
     - [ ] **Agentic Context (Projects)**: Implement a Model Context Protocol (MCP) Client to enable lazy tool-calling.
     - [ ] **MCP Servers Setup**: Configure settings to connect to standard open-source MCP servers for Jira, Confluence, and large local filesystems.
     - [ ] **LLM Engine Updates**: Update LLM engines to support dynamic tool calling so models can query external data sources based on audio/OCR triggers.
-    - [ ] **Antigravity CLI Integration**: Create an `AntigravityCLIEngine` that wraps the local CLI binary, allowing it to act autonomously on local folders during sessions using live transcripts/OCR as input.
+    - [x] **Antigravity Integration**: `AntigravityEngine` communicates with a WSL-hosted FastAPI service that wraps the Google Antigravity SDK, enabling agentic coding with streaming SSE responses and project folder context.
 - [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
 - [ ] **Summarize Audio Conversation**: Add the ability to summarize an entire audio conversation/session, producing a concise summary of the full transcription.
 

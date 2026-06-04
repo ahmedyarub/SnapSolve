@@ -46,9 +46,11 @@ def _tag_color(tag: str) -> str:
 class SessionBrowserDialog(QDialog):
     """Maximized dialog for browsing past sessions, prompts, and formatted responses."""
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: Optional[QWidget] = None, selection_mode: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("Session Browser — SnapSolve")
+        self.selection_mode = selection_mode
+        title = "Select Session — SnapSolve" if selection_mode else "Session Browser — SnapSolve"
+        self.setWindowTitle(title)
 
         # Standard window with minimize/maximize/close + always on top
         self.setWindowFlags(
@@ -72,6 +74,7 @@ class SessionBrowserDialog(QDialog):
         self._response_loaded = False
         self._pending_response_js: list[str] = []
         self._response_page: _PopupWebPage | None = None
+        self.selected_session_id: Optional[str] = None
 
         # Build UI
         self._build_ui()
@@ -112,6 +115,8 @@ class SessionBrowserDialog(QDialog):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.currentItemChanged.connect(self._on_tree_selection)
+        if self.selection_mode:
+            self.tree.itemDoubleClicked.connect(self._on_tree_double_click)
         self.h_splitter.addWidget(self.tree)
 
         # Delete key shortcut
@@ -171,13 +176,33 @@ class SessionBrowserDialog(QDialog):
 
         root_layout.addWidget(self.h_splitter, stretch=1)
 
-        # --- Status bar ---
+        # --- Status bar and Optional Select Button ---
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.status_bar = QStatusBar()
         self.status_bar.setStyleSheet(
             "QStatusBar { background: #21252b; color: #636d83; font-size: 12px;"
             " border-top: 1px solid #333840; padding: 2px 8px; }"
         )
-        root_layout.addWidget(self.status_bar)
+        bottom_layout.addWidget(self.status_bar, stretch=1)
+        
+        if self.selection_mode:
+            from PyQt6.QtWidgets import QPushButton
+            self.btn_select = QPushButton("✔️ Select Session")
+            self.btn_select.setStyleSheet("""
+                QPushButton {
+                    background-color: #61afef; color: #282c34; font-weight: bold;
+                    border: none; border-radius: 4px; padding: 6px 16px; margin: 4px;
+                }
+                QPushButton:hover { background-color: #528bff; }
+                QPushButton:disabled { background-color: #3e4451; color: #abb2bf; }
+            """)
+            self.btn_select.setEnabled(False)
+            self.btn_select.clicked.connect(self._accept_selection)
+            bottom_layout.addWidget(self.btn_select)
+
+        root_layout.addLayout(bottom_layout)
 
         # Load the popup.html for response rendering
         assets_dir = Path(__file__).parent.parent / "core" / "web_assets"
@@ -484,6 +509,26 @@ class SessionBrowserDialog(QDialog):
         self.prompt_view.setHtml(full_prompt)
         self._render_response(interaction.get("response", ""))
 
+        if self.selection_mode:
+            self.btn_select.setEnabled(True)
+
+    def _on_tree_double_click(self, item: QTreeWidgetItem, column: int):
+        if not self.selection_mode:
+            return
+            
+        item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        session_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if session_id:
+            self.selected_session_id = session_id
+            self.accept()
+            
+    def _accept_selection(self):
+        current = self.tree.currentItem()
+        if current:
+            self.selected_session_id = current.data(0, Qt.ItemDataRole.UserRole)
+            if self.selected_session_id:
+                self.accept()
+
     def _render_response(self, markdown_text: str):
         """Render markdown response in the QWebEngineView using popup.html's updateContent."""
         js_text = json.dumps(markdown_text)
@@ -691,3 +736,10 @@ def open_session_browser(parent: Optional[QWidget] = None):
     """Create and show the session browser dialog."""
     dialog = SessionBrowserDialog(parent)
     dialog.exec()
+
+def select_session(parent: Optional[QWidget] = None) -> Optional[str]:
+    """Open the browser in selection mode and return the selected session ID."""
+    dialog = SessionBrowserDialog(parent, selection_mode=True)
+    if dialog.exec() == QDialog.DialogCode.Accepted:
+        return dialog.selected_session_id
+    return None

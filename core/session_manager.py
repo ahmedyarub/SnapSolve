@@ -253,6 +253,90 @@ class SessionManager:
 
         print(f"[SessionManager] Resumed last session: {self.current_session_id}")
 
+    def _default_context_config(self) -> Dict[str, Any]:
+        return {
+            "include_transcribed_text": False,
+            "include_previous_questions": False,
+            "include_previous_answers": False,
+            "project_folder": ""
+        }
+
+    def get_context_config(self) -> Dict[str, Any]:
+        """Returns the context configuration for the current session."""
+        if not self.current_session_id:
+            return self._default_context_config()
+
+        path = _session_json_path(self.current_session_id)
+        if not os.path.exists(path):
+            return self._default_context_config()
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("context", self._default_context_config())
+        except (json.JSONDecodeError, IOError):
+            return self._default_context_config()
+
+    def set_context_config(self, context_config: Dict[str, Any]):
+        """Sets and saves the context configuration."""
+        if not self.current_session_id:
+            return
+            
+        path = _session_json_path(self.current_session_id)
+        data = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+                
+        data["context"] = context_config
+        # We must preserve everything else
+        if "id" not in data: data["id"] = self.current_session_id
+        if "history" not in data: data["history"] = []
+        
+        try:
+            _atomic_json_write(path, data)
+        except IOError as e:
+            logger.error(f"[SessionManager] Failed to set context config: {e}")
+
+    def import_context(
+        self,
+        source_session_id: str,
+        import_transcribed_text: bool,
+        import_questions: bool,
+        import_answers: bool,
+    ):
+        """Imports selected historical items from source_session_id into current session."""
+        if not self.current_session_id or source_session_id == self.current_session_id:
+            return
+            
+        source_data = self.load_session_data(source_session_id)
+        if not source_data:
+            return
+            
+        source_history = source_data.get("history", [])
+        current_history = self.get_history()
+        
+        for turn in source_history:
+            new_turn = {
+                "timestamp": time.time(),
+                "source": "import",
+                "speaker_name": turn.get("speaker_name", self.speaker_name)
+            }
+            if import_questions and "prompt" in turn:
+                new_turn["prompt"] = turn["prompt"]
+            if import_answers and "response" in turn:
+                new_turn["response"] = turn["response"]
+            if import_transcribed_text and "extracted_text" in turn:
+                new_turn["extracted_text"] = turn["extracted_text"]
+                
+            if "prompt" in new_turn or "response" in new_turn or "extracted_text" in new_turn:
+                current_history.append(new_turn)
+                
+        self._save_session_data(current_history)
+
     def get_history(self) -> List[Dict[str, Any]]:
         """Returns the history of the current session."""
         if not self.current_session_id:
@@ -398,15 +482,17 @@ class SessionManager:
         # Ensure session directory exists
         self._ensure_session_dirs(self.current_session_id)
 
-        # Preserve existing name/tags from file if present
+        # Preserve existing name/tags/context from file if present
         existing_name = None
         existing_tags: List[str] = []
+        existing_context = self._default_context_config()
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     existing = json.load(f)
                     existing_name = existing.get("name")
                     existing_tags = existing.get("tags", [])
+                    existing_context = existing.get("context", existing_context)
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -418,6 +504,7 @@ class SessionManager:
             "speaker_name": self.speaker_name,
             "transcription_file": "transcription.txt" if self.transcription_file and os.path.exists(self.transcription_file) else None,
             "updated_at": time.time(),
+            "context": existing_context,
             "history": history,
         }
 

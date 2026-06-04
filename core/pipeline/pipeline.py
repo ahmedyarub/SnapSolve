@@ -43,7 +43,7 @@ def _call_llm_with_retry(
     image_path: Optional[str],
     is_image: bool,
     status_callback,
-    enable_stitching: bool,
+    enable_chat_sessions: bool,
     sink: Sink,
     is_main: bool,
     cancel_event: threading.Event = None,
@@ -64,7 +64,7 @@ def _call_llm_with_retry(
         try:
             result = _call_llm_with_cancel_check(
                 llm, prompt, image_path, is_image,
-                status_callback, enable_stitching, sink, is_main, cancel_event,
+                status_callback, enable_chat_sessions, sink, is_main, cancel_event,
             )
 
             # Some engines return error strings instead of raising.
@@ -238,7 +238,7 @@ def _execute_llm_without_fallback(
     image_path: Optional[str],
     is_image: bool,
     status_callback=None,
-    enable_stitching: bool = True,
+    enable_chat_sessions: bool = True,
     sink: Sink = None,
     cancel_event: threading.Event = None,
     max_retries: int = 3,
@@ -247,7 +247,7 @@ def _execute_llm_without_fallback(
     """Execute LLM processing without fallback, with automatic retry."""
     return _call_llm_with_retry(
         llm, prompt, image_path, is_image,
-        status_callback, enable_stitching, sink, is_main=True,
+        status_callback, enable_chat_sessions, sink, is_main=True,
         cancel_event=cancel_event, max_retries=max_retries, base_delay=base_delay,
     )
 
@@ -258,7 +258,7 @@ def _call_llm_with_cancel_check(
     image_path: Optional[str],
     is_image: bool,
     status_callback,
-    enable_stitching: bool,
+    enable_chat_sessions: bool,
     sink: Sink,
     is_main: bool,
     cancel_event: threading.Event = None,
@@ -270,7 +270,7 @@ def _call_llm_with_cancel_check(
                 prompt,
                 image_path,
                 status_callback,
-                enable_stitching,
+                enable_chat_sessions,
                 sink,
                 is_main=is_main,
                 cancel_event=cancel_event,
@@ -279,7 +279,7 @@ def _call_llm_with_cancel_check(
             prompt,
             image_path,
             status_callback,
-            enable_stitching,
+            enable_chat_sessions,
             sink,
             is_main=is_main,
         )
@@ -288,13 +288,13 @@ def _call_llm_with_cancel_check(
             return llm.process_text(
                 prompt,
                 status_callback,
-                enable_stitching,
+                enable_chat_sessions,
                 sink,
                 is_main=is_main,
                 cancel_event=cancel_event,
             )
         return llm.process_text(
-            prompt, status_callback, enable_stitching, sink, is_main=is_main
+            prompt, status_callback, enable_chat_sessions, sink, is_main=is_main
         )
 
 
@@ -340,7 +340,7 @@ def _run_llm_thread(
     image_path: Optional[str],
     is_image: bool,
     status_callback,
-    enable_stitching: bool,
+    enable_chat_sessions: bool,
     sink: Sink,
     is_main: bool,
     results: dict,
@@ -359,7 +359,7 @@ def _run_llm_thread(
             image_path,
             is_image,
             status_callback,
-            enable_stitching,
+            enable_chat_sessions,
             sink,
             is_main,
             cancel_event,
@@ -418,7 +418,7 @@ def process_pipeline(
     prompt_text: str,
     status_callback=None,
     session_manager=None,
-    enable_stitching: bool = True,
+    enable_chat_sessions: bool = True,
     sink: Sink = None,
     fallback_llm: LLMEngine = None,
     coords=None,
@@ -458,7 +458,13 @@ def process_pipeline(
         combined_image_paths = combined_image_paths[0]
 
     # 2. Prompt Augmentation
-    prompt = _build_prompt(prompt_text, extracted_text)
+    include_transcribed = True
+    if session_manager:
+        ctx = session_manager.get_context_config()
+        include_transcribed = ctx.get("include_transcribed_text", True)
+        
+    prompt_extracted = extracted_text if include_transcribed else None
+    prompt = _build_prompt(prompt_text, prompt_extracted)
     print(f"Submitted prompt: {prompt}")
 
     if cancel_event.is_set():
@@ -472,7 +478,7 @@ def process_pipeline(
             combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             status_callback,
-            enable_stitching,
+            enable_chat_sessions,
             sink,
             cancel_event,
             max_retries=max_retries,
@@ -512,7 +518,7 @@ def process_pipeline(
             combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             status_callback,
-            enable_stitching,
+            enable_chat_sessions,
             concurrent_sink,
             True,
             results,
@@ -534,7 +540,7 @@ def process_pipeline(
             combined_image_paths if isinstance(combined_image_paths, str) else None,
             is_image,
             None,
-            enable_stitching,
+            enable_chat_sessions,
             concurrent_sink,
             False,
             results,

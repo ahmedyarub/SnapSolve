@@ -16,7 +16,7 @@ An Android application that allows you to remotely control SnapSolve from your p
   - 🎯 Reselect
   - ➕ Multi-select
   - ✅ End Multi
-  - 🧵 Toggle Stitching
+  - 💬 Toggle Chat Sessions
   - 🔄 Cycle Source
   - 🖥️ Toggle Panel
   - 💬 New Chat

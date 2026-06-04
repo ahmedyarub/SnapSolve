@@ -6,7 +6,7 @@
         "model": "gemini-2.5-flash-lite",
         "ocr_engine": "remote_paddle",
         "prompt_id": "quick",
-        "enable_stitching": false,
+        "enable_chat_sessions": false,
         "fallback_model": "None"
     },
     {
@@ -17,6 +17,16 @@
         "fallback_model": "gemini-3-flash-preview",
         "ocr_engine": "remote_paddle",
         "prompt_id": "detailed",
-        "enable_stitching": true
+        "enable_chat_sessions": true
+    },
+    {
+        "id": "read_only",
+        "name": "Read-Only Analysis",
+        "llm_engine": "antigravity",
+        "model": "gemini-2.5-flash",
+        "fallback_model": "None",
+        "ocr_engine": "remote_paddle",
+        "prompt_id": "ai_coding_tool_read_only",
+        "enable_chat_sessions": true
     }
 ]

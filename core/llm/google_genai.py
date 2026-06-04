@@ -41,26 +41,7 @@ class GoogleGenAIEngine(LLMEngine):
     def supports_images(self) -> bool:
         return True
 
-    def _prepare_contents(self, _prompt: str, enable_stitching: bool, genai_types):
-        contents = []
 
-        if self.session_manager and enable_stitching:
-            history = self.session_manager.get_history()
-            for h in history:
-                contents.append(
-                    genai_types.Content(
-                        role="user",
-                        parts=[genai_types.Part.from_text(text=h.get("prompt", ""))],
-                    )
-                )
-                contents.append(
-                    genai_types.Content(
-                        role="model",
-                        parts=[genai_types.Part.from_text(text=h.get("response", ""))],
-                    )
-                )
-
-        return contents
 
     @staticmethod
     def _check_cancelled(cancel_event: threading.Event):
@@ -141,7 +122,7 @@ class GoogleGenAIEngine(LLMEngine):
         self,
         prompt: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -165,10 +146,11 @@ class GoogleGenAIEngine(LLMEngine):
 
         try:
             client = genai.Client(api_key=self.api_key)
-            contents = self._prepare_contents(prompt, enable_stitching, types)
-
-            current_parts = [types.Part.from_text(text=prompt)]
-            contents.append(types.Content(role="user", parts=current_parts))
+            
+            full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
+            
+            current_parts = [types.Part.from_text(text=full_prompt)]
+            contents = [types.Content(role="user", parts=current_parts)]
 
             assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
@@ -181,7 +163,7 @@ class GoogleGenAIEngine(LLMEngine):
         prompt: str,
         image_path: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -205,9 +187,10 @@ class GoogleGenAIEngine(LLMEngine):
 
         try:
             client = genai.Client(api_key=self.api_key)
-            contents = self._prepare_contents(prompt, enable_stitching, types)
-
-            current_parts = [types.Part.from_text(text=prompt)]
+            
+            full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
+            
+            current_parts = [types.Part.from_text(text=full_prompt)]
 
             print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
             with open(image_path, "rb") as f:
@@ -224,7 +207,7 @@ class GoogleGenAIEngine(LLMEngine):
                 )
             )
 
-            contents.append(types.Content(role="user", parts=current_parts))
+            contents = [types.Content(role="user", parts=current_parts)]
 
             assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)

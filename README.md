@@ -53,7 +53,7 @@ To use the default Gemini CLI:
 Instead of the CLI, you can use the official Python SDK directly.
 
 1. Make sure `google-genai` is installed (it's in `requirements.txt`).
-2. Add your API key to `config.json` under `google_genai_api_key`.
+2. Add your API key to `config.json` under `gemini_api_key`.
 
 ### Option 4: Local OCR with PaddleOCR
 
@@ -146,6 +146,7 @@ If you wish to add new languages, change the theme, or rebuild the bundle, see [
 * `ollama` - Uses a local Ollama server. Can process both images and text-only depending on the model.
 * `google-genai` - Uses the official Python SDK for Google GenAI. Requires an API key. Supports both image and text
   inputs.
+* `antigravity` - Uses the Google Antigravity SDK via a WSL-hosted service. See [services/antigravity/README.md](services/antigravity/README.md).
 
 **Input Sources (`default_source`):**
 
@@ -199,7 +200,7 @@ Create a file named `config.json` in the same directory as the script. Example:
       "key": "ctrl+alt+shift+h"
     },
     {
-      "action": "toggle_stitching",
+      "action": "toggle_chat_sessions",
       "key": "ctrl+alt+shift+i"
     }
   ],
@@ -208,7 +209,7 @@ Create a file named `config.json` in the same directory as the script. Example:
   "piper_model": "en_US-lessac-medium.onnx",
   "active_profile_id": "programming",
   "ollama_url": "http://localhost:11434",
-  "google_genai_api_key": "",
+  "gemini_api_key": "",
   "auto_close_results": false,
   "popup_opacity": 0.9,
   "show_control_panel": false,
@@ -239,7 +240,7 @@ Create a file named `config.json` in the same directory as the script. Example:
 * `active_profile_id`: ID of the profile to use from `profiles.json`.
 * `ocr_config`: Configuration for remote OCR service (host and port).
 * Profile-specific settings are managed in `profiles.json`, including `llm_engine`, `model`, `ocr_engine`, `prompt_id`,
-  and `enable_stitching`.
+  and `enable_chat_sessions`.
 
 ### Example Combinations
 
@@ -262,7 +263,7 @@ With corresponding profile in `profiles.json`:
   "model": "gemini-2.5-flash-lite",
   "ocr_engine": "none",
   "prompt_id": "default",
-  "enable_stitching": true
+  "enable_chat_sessions": true
 }
 ```
 
@@ -285,7 +286,7 @@ With corresponding profile in `profiles.json`:
   "model": "llama3",
   "ocr_engine": "paddleocr",
   "prompt_id": "default",
-  "enable_stitching": true
+  "enable_chat_sessions": true
 }
 ```
 
@@ -318,7 +319,7 @@ python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-resel
 * `--piper-model`: Path to Piper .onnx model
 * `--active-profile`: Active profile ID
 * `--ollama-url`: Ollama API URL
-* `--google-genai-api_key`: Google GenAI API Key
+* `--gemini-api-key`: Gemini API Key
 * `--auto-close-results`: Auto close result popups
 * `--no-auto-close-results`: Do not auto close result popups
 * `--popup-opacity`: Opacity of the popup (0.0 to 1.0)
@@ -354,6 +355,8 @@ python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-resel
 4. If you need to **reselect coordinates** while the app is running, press the reselect hotkey (default:
    `Ctrl + Alt + Shift + S`).
 5. Use the **control panel** to switch between input sources, change profiles, and manage sessions.
+6. Use the **Context Manager** to configure per-session context: toggle which categories (transcriptions, questions,
+   answers) are included in the prompt, set a project folder for agentic coding, or import context from previous sessions.
 
 ## Hotkeys
 
@@ -366,7 +369,7 @@ Default hotkeys (configurable in `config.json`):
 * `Ctrl + Alt + Shift + T` - Cancel multi-capture mode
 * `Ctrl + Alt + Shift + P` - Toggle control panel
 * `Ctrl + Alt + Shift + H` - New chat session
-* `Ctrl + Alt + Shift + I` - Toggle context stitching
+* `Ctrl + Alt + Shift + I` - Toggle context chat_sessions
 * `Ctrl + Alt + Shift + V` - Toggle all widget visibility
 * `Ctrl + Alt + U` - Open URL input
 * `Ctrl + Alt + Shift + B` - Open session browser

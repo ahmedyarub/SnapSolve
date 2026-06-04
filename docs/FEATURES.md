@@ -34,7 +34,7 @@ The Screen Capture & QA application provides several customizable features organ
 
 *   **Chat Session History:** Maintains context over multiple queries. The conversation is saved locally, and the previous context is stitched into the prompt or passed via API (depending on the engine) to allow for conversational follow-ups.
 *   **Custom Prompting:** Allows defining custom instructions (via `config/prompts.json`) to dictate how the LLM should format or structure its response.
-*   **Context Stitching:** Configurable option to include conversation context in prompts for follow-up questions. Can be toggled at runtime via hotkey.
+*   **Context Chat Sessions:** Configurable option to include conversation context in prompts for follow-up questions. Can be toggled at runtime via hotkey.
 
 ## Session Management
 
@@ -52,6 +52,10 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. The entire session folder is removed.
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
 *   **Transcription Persistence:** Audio transcriptions are saved to per-session transcription files with speaker attribution.
+*   **Context Manager:** Per-session context configuration dialog with:
+    *   **Category Toggles:** Enable/disable inclusion of transcribed text, previous questions, and previous answers in the LLM prompt context. All categories are disabled by default.
+    *   **Project Folder:** Set a local project directory for the session (used by the Antigravity engine for agentic coding). The text field autocompletes from recently used folder paths.
+    *   **Session Import:** Import context categories from a previous session into the current one.
 
 ## Engine (Processing)
 
@@ -59,6 +63,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   `gemini`: Uses the Google Gemini CLI.
     *   `google-genai`: Uses the official Python SDK for Google GenAI with streaming and multi-turn history.
     *   `ollama`: Integrates with a local Ollama server, avoiding external network requests.
+    *   `antigravity`: Uses the Google Antigravity SDK via a WSL-hosted FastAPI service. Provides agentic coding capabilities with full project context, streaming SSE responses, and multi-turn conversation support.
 *   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
 *   **Remote OCR:** Offload OCR processing to a remote PaddleOCR FastAPI service.

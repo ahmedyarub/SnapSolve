@@ -8,5 +8,10 @@
     "id": "detailed",
     "description": "Detailed explanation",
     "text": "provide a detailed explanation for the following question"
+  },
+  {
+    "id": "ai_coding_tool_read_only",
+    "description": "AI Coding Tool (Read-Only)",
+    "text": "Answer the following prompt without making actual code changes. Only analyze and respond."
   }
 ]

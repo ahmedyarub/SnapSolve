@@ -26,7 +26,7 @@
   "piper_model": "en_US-lessac-medium.onnx",
   "active_profile_id": "programming",
   "ollama_url": "http://localhost:11434",
-  "google_genai_api_key": "",
+  "gemini_api_key": "",
   "auto_close_results": false,
   "opacity": 0.9,
   "hide_from_capture": false,

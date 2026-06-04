@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_config, save_config, load_profiles, load_prompts
-from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, LLMEngine
+from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, LLMEngine, AntigravityEngine
 from core.output import (
     output_result,
     show_popup,
@@ -28,6 +28,7 @@ from core.output import (
     get_subtitle_text,
     set_hide_from_capture,
     share_response_screenshot,
+    set_chat_sessions_btn_state,
 )
 from core.remote_control_server import (
     start_remote_control_server,
@@ -198,7 +199,7 @@ def _execute_text_pipeline(
         prompt_text=prompt_text,
         status_callback=status_update,
         session_manager=session_manager,
-        enable_stitching=active_profile.get("enable_stitching", True),
+        enable_chat_sessions=active_profile.get("enable_chat_sessions", True),
         sink=sink,
         fallback_llm=fallback_llm_engine_instance
         if "fallback_llm_engine_instance" in globals()
@@ -328,7 +329,7 @@ def _execute_capture_pipeline(
         prompt_text=active_prompt_text,
         status_callback=status_update,
         session_manager=session_manager,
-        enable_stitching=active_profile.get("enable_stitching", True),
+        enable_chat_sessions=active_profile.get("enable_chat_sessions", True),
         sink=sink,
         fallback_llm=fallback_llm_engine_instance
         if "fallback_llm_engine_instance" in globals()
@@ -569,15 +570,15 @@ def handle_new_chat_session(config):
         )
 
 
-def handle_toggle_stitching(config, active_profile):
-    current = active_profile.get("enable_stitching", True)
-    active_profile["enable_stitching"] = not current
+def handle_toggle_chat_sessions(config, active_profile):
+    current = active_profile.get("enable_chat_sessions", True)
+    active_profile["enable_chat_sessions"] = not current
 
     # Save the profiles
     profiles = load_profiles()
     for p in profiles:
         if p["id"] == active_profile["id"]:
-            p["enable_stitching"] = not current
+            p["enable_chat_sessions"] = not current
             break
 
     from config.settings import save_profiles
@@ -585,7 +586,8 @@ def handle_toggle_stitching(config, active_profile):
     save_profiles(profiles)
 
     state_str = "Enabled" if not current else "Disabled"
-    _show_status_popup(config, f"Chat Stitching {state_str}", auto_close=3000)
+    _show_status_popup(config, f"Chat Sessions {state_str}", auto_close=3000)
+    set_chat_sessions_btn_state(not current)
 
 
 def handle_toggle_panel():
@@ -982,7 +984,7 @@ def _setup_active_source(config, manager):
     return get_active_source_instance()
 
 
-def _setup_ui_callbacks(config, active_profile, active_prompt_text):
+def _setup_ui_callbacks(config, active_profile, active_prompt_text, session_manager):
     """Set up UI callbacks."""
     callbacks = {
         "capture": lambda: handle_capture(config, active_profile, active_prompt_text),
@@ -992,7 +994,7 @@ def _setup_ui_callbacks(config, active_profile, active_prompt_text):
             config, active_profile, active_prompt_text
         ),
         "cancel": handle_cancel,
-        "toggle_stitching": lambda: handle_toggle_stitching(config, active_profile),
+        "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(config, active_profile),
         "cycle_source": lambda: handle_cycle_source(config, active_profile),
         "text_submit": lambda text: handle_text_submit(config, active_profile, text),
         "start_record": lambda enable_transcription: handle_start_record(
@@ -1001,8 +1003,14 @@ def _setup_ui_callbacks(config, active_profile, active_prompt_text):
         "stop_record": lambda is_long_press: handle_stop_record(
             config, active_profile, active_prompt_text, is_long_press
         ),
+        "open_context_manager": lambda: handle_open_context_manager(session_manager),
     }
     return callbacks
+
+def handle_open_context_manager(session_manager):
+    from ui.context_manager_ui import ContextManagerDialog
+    dialog = ContextManagerDialog(session_manager)
+    dialog.exec()
 
 
 def _initialize_ui(config, active_source, callbacks):
@@ -1088,13 +1096,25 @@ def _initialize_llm_engines(active_profile, config, manager):
     elif llm_type == "google-genai":
         llm_engine = GoogleGenAIEngine(
             model,
-            config.get("google_genai_api_key", ""),
+            config.get("gemini_api_key", ""),
             session_manager=manager,
         )
         if fallback_model and fallback_model != "None":
             fallback_llm_engine = GoogleGenAIEngine(
                 fallback_model,
-                config.get("google_genai_api_key", ""),
+                config.get("gemini_api_key", ""),
+                session_manager=manager,
+            )
+    elif llm_type == "antigravity":
+        llm_engine = AntigravityEngine(
+            model,
+            config.get("antigravity_service_url", "http://localhost:8200"),
+            session_manager=manager,
+        )
+        if fallback_model and fallback_model != "None":
+            fallback_llm_engine = AntigravityEngine(
+                fallback_model,
+                config.get("antigravity_service_url", "http://localhost:8200"),
                 session_manager=manager,
             )
     else:
@@ -1206,9 +1226,9 @@ def _register_config_hotkeys(config, active_profile, active_prompt_text):
             keyboard.add_hotkey(key, handle_toggle_panel, args=(config,))
         elif action == "new_chat_session":
             keyboard.add_hotkey(key, handle_new_chat_session, args=(config,))
-        elif action == "toggle_stitching":
+        elif action == "toggle_chat_sessions":
             keyboard.add_hotkey(
-                key, handle_toggle_stitching, args=(config, active_profile)
+                key, handle_toggle_chat_sessions, args=(config, active_profile)
             )
         elif action == "cycle_source":
             keyboard.add_hotkey(key, handle_cycle_source, args=(config, active_profile))
@@ -1281,7 +1301,7 @@ def main():
 
     active_source = _setup_active_source(config, session_manager)
 
-    callbacks = _setup_ui_callbacks(config, active_profile, active_prompt_text)
+    callbacks = _setup_ui_callbacks(config, active_profile, active_prompt_text, session_manager)
 
     _initialize_ui(config, active_source, callbacks)
 
@@ -1307,6 +1327,11 @@ def main():
     audio_sink_instance = _initialize_audio_components(
         config, session_manager, cancel_event
     )
+
+    if "enable_chat_sessions" in config:
+        active_profile["enable_chat_sessions"] = config["enable_chat_sessions"]
+        
+    set_chat_sessions_btn_state(active_profile.get("enable_chat_sessions", True))
 
     # Start remote control server if enabled
     if config.get("enable_remote_control", False):

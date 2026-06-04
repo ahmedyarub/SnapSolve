@@ -1,19 +1,39 @@
 {
   "gemini": [
     {
-      "id": "gemini-2.5-flash-lite",
-      "name": "Gemini 2.5 Flash Lite",
-      "supports_ocr": false
+      "id": "gemini-3.5-flash",
+      "name": "Gemini 3.5 Flash",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "supports_ocr": true
     },
     {
       "id": "gemini-3-flash-preview",
       "name": "Gemini 3 Flash Preview",
-      "supports_ocr": false
+      "supports_ocr": true
     },
     {
       "id": "gemini-3-pro-preview",
       "name": "Gemini 3 Pro Preview",
       "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash Lite",
+      "supports_ocr": false
     }
   ],
   "ollama": [
@@ -35,18 +55,70 @@
   ],
   "google-genai": [
     {
-      "id": "gemini-2.5-flash-lite",
-      "name": "Gemini 2.5 Flash Lite",
-      "supports_ocr": false
+      "id": "gemini-3.5-flash",
+      "name": "Gemini 3.5 Flash",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "supports_ocr": true
     },
     {
       "id": "gemini-3-flash-preview",
       "name": "Gemini 3 Flash Preview",
-      "supports_ocr": false
+      "supports_ocr": true
     },
     {
       "id": "gemini-3-pro-preview",
       "name": "Gemini 3 Pro Preview",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash Lite",
+      "supports_ocr": false
+    }
+  ],
+  "antigravity": [
+    {
+      "id": "gemini-3.5-flash",
+      "name": "Gemini 3.5 Flash (Default)",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-3-pro-preview",
+      "name": "Gemini 3 Pro Preview",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "supports_ocr": true
+    },
+    {
+      "id": "antigravity-preview-05-2026",
+      "name": "Antigravity Agent Preview",
+      "supports_ocr": true
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
       "supports_ocr": true
     }
   ]

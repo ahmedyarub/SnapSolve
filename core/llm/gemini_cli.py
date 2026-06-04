@@ -88,7 +88,7 @@ class GeminiCLIEngine(LLMEngine):
         self,
         prompt: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -102,7 +102,7 @@ class GeminiCLIEngine(LLMEngine):
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
-        full_prompt = self._prepare_prompt(prompt, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
         combined_prompt = f'"{full_prompt}"'
 
         cmd_args = [gemini_cmd, "-p", combined_prompt, "-o", "json", "-m", self.model]
@@ -114,7 +114,7 @@ class GeminiCLIEngine(LLMEngine):
         prompt: str,
         image_path: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -128,7 +128,7 @@ class GeminiCLIEngine(LLMEngine):
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
 
-        full_prompt = self._prepare_prompt(prompt, enable_stitching)
+        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
         combined_prompt = f'"{full_prompt} @{image_path}"'
 
         temp_dir = os.path.dirname(image_path)

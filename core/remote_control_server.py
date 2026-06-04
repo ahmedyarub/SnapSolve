@@ -299,7 +299,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         handle_new_chat_session,
         handle_reselect,
         handle_toggle_panel,
-        handle_toggle_stitching,
+        handle_toggle_chat_sessions,
     )
     from config.settings import load_profiles, load_prompts  # noqa: PLC0415
 
@@ -332,7 +332,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
                 app_config, active_profile, active_prompt_text
             ),
             "cancel": handle_cancel,
-            "toggle_stitching": lambda: handle_toggle_stitching(
+            "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(
                 app_config, active_profile
             ),
             "cycle_source": lambda: handle_cycle_source(app_config, active_profile),

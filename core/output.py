@@ -41,7 +41,9 @@ class UISignals(QObject):
     show_url_input = pyqtSignal()
     open_url = pyqtSignal(str)
     open_session_browser = pyqtSignal()
+    open_context_manager = pyqtSignal()
     set_transcription_language = pyqtSignal(str)
+    update_chat_sessions_btn = pyqtSignal(bool)
 
 
 class SelectorSignals(QObject):
@@ -350,8 +352,12 @@ def _open_code_in_ide(ide: str, code: str, lang: str):
     ext = _get_extension_for_language(lang)
 
     try:
-        fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="snapsolve_code_")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        import hashlib
+        content_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()[:8]
+        temp_dir = os.path.join(tempfile.gettempdir(), "snapsolve_code")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_path = os.path.join(temp_dir, f"snippet_{content_hash}{ext}")
+        with open(temp_path, "w", encoding="utf-8") as f:
             f.write(code)
     except OSError as e:
         logger.error(f"Failed to write temp file for IDE: {e}")
@@ -985,9 +991,10 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_end_multi = create_btn(
             "end_multi", "✅ End Multi", "end_multi_capture"
         )
-        self.btn_stitching = create_btn(
-            "stitching", "🧵 Toggle Stitching", "toggle_stitching"
+        self.btn_chat_sessions = create_btn(
+            "chat_sessions", "💬 Chat Sessions: ON", "toggle_chat_sessions"
         )
+        self.chat_sessions_enabled = True
         self.btn_cycle = create_btn("cycle", "🔄 Cycle Source", "cycle_source")
 
         self.btn_sessions = QPushButton("📋 Sessions")
@@ -995,6 +1002,12 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_sessions.clicked.connect(lambda: ui_signals.open_session_browser.emit())
         self.layout.addWidget(self.btn_sessions)
         self.buttons["sessions"] = self.btn_sessions
+        
+        self.btn_context = QPushButton("🧠 Context")
+        self.btn_context.setStyleSheet(btn_style)
+        self.btn_context.clicked.connect(lambda: ui_signals.open_context_manager.emit())
+        self.layout.addWidget(self.btn_context)
+        self.buttons["context"] = self.btn_context
 
         self.btn_cancel = create_btn(
             "cancel", "❌ Cancel", "cancel", style=cancel_btn_style
@@ -1154,6 +1167,21 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         for name, btn in self.buttons.items():
             if name == "cancel":
                 btn.setStyleSheet(cancel_style)
+            elif name == "chat_sessions":
+                if getattr(self, "chat_sessions_enabled", True):
+                    btn.setStyleSheet(
+                        f"QPushButton {{ background-color: rgba(45, 45, 45, {alpha_int}); color: #7fdbca;"
+                        f" border: 1px solid #7fdbca; padding: 8px; border-radius: 4px; font-size: 14px;}}"
+                        f" QPushButton:hover {{ background-color: rgba(62, 62, 62, {alpha_int}); }}"
+                        f" QPushButton:disabled {{ color: #777; }}"
+                    )
+                else:
+                    btn.setStyleSheet(
+                        f"QPushButton {{ background-color: rgba(45, 45, 45, {alpha_int}); color: gray;"
+                        f" border: none; padding: 8px; border-radius: 4px; font-size: 14px;}}"
+                        f" QPushButton:hover {{ background-color: rgba(62, 62, 62, {alpha_int}); }}"
+                        f" QPushButton:disabled {{ color: #777; }}"
+                    )
             else:
                 btn.setStyleSheet(btn_style)
 
@@ -1366,7 +1394,17 @@ class UIManager(QObject):
         ui_signals.show_url_input.connect(self._on_show_url_input)
         ui_signals.open_url.connect(self._on_open_url)
         ui_signals.open_session_browser.connect(self._on_open_session_browser)
+        ui_signals.open_context_manager.connect(self._on_open_context_manager)
         ui_signals.set_transcription_language.connect(self._on_set_transcription_language)
+        ui_signals.update_chat_sessions_btn.connect(self._on_update_chat_sessions_btn)
+
+    def _on_update_chat_sessions_btn(self, enabled: bool):
+        self.panel.chat_sessions_enabled = enabled
+        if enabled:
+            self.panel.btn_chat_sessions.setText("💬 Chat Sessions: ON")
+        else:
+            self.panel.btn_chat_sessions.setText("💬 Chat Sessions: OFF")
+        self.panel._apply_opacity(self._global_opacity)
 
     def _on_open_url(self, url: str):
         self.popup._apply_opacity(self._global_opacity)
@@ -1375,8 +1413,13 @@ class UIManager(QObject):
     @staticmethod
     def _on_open_session_browser():
         from ui.session_browser import open_session_browser
-
+        
         open_session_browser()
+        
+    @staticmethod
+    def _on_open_context_manager():
+        if "open_context_manager" in _app_callbacks:
+            _app_callbacks["open_context_manager"]()
 
     def _on_show_url_input(self):
         self.url_input.update_position()
@@ -1566,6 +1609,9 @@ def close_popup():
 
 def share_response_screenshot():
     ui_signals.capture_popup_screenshot.emit()
+
+def set_chat_sessions_btn_state(enabled: bool):
+    ui_signals.update_chat_sessions_btn.emit(enabled)
 
 
 def show_subtitle(text: str):

@@ -14,6 +14,10 @@ class LLMEngine(abc.ABC):
     def supports_images(self) -> bool:
         raise NotImplementedError
 
+    @property
+    def ai_coding_tool(self) -> bool:
+        return False
+
     @abc.abstractmethod
     def warmup(self, status_callback=None) -> bool:
         """Warms up the engine. Returns True if successful."""
@@ -24,7 +28,7 @@ class LLMEngine(abc.ABC):
         self,
         prompt: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -38,7 +42,7 @@ class LLMEngine(abc.ABC):
         prompt: str,
         image_path: str,
         status_callback=None,
-        enable_stitching=True,
+        enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
         cancel_event: threading.Event = None,
@@ -46,15 +50,22 @@ class LLMEngine(abc.ABC):
         """Processes an image with a text prompt and returns the generated answer."""
         return "Error: process_image is not implemented for this engine."
 
-    def _prepare_prompt(self, prompt: str, enable_stitching: bool) -> str:
+    def _prepare_prompt(self, prompt: str, enable_chat_sessions: bool) -> str:
         full_prompt = prompt
-        if self.session_manager and enable_stitching:
+        if self.session_manager and enable_chat_sessions:
             history = self.session_manager.get_history()
-            if history:
+            
+            ctx = self.session_manager.get_context_config()
+            include_q = ctx.get("include_previous_questions", True)
+            include_a = ctx.get("include_previous_answers", True)
+            
+            if history and (include_q or include_a):
                 history_text = "Previous conversation:\n"
                 for h in history:
-                    history_text += f"User: {h.get('prompt', '')}\n"
-                    history_text += f"Assistant: {h.get('response', '')}\n\n"
+                    if include_q and "prompt" in h:
+                        history_text += f"User: {h.get('prompt', '')}\n"
+                    if include_a and "response" in h:
+                        history_text += f"Assistant: {h.get('response', '')}\n\n"
                 history_text += "Current request:\n"
                 full_prompt = history_text + prompt
         return full_prompt

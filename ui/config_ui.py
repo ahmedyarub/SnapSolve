@@ -75,17 +75,19 @@ class ConfigUI(QDialog):
         self.ollama_url = QLineEdit(
             self.config.get("ollama_url", "http://localhost:11434")
         )
-        self.google_genai_api_key = QLineEdit(
-            self.config.get("google_genai_api_key", "")
+        self.gemini_api_key = QLineEdit(
+            self.config.get("gemini_api_key", "")
         )
         
         # IDE paths
         default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
         self.ide_pycharm_path = QLineEdit(self.config.get("ide_pycharm_path", "pycharm"))
         self.ide_antigravity_path = QLineEdit(self.config.get("ide_antigravity_path", default_antigravity))
+        self.antigravity_service_url = QLineEdit(self.config.get("antigravity_service_url", "http://localhost:8200"))
         self.profile_combo = QComboBox()
         self.profile_form = QWidget()
         self.prof_name = QLineEdit()
+        self.prof_enable_chat_sessions = QCheckBox("Enable Chat Sessions")
         self.prof_llm_engine = QComboBox()
         self.prof_model = QComboBox()
         self.prof_fallback_model = QComboBox()
@@ -242,6 +244,7 @@ class ConfigUI(QDialog):
         if file_path:
             self.ide_antigravity_path.setText(file_path)
 
+
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
 
@@ -311,6 +314,8 @@ class ConfigUI(QDialog):
         browse_antigravity_btn.clicked.connect(self.browse_antigravity_path)
         antigravity_layout.addWidget(browse_antigravity_btn)
         layout.addRow("Antigravity IDE Path:", antigravity_layout)
+
+        layout.addRow("Antigravity Service URL:", self.antigravity_service_url)
 
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
@@ -440,8 +445,8 @@ class ConfigUI(QDialog):
         # API Keys & URLs
         layout.addRow("Ollama URL:", self.ollama_url)
 
-        self.google_genai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addRow("Google GenAI API Key:", self.google_genai_api_key)
+        self.gemini_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Gemini API Key:", self.gemini_api_key)
 
         # LLM Retry
         self.llm_max_retries.setPlaceholderText("e.g. 3")
@@ -484,7 +489,7 @@ class ConfigUI(QDialog):
 
         form_layout.addRow("Profile Name:", self.prof_name)
 
-        self.prof_llm_engine.addItems(["gemini", "ollama", "google-genai"])
+        self.prof_llm_engine.addItems(["gemini", "ollama", "google-genai", "antigravity"])
         self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
         form_layout.addRow("LLM Engine:", self.prof_llm_engine)
 
@@ -497,6 +502,8 @@ class ConfigUI(QDialog):
 
         self.populate_prompts()
         form_layout.addRow("Prompt:", self.prof_prompt)
+
+        form_layout.addRow("", self.prof_enable_chat_sessions)
 
         layout.addWidget(self.profile_form)
         layout.addStretch()
@@ -562,6 +569,8 @@ class ConfigUI(QDialog):
         idx = self.prof_prompt.findData(prompt_id)
         if idx >= 0:
             self.prof_prompt.setCurrentIndex(idx)
+            
+        self.prof_enable_chat_sessions.setChecked(profile.get("enable_chat_sessions", True))
 
     def save_current_profile(self):
         index = self.profile_combo.currentIndex()
@@ -575,6 +584,7 @@ class ConfigUI(QDialog):
         profile["fallback_model"] = self.prof_fallback_model.currentData()
         profile["ocr_engine"] = self.prof_ocr_engine.currentText()
         profile["prompt_id"] = self.prof_prompt.currentData()
+        profile["enable_chat_sessions"] = self.prof_enable_chat_sessions.isChecked()
 
         # Update combo box text
         self.profile_combo.setItemText(index, profile["name"])
@@ -711,11 +721,12 @@ class ConfigUI(QDialog):
             self.warmup_realtime_transcription.isChecked()
         )
         self.config["ollama_url"] = self.ollama_url.text()
-        self.config["google_genai_api_key"] = self.google_genai_api_key.text()
+        self.config["gemini_api_key"] = self.gemini_api_key.text()
         self.config["ide_pycharm_path"] = self.ide_pycharm_path.text().strip() or "pycharm"
         
         default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
         self.config["ide_antigravity_path"] = self.ide_antigravity_path.text().strip() or default_antigravity
+        self.config["antigravity_service_url"] = self.antigravity_service_url.text().strip() or "http://localhost:8200"
         
         self.config["opacity"] = self.opacity_slider.value() / 100.0
 
