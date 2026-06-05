@@ -29,6 +29,7 @@ MAIN_SCRIPT_ARGS = [
     "--output-mode=both",
     "--transcription-language=en",
     "--tts-language=en",
+    "--no-hide-from-capture",
 ]
 SERVICE_SCRIPT_PATH = "services/ocr_service.py"
 ERROR_RESPONSES = ["No speech recognized."]

@@ -94,7 +94,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Draggable Windows:** All overlay windows (popup, control panel, subtitles) can be dragged to any position on screen.
 *   **Resizable Popup:** The popup window supports edge and corner resizing with minimum size constraints.
 *   **Hide/Unhide All Widgets:** Toggle visibility of all overlay widgets at once via hotkey (`Ctrl+Alt+Shift+V`).
-*   **Stealth Mode (Hide from Capture):** Configurable option to exclude all SnapSolve windows from screen-capture APIs (OBS, video calls, Win+Shift+S, etc.) while remaining visible on the user's monitor. Uses `SetWindowDisplayAffinity` on Windows 10 2004+.
+*   **Stealth Mode (Hide from Capture):** Configurable option to exclude all SnapSolve windows from screen-capture APIs (OBS, video calls, Win+Shift+S, etc.) while remaining visible on the user's monitor. Uses `SetWindowDisplayAffinity` on Windows 10 2004+ and `NSWindow.setSharingType` on macOS (requires `pyobjc-framework-Cocoa`). Not supported on Linux (no universal X11/Wayland API).
 *   **URL Viewer:** Open any URL directly in the popup's web view via hotkey (`Ctrl+Alt+U`), allowing quick reference without switching windows.
 *   **Real-time Subtitles:** WhisperLive-powered subtitle widget with fading effects, positioned at the bottom of the screen during audio recording.
 

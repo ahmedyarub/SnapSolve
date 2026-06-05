@@ -296,7 +296,10 @@ class ConfigUI(QDialog):
         self.hide_from_capture.setChecked(self.config.get("hide_from_capture", True))
         self.hide_from_capture.setToolTip(
             "When enabled, all overlay windows are invisible to screen sharing,\n"
-            "recording, and capture tools (requires Windows 10 2004+)."
+            "recording, and capture tools.\n"
+            "• Windows 10 2004+: SetWindowDisplayAffinity\n"
+            "• macOS: NSWindow.setSharingType (requires pyobjc-framework-Cocoa)\n"
+            "• Linux: not supported (no universal X11/Wayland API)"
         )
         layout.addRow("Screen Capture:", self.hide_from_capture)
 

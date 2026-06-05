@@ -416,6 +416,11 @@ def parse_args():
         action="store_true",
         help="Disable chat sessions",
     )
+    parser.add_argument(
+        "--no-hide-from-capture",
+        action="store_true",
+        help="Disable hiding windows from screen capture (useful for e2e tests)",
+    )
 
     return parser.parse_args()
 
@@ -487,6 +492,9 @@ def _apply_basic_config(config, args):
         config["enable_chat_sessions"] = True
     elif args.disable_chat_sessions:
         config["enable_chat_sessions"] = False
+
+    if args.no_hide_from_capture:
+        config["hide_from_capture"] = False
 
 
 def _apply_warmup_config(config, args):
