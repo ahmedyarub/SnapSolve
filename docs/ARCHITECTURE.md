@@ -112,7 +112,7 @@ Before sending data to the LLM, the application enriches the prompt:
 
 ## 3. LLM Engine (`core/llm/`)
 The Engine layer handles communication with the AI models.
-*   **Supported Engines:** `GoogleGenAIEngine` (`google_genai.py`), `GeminiCLIEngine` (`gemini_cli.py`), and `OllamaEngine` (`ollama.py`).
+*   **Supported Engines:** `GoogleGenAIEngine` (`google_genai.py`), `GeminiCLIEngine` (`gemini_cli.py`), `OllamaEngine` (`ollama.py`), and `AntigravityEngine` (`antigravity.py`).
 *   **Concurrency (`ConcurrentSinkWrapper`):** The architecture supports running a primary model and a fallback model concurrently using threading.
     *   Both models are warmed up upon application startup.
     *   If the fallback model begins generating first, its output is streamed to the user.

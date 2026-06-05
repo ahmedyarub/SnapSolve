@@ -1,6 +1,5 @@
 """Antigravity SDK Service — FastAPI wrapper for the Google Antigravity SDK.
 
-Runs in WSL (Linux) because the SDK has no Windows wheel.
 Exposes POST /chat with SSE streaming and GET /health.
 
 Usage:
@@ -13,7 +12,7 @@ import base64
 import json
 import logging
 import os
-import re
+
 import signal
 import sys
 import tempfile
@@ -72,28 +71,6 @@ async def _close_agent():
             logger.info("Agent closed.")
 
 
-# ---------------------------------------------------------------------------
-# Path conversion
-# ---------------------------------------------------------------------------
-
-def _windows_to_wsl_path(win_path: str) -> str:
-    """Convert a Windows path (e.g. E:\\Toptal\\project) to WSL mount path."""
-    # Already a Unix path
-    if win_path.startswith("/"):
-        return win_path
-
-    # Normalise backslashes
-    p = win_path.replace("\\", "/")
-
-    # Match drive letter
-    m = re.match(r"^([A-Za-z]):/(.*)$", p)
-    if m:
-        drive = m.group(1).lower()
-        rest = m.group(2)
-        return f"/mnt/{drive}/{rest}"
-
-    return win_path
-
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -135,7 +112,7 @@ async def chat(request: ChatRequest):
             if request.new_session:
                 await _close_agent()
 
-            cwd = _windows_to_wsl_path(request.cwd) if request.cwd else None
+            cwd = request.cwd
 
             # Change working directory for the agent
             if cwd:

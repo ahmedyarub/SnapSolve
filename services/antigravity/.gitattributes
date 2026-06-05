@@ -1,4 +1,0 @@
-# Force LF line endings for all files in the Antigravity service.
-# This service runs in WSL (Linux) and requires Unix line endings.
-*.py text eol=lf
-requirements.txt text eol=lf

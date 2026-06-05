@@ -24,8 +24,8 @@ This application relies on a strictly decoupled architecture:
         *   `google_genai.py`: `GoogleGenAIEngine` — Google GenAI SDK with streaming and multi-turn history.
         *   `ollama.py`: `OllamaEngine` — Ollama REST API with base64 image encoding.
         *   `gemini_cli.py`: `GeminiCLIEngine` — wraps the `gemini` CLI tool via subprocess.
-        *   `antigravity.py`: `AntigravityEngine` — HTTP+SSE client to the Antigravity SDK service
-          running in WSL. Streams tokens in real-time to the sink.
+        *   `antigravity.py`: `AntigravityEngine` — HTTP+SSE client to the Antigravity SDK service.
+          Streams tokens in real-time to the sink.
     *   `sinks/`: Output sinks for presenting results to the user.
         *   `popup.py`: `PopupSink` — accumulates text chunks, renders via `show_popup()` from `core/output.py`.
         *   `audio.py`: `AudioSink` — Piper TTS synthesis with Markdown stripping and configurable output device.
@@ -60,9 +60,7 @@ This application relies on a strictly decoupled architecture:
     *   `ocr_service.py`: FastAPI microservice for remote PaddleOCR (POST `/ocr` endpoint).
     *   `whisperlive/`: Git submodule — WhisperLive real-time transcription server.
     *   `antigravity/`: Antigravity SDK service — FastAPI app that wraps the `google-antigravity`
-      Python SDK. Runs in WSL (Linux) because the SDK has no Windows wheel. Exposes `POST /chat`
-      with SSE streaming and `GET /health` on port 8200. Files use LF line endings
-      (enforced by `.gitattributes`).
+      Python SDK. Exposes `POST /chat` with SSE streaming and `GET /health` on port 8200.
 5.  **`sessions/`**: Local storage for chat session history (JSON files), captured images, and transcriptions.
 6.  **`tests/`**: Contains the tests.
     *   `e2e/`: End-to-end tests with image-recognition-based UI automation. Only run on the developer's machine.
@@ -142,27 +140,21 @@ This application relies on a strictly decoupled architecture:
 * If you need to add new rendering features, modify `core/output.py` (specifically the `PopupWidget` class and its
   HTML/JS template). Do **not** introduce additional rendering libraries without good reason.
 
-### Antigravity Service (WSL)
+### Antigravity Service
 
-* The `google-antigravity` Python SDK only ships platform-specific wheels for Linux and macOS — **not Windows**.
-  To work around this, the SDK is hosted behind a lightweight FastAPI service (`services/antigravity/`) that runs
-  inside **WSL** (Windows Subsystem for Linux).
-* **Architecture:** The Windows `AntigravityEngine` (`core/llm/antigravity.py`) sends HTTP POST requests to the
-  WSL service (`http://localhost:8200/chat`) and reads the response as a **Server-Sent Events (SSE)** stream.
+* The `google-antigravity` Python SDK is available on all platforms (Windows, Linux, macOS).
+  The SDK is hosted behind a lightweight FastAPI service (`services/antigravity/`) for HTTP access.
+* **Architecture:** The `AntigravityEngine` (`core/llm/antigravity.py`) sends HTTP POST requests to the
+  service (`http://localhost:8200/chat`) and reads the response as a **Server-Sent Events (SSE)** stream.
   Each `data:` line contains a text token that is forwarded to the sink in real-time.
-* **Line Endings:** All Python and `requirements.txt` files inside `services/antigravity/` use **LF** (`\n`) line
-  endings, enforced by a local `.gitattributes` file. This is required because the service runs on Linux.
-* **Starting the Service:** The service must be started manually from WSL before using the Antigravity engine:
+* **Starting the Service:** The service must be started manually before using the Antigravity engine:
   ```bash
-  cd /mnt/e/Python/SnapSolve/services/antigravity
-  pip install -r requirements.txt
-  python antigravity_service.py
+  pip install -r services/antigravity/requirements.txt
+  python services/antigravity/antigravity_service.py
   ```
 * **Working Directory / Project Folder:** The `cwd` field in the chat request tells the agent which project
-  directory to operate on. Windows paths (e.g., `E:\Toptal\project`) are automatically converted to WSL
-  mount paths (e.g., `/mnt/e/Toptal/project`) by the service.
-* **API Key:** The service reads `GEMINI_API_KEY` from the WSL environment. Export it in your WSL shell
-  before starting the service.
+  directory to operate on.
+* **API Key:** The service reads `GEMINI_API_KEY` from the environment. Set it before starting the service.
 
 ## General Practices
 

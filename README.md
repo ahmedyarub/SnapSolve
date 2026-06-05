@@ -146,7 +146,7 @@ If you wish to add new languages, change the theme, or rebuild the bundle, see [
 * `ollama` - Uses a local Ollama server. Can process both images and text-only depending on the model.
 * `google-genai` - Uses the official Python SDK for Google GenAI. Requires an API key. Supports both image and text
   inputs.
-* `antigravity` - Uses the Google Antigravity SDK via a WSL-hosted service. See [services/antigravity/README.md](services/antigravity/README.md).
+* `antigravity` - Uses the Google Antigravity SDK via a local FastAPI service. See [services/antigravity/README.md](services/antigravity/README.md).
 
 **Input Sources (`default_source`):**
 

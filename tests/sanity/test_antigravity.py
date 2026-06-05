@@ -5,7 +5,7 @@ This script tests the SDK directly by:
 2. Creating an Agent with LocalAgentConfig.
 3. Sending a simple prompt and streaming the response.
 
-This test must be run in WSL (Linux) since the SDK has no Windows wheel.
+
 
 Prerequisites:
     export GEMINI_API_KEY="your_key"
@@ -67,7 +67,7 @@ async def test_agent(prompt: str, model: str = None) -> bool:
     except ImportError:
         print("✗ google-antigravity is not installed.")
         print("  Install it with: pip install google-antigravity")
-        print("  Note: This only works on Linux/macOS (run in WSL on Windows).")
+
         return False
 
     step = "[2]" if not model else "[2]"

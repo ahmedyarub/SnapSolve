@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 import mimetypes
-import re
+
 import threading
 from typing import Optional
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AntigravityEngine(LLMEngine):
     """LLM engine that communicates with the Antigravity SDK service over HTTP+SSE.
 
-    The service runs in WSL and wraps the google-antigravity Python SDK.
+    The service wraps the google-antigravity Python SDK.
     Responses are streamed via Server-Sent Events for real-time token delivery.
     """
 
@@ -52,17 +52,7 @@ class AntigravityEngine(LLMEngine):
             status_callback(f"Antigravity service not reachable at {self.service_url}")
         return False
 
-    @staticmethod
-    def _to_wsl_path(win_path: str) -> str:
-        """Convert a Windows path (e.g. E:\\Toptal\\project) to a WSL mount path."""
-        if not win_path or win_path.startswith("/"):
-            return win_path
 
-        p = win_path.replace("\\", "/")
-        m = re.match(r"^([A-Za-z]):/(.*)$", p)
-        if m:
-            return f"/mnt/{m.group(1).lower()}/{m.group(2)}"
-        return win_path
 
     def _stream_chat(
         self,
@@ -84,20 +74,17 @@ class AntigravityEngine(LLMEngine):
         if status_callback:
             status_callback("Processing with Antigravity...")
 
-        # Convert Windows paths to WSL format before sending
-        wsl_cwd = self._to_wsl_path(cwd) if cwd else None
-
         payload = {
             "prompt": prompt,
             "model": self.model,
-            "cwd": wsl_cwd,
+            "cwd": cwd,
             "new_session": new_session,
             "system_instructions": system_instructions,
             "image_base64": image_base64,
             "image_mime_type": image_mime_type,
         }
 
-        logger.info("[AntigravityEngine] POST %s/chat (cwd=%s)", self.service_url, wsl_cwd)
+        logger.info("[AntigravityEngine] POST %s/chat (cwd=%s)", self.service_url, cwd)
 
         try:
             resp = requests.post(
@@ -108,7 +95,7 @@ class AntigravityEngine(LLMEngine):
             )
             resp.raise_for_status()
         except requests.ConnectionError:
-            return f"Error: Cannot connect to Antigravity service at {self.service_url}. Is it running in WSL?"
+            return f"Error: Cannot connect to Antigravity service at {self.service_url}. Is the service running?"
         except requests.HTTPError as e:
             return f"Error: Antigravity service returned {e.response.status_code}"
         except Exception as e:
