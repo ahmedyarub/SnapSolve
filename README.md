@@ -378,3 +378,7 @@ Default hotkeys (configurable in `config.json`):
 
 You can run the application minimized to your system tray by adding the `--background` flag or setting
 `"background": true` in `config.json`. To exit, right-click the system tray icon and select "Exit".
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
