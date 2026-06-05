@@ -2,6 +2,7 @@
 __pycache__/
 config.json
 config/prompt_history.json
+config/recent_folders.json
 .idea/
 sessions/
 *.onnx

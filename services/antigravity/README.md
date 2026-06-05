@@ -15,7 +15,7 @@ A lightweight FastAPI service that wraps the [Google Antigravity SDK](https://gi
 ```json
 {
   "prompt": "What files are in the current directory?",
-  "cwd": "E:\\Toptal\\my-project",
+  "cwd": "C:\\Projects\\my-project",
   "system_instructions": "You are a helpful coding assistant.",
   "new_session": false
 }
