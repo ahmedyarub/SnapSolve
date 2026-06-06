@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QSlider,
 )
-
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 from config.settings import get_audio_devices
 
@@ -181,8 +181,18 @@ class ConfigUI(QDialog):
         self.periodic_screenshots_activity_min_delay = QLineEdit(
             str(self.config.get("periodic_screenshots_activity_min_delay", 5))
         )
+        self.track_active_window = QCheckBox(
+            "Track Active Window with Screenshots"
+        )
 
         self.setWindowTitle("Application Configuration")
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets",
+            "icon.png"
+        )
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         self.resize(600, 500)
 
         self.init_ui()
@@ -360,6 +370,17 @@ class ConfigUI(QDialog):
             self.periodic_screenshots_activity_min_delay.setEnabled
         )
         layout.addRow("Activity Min Delay (s):", self.periodic_screenshots_activity_min_delay)
+
+        self.track_active_window.setChecked(
+            self.config.get("track_active_window", True)
+        )
+        self.track_active_window.setToolTip(
+            "Record the active application name and window title\n"
+            "alongside each periodic screenshot.\n"
+            "Metadata is saved as a JSON sidecar file and displayed\n"
+            "on the Session Timeline as coloured app spans."
+        )
+        layout.addRow("Window Tracking:", self.track_active_window)
 
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
@@ -856,6 +877,8 @@ class ConfigUI(QDialog):
             )
         except ValueError:
             self.config["periodic_screenshots_activity_min_delay"] = 5
+
+        self.config["track_active_window"] = self.track_active_window.isChecked()
 
         # Save Profile Settings
         self.save_current_profile()

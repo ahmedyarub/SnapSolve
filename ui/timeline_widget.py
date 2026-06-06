@@ -3,6 +3,7 @@
 Shows periodic screenshots as a filmstrip, event markers for different
 interaction types, a draggable playhead, and contextual transcription display.
 """
+import logging
 import os
 from datetime import datetime
 from typing import Optional
@@ -20,6 +21,7 @@ from PyQt6.QtGui import (
     QPixmap,
 )
 from PyQt6.QtWidgets import (
+    QFileIconProvider,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -28,11 +30,15 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSplitter,
     QToolTip,
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
+
+_ICON_SIZE = 20  # px — icon drawn inside app track spans
+_SNAPSOLVE_APP_NAME = "SnapSolve"
 
 
 # ── Colour palette ──────────────────────────────────────────────────────
@@ -75,14 +81,25 @@ _THUMB_HEIGHT = 100
 _THUMB_GAP = 6
 _THUMB_RADIUS = 6
 _MARKER_TRACK_HEIGHT = 36
+_APP_TRACK_HEIGHT = 28
 _RULER_HEIGHT = 28
 _MIN_FILMSTRIP_WIDTH = 200
 _PLAYHEAD_WIDTH = 2
 _THUMBNAIL_CACHE_SIZE = 200
 _HEADER_HEIGHT = 32
+_TRANSCRIPTION_HEIGHT = 120
 _ZOOM_MIN = 0.25
 _ZOOM_MAX = 4.0
 _ZOOM_STEP = 0.15
+
+# Colour palette for app name spans — index 0 (red) is reserved for SnapSolve
+_APP_COLORS = [
+    "#e06c75", "#61afef", "#98c379", "#d19a66", "#c678dd",
+    "#56b6c2", "#e5c07b", "#be5046", "#7ec8e3", "#c3e88d",
+    "#ff75a0", "#8da0cb", "#a1d99b", "#fdae6b", "#bcbddc",
+]
+_SNAPSOLVE_COLOR = _APP_COLORS[0]  # red — always reserved for SnapSolve
+_OTHER_APP_COLORS = _APP_COLORS[1:]  # palette for all other apps
 
 
 class _ThumbnailCache:
@@ -270,7 +287,11 @@ class _FilmstripWidget(QWidget):
         if self._hovered_index >= 0:
             ss = self._screenshots[self._hovered_index]
             ts = datetime.fromtimestamp(ss["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-            QToolTip.showText(event.globalPosition().toPoint(), f"Screenshot at {ts}")
+            app = ss.get("data", {}).get("app_name", "")
+            tip = f"Screenshot at {ts}"
+            if app:
+                tip += f" \u2014 {app}"
+            QToolTip.showText(event.globalPosition().toPoint(), tip)
         else:
             QToolTip.hideText()
 
@@ -296,6 +317,289 @@ class _FilmstripWidget(QWidget):
     # noinspection PyPep8Naming
     def sizeHint(self) -> QSize:
         return QSize(self.width(), _THUMB_HEIGHT + 28)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# App Track Widget
+# ═════════════════════════════════════════════════════════════════════════
+
+
+class _AppIconCache:
+    """On-disk + in-memory cache for application icons.
+
+    Icons are extracted from the executable path using ``QFileIconProvider``
+    and saved as 32×32 PNGs in ``config/icon_cache/<process_name>.png``.
+    Subsequent loads read from disk and keep a ``QPixmap`` in memory.
+    """
+
+    _CACHE_DIR = os.path.join("config", "icon_cache")
+    _DISK_SIZE = 32  # saved PNG resolution
+    _SNAPSOLVE_ICON = os.path.join("assets", "icon.png")
+
+    def __init__(self) -> None:
+        self._memory: dict[str, QPixmap] = {}  # process_name -> QPixmap
+        self._provider = QFileIconProvider()
+        os.makedirs(self._CACHE_DIR, exist_ok=True)
+
+    def get_icon(self, process_name: str, exe_path: str, size: int = _ICON_SIZE) -> Optional[QPixmap]:
+        """Return a *size×size* ``QPixmap`` for *process_name*, or ``None``."""
+        if not process_name:
+            return None
+
+        key = process_name.lower()
+
+        # 1. In-memory cache hit
+        if key in self._memory:
+            return self._memory[key]
+
+        # 2. SnapSolve uses the bundled app icon, not the Python exe icon
+        if key == "snapsolve" and os.path.isfile(self._SNAPSOLVE_ICON):
+            pm = QPixmap(self._SNAPSOLVE_ICON)
+            if not pm.isNull():
+                scaled = pm.scaled(
+                    size, size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self._memory[key] = scaled
+                return scaled
+
+        # 3. On-disk cache hit
+        disk_path = os.path.join(self._CACHE_DIR, f"{key}.png")
+        if os.path.isfile(disk_path):
+            pm = QPixmap(disk_path)
+            if not pm.isNull():
+                scaled = pm.scaled(
+                    size, size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self._memory[key] = scaled
+                return scaled
+
+        # 4. Extract from exe path
+        if exe_path and os.path.isfile(exe_path):
+            try:
+                from PyQt6.QtCore import QFileInfo  # noqa: PLC0415
+
+                file_info = QFileInfo(exe_path)
+                icon = self._provider.icon(file_info)
+                if not icon.isNull():
+                    pm = icon.pixmap(self._DISK_SIZE, self._DISK_SIZE)
+                    if not pm.isNull():
+                        # Save to disk cache
+                        pm.save(disk_path, "PNG")
+                        scaled = pm.scaled(
+                            size, size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                        self._memory[key] = scaled
+                        logger.debug("Cached icon for %s -> %s", process_name, disk_path)
+                        return scaled
+            except Exception as exc:
+                logger.debug("Failed to extract icon for %s: %s", process_name, exc)
+
+        return None
+
+
+class _AppSpan:
+    """A contiguous time span where the same application was focused."""
+
+    def __init__(self, app_name: str, start_ts: float, end_ts: float,
+                 window_title: str, exe_path: str) -> None:
+        self.app_name = app_name
+        self.start_ts = start_ts
+        self.end_ts = end_ts
+        self.window_title = window_title  # from the last screenshot in the span
+        self.exe_path = exe_path
+
+
+class _AppTrackWidget(QWidget):
+    """Horizontal track showing coloured spans for each active application."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._spans: list[_AppSpan] = []
+        self._time_start: float = 0.0
+        self._time_end: float = 1.0
+        self._total_width: int = _MIN_FILMSTRIP_WIDTH
+        self._hovered_index: int = -1
+        self._icon_cache = _AppIconCache()
+        self._icons: dict[str, Optional[QPixmap]] = {}  # app_name -> resolved pixmap
+        self._app_colors: dict[str, str] = {}  # app_name -> hex colour
+        self.setMouseTracking(True)
+        self.setFixedHeight(_APP_TRACK_HEIGHT)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_data(
+        self,
+        screenshots: list[dict],
+        time_start: float,
+        time_end: float,
+        total_width: int,
+    ) -> None:
+        """Build app spans from screenshot events and update layout."""
+        self._time_start = time_start
+        self._time_end = time_end
+        self._total_width = max(_MIN_FILMSTRIP_WIDTH, total_width)
+        self.setFixedWidth(self._total_width)
+        self._hovered_index = -1
+        self._spans = self._build_spans(screenshots)
+
+        # Fill gaps — extend each span to meet the next, making the track
+        # continuous with no breaks between apps.
+        for i in range(len(self._spans) - 1):
+            self._spans[i].end_ts = self._spans[i + 1].start_ts
+        if self._spans:
+            self._spans[-1].end_ts = self._time_end
+
+        # Assign sequential colours — red is reserved for SnapSolve
+        self._app_colors.clear()
+        colour_idx = 0
+        for span in self._spans:
+            if span.app_name not in self._app_colors:
+                if span.app_name == _SNAPSOLVE_APP_NAME:
+                    self._app_colors[span.app_name] = _SNAPSOLVE_COLOR
+                else:
+                    self._app_colors[span.app_name] = _OTHER_APP_COLORS[
+                        colour_idx % len(_OTHER_APP_COLORS)
+                    ]
+                    colour_idx += 1
+
+        # Pre-resolve icons for each unique app
+        self._icons.clear()
+        for span in self._spans:
+            if span.app_name not in self._icons:
+                self._icons[span.app_name] = self._icon_cache.get_icon(
+                    span.app_name, span.exe_path
+                )
+
+        self.update()
+
+    @staticmethod
+    def _build_spans(screenshots: list[dict]) -> list[_AppSpan]:
+        """Merge adjacent screenshots with the same app_name into spans."""
+        spans: list[_AppSpan] = []
+        for ss in screenshots:
+            data = ss.get("data", {})
+            app = data.get("app_name", "")
+            if not app:
+                continue
+            ts = ss["timestamp"]
+            title = data.get("window_title", "")
+            exe_path = data.get("exe_path", "")
+            if spans and spans[-1].app_name == app:
+                # Extend the current span
+                spans[-1].end_ts = ts
+                spans[-1].window_title = title
+            else:
+                spans.append(_AppSpan(app, ts, ts, title, exe_path))
+        return spans
+
+    def _time_to_x(self, ts: float) -> int:
+        if self._time_end <= self._time_start:
+            return _THUMB_GAP
+        frac = (ts - self._time_start) / (self._time_end - self._time_start)
+        return int(_THUMB_GAP + frac * (self._total_width - 2 * _THUMB_GAP))
+
+    def _span_rect(self, index: int) -> QRect:
+        span = self._spans[index]
+        x1 = self._time_to_x(span.start_ts)
+        x2 = self._time_to_x(span.end_ts)
+        w = max(x2 - x1, 2)  # ensure at least 2px so the span is visible
+        return QRect(x1, 2, w, _APP_TRACK_HEIGHT - 4)
+
+    # noinspection PyPep8Naming
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Background
+        painter.fillRect(self.rect(), QColor(_BG_DARK))
+
+        font = QFont("Segoe UI", 8)
+        font.setBold(True)
+        painter.setFont(font)
+        fm = QFontMetrics(font)
+
+        for i, span in enumerate(self._spans):
+            rect = self._span_rect(i)
+
+            # Skip off-screen spans
+            if rect.right() < event.rect().left() - 10:
+                continue
+            if rect.left() > event.rect().right() + 10:
+                break
+
+            is_hovered = i == self._hovered_index
+            color = QColor(self._app_colors.get(span.app_name, _APP_COLORS[0]))
+
+            # Span background
+            bg_color = QColor(color)
+            bg_color.setAlpha(100 if is_hovered else 60)
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(rect), 4, 4)
+            painter.fillPath(path, bg_color)
+
+            # Border
+            border_color = QColor(color)
+            border_color.setAlpha(200 if is_hovered else 120)
+            painter.setPen(QPen(border_color, 1.5 if is_hovered else 1))
+            painter.drawRoundedRect(QRectF(rect), 4, 4)
+
+            # App icon (if available)
+            icon = self._icons.get(span.app_name)
+            text_x_offset = 4
+            if icon and not icon.isNull():
+                icon_y = rect.top() + (rect.height() - _ICON_SIZE) // 2
+                icon_x = rect.left() + 3
+                painter.drawPixmap(icon_x, icon_y, icon)
+                text_x_offset = 3 + _ICON_SIZE + 3  # icon padding + icon + gap
+
+            # App name text (clipped to span width)
+            text_color = QColor(color)
+            text_color.setAlpha(255 if is_hovered else 200)
+            painter.setPen(text_color)
+            text_rect = rect.adjusted(text_x_offset, 0, -4, 0)
+            if text_rect.width() > 8:  # only draw text if there's room
+                elided = fm.elidedText(span.app_name, Qt.TextElideMode.ElideRight, text_rect.width())
+                painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
+
+        painter.end()
+
+    # noinspection PyPep8Naming
+    def mouseMoveEvent(self, event) -> None:
+        old = self._hovered_index
+        self._hovered_index = self._hit_test(event.pos())
+        if old != self._hovered_index:
+            self.update()
+
+        if self._hovered_index >= 0:
+            span = self._spans[self._hovered_index]
+            t1 = datetime.fromtimestamp(span.start_ts).strftime("%H:%M:%S")
+            t2 = datetime.fromtimestamp(span.end_ts).strftime("%H:%M:%S")
+            title = span.window_title
+            # Wrap long window titles
+            if len(title) > 80:
+                title = title[:77] + "..."
+            tip = f"\U0001f4bb {span.app_name}  [{t1} \u2013 {t2}]"
+            if title:
+                tip += f"\n{title}"
+            QToolTip.showText(event.globalPosition().toPoint(), tip)
+        else:
+            QToolTip.hideText()
+
+    # noinspection PyPep8Naming
+    def leaveEvent(self, event) -> None:
+        self._hovered_index = -1
+        self.update()
+
+    def _hit_test(self, pos) -> int:
+        for i in range(len(self._spans)):
+            if self._span_rect(i).contains(pos):
+                return i
+        return -1
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -904,15 +1208,6 @@ class SessionTimelineWidget(QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        # Inner splitter: timeline tracks on top, transcription panel below
-        self._inner_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._inner_splitter.setStyleSheet(f"""
-            QSplitter::handle:vertical {{
-                background: {_BORDER};
-                height: 3px;
-            }}
-        """)
-
         # Scroll area for horizontally scrollable timeline tracks
         self._scroll = QScrollArea()
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -949,6 +1244,10 @@ class SessionTimelineWidget(QWidget):
         self._filmstrip.thumbnailClicked.connect(self._on_thumbnail_clicked)
         tracks_layout.addWidget(self._filmstrip)
 
+        # App track (between filmstrip and event markers)
+        self._app_track = _AppTrackWidget()
+        tracks_layout.addWidget(self._app_track)
+
         # Event markers
         self._event_track = _EventTrackWidget()
         self._event_track.eventClicked.connect(self._on_event_clicked)
@@ -960,11 +1259,12 @@ class SessionTimelineWidget(QWidget):
         tracks_layout.addWidget(self._ruler)
 
         self._scroll.setWidget(self._tracks_container)
-        self._inner_splitter.addWidget(self._scroll)
+        content_layout.addWidget(self._scroll)
 
         # Allow dragging playhead anywhere
         self._tracks_container.installEventFilter(self)
         self._filmstrip.installEventFilter(self)
+        self._app_track.installEventFilter(self)
         self._event_track.installEventFilter(self)
         self._ruler.installEventFilter(self)
 
@@ -972,15 +1272,12 @@ class SessionTimelineWidget(QWidget):
         self._playhead = _PlayheadOverlay(self._tracks_container)
         self._playhead.hide()
 
-        # Transcription context panel (resizable via splitter)
+        # Transcription context panel (fixed height, no splitter)
         self._transcription_panel = _TranscriptionPanel()
         self._transcription_panel.lineClicked.connect(self._on_transcription_line_clicked)
-        self._inner_splitter.addWidget(self._transcription_panel)
+        self._transcription_panel.setFixedHeight(_TRANSCRIPTION_HEIGHT)
+        content_layout.addWidget(self._transcription_panel)
 
-        # Default split: 75% tracks, 25% transcription
-        self._inner_splitter.setSizes([300, 100])
-
-        content_layout.addWidget(self._inner_splitter)
         root.addWidget(self._content)
 
         # Placeholder for empty state
@@ -1002,7 +1299,7 @@ class SessionTimelineWidget(QWidget):
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress:
             if getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
-                if obj in (self._tracks_container, self._filmstrip, self._event_track, self._ruler):
+                if obj in (self._tracks_container, self._filmstrip, self._app_track, self._event_track, self._ruler):
                     pos = event.position().toPoint()
                     if obj != self._tracks_container:
                         pos = obj.mapTo(self._tracks_container, pos)
@@ -1141,11 +1438,10 @@ class SessionTimelineWidget(QWidget):
             self._placeholder.hide()
             self.setFixedHeight(_HEADER_HEIGHT)
         else:
-            self.setMinimumHeight(0)
-            self.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
             self._content.show()
             if not self._all_events:
                 self._placeholder.show()
+            self._update_fixed_height()
         self._toggle_btn.setText("▶" if self._collapsed else "▼")
 
     def _load_transcription_with_timestamps(self, session_id: str) -> None:
@@ -1260,16 +1556,45 @@ class SessionTimelineWidget(QWidget):
             self._screenshot_events, self._time_start, self._time_end, total_w
         )
 
+        self._app_track.set_data(
+            self._screenshot_events, self._time_start, self._time_end, total_w
+        )
+
         self._event_track.set_events(
             self._marker_events, self._time_start, self._time_end, total_w
         )
         self._ruler.set_time_range(self._time_start, self._time_end, total_w)
 
-        total_h = (_THUMB_HEIGHT + 28) + _MARKER_TRACK_HEIGHT + _RULER_HEIGHT
-        self._tracks_container.setFixedSize(total_w, total_h)
+        # Show/hide app track based on whether any screenshot has app metadata
+        has_app_data = any(
+            ss.get("data", {}).get("app_name") for ss in self._screenshot_events
+        )
+        self._app_track.setVisible(has_app_data)
+        app_h = _APP_TRACK_HEIGHT if has_app_data else 0
+
+        tracks_h = (_THUMB_HEIGHT + 28) + app_h + _MARKER_TRACK_HEIGHT + _RULER_HEIGHT
+        self._tracks_container.setFixedSize(total_w, tracks_h)
+
+        # Scroll area height = tracks + horizontal scrollbar (8px)
+        self._scroll.setFixedHeight(tracks_h + 8)
 
         self._playhead.set_time_range(self._time_start, self._time_end)
         QTimer.singleShot(10, self._resize_playhead)
+
+        self._update_fixed_height()
+
+    def _update_fixed_height(self) -> None:
+        """Set the widget to a fixed height that fits all components exactly."""
+        if self._collapsed:
+            return
+        has_app_data = any(
+            ss.get("data", {}).get("app_name") for ss in self._screenshot_events
+        )
+        app_h = _APP_TRACK_HEIGHT if has_app_data else 0
+        tracks_h = (_THUMB_HEIGHT + 28) + app_h + _MARKER_TRACK_HEIGHT + _RULER_HEIGHT
+        scroll_h = tracks_h + 8  # + horizontal scrollbar
+        total = _HEADER_HEIGHT + scroll_h + _TRANSCRIPTION_HEIGHT
+        self.setFixedHeight(total)
 
     # noinspection PyPep8Naming
     def wheelEvent(self, event) -> None:

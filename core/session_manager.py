@@ -828,13 +828,30 @@ class SessionManager:
                     continue
                 ts = SessionManager._parse_screenshot_timestamp(fname)
                 if ts is not None:
+                    abs_path = os.path.abspath(os.path.join(screenshots_dir, fname))
+                    data: Dict[str, Any] = {
+                        "filename": fname,
+                        "path": abs_path,
+                    }
+
+                    # Load window metadata from JSON sidecar if available
+                    sidecar_name = os.path.splitext(fname)[0] + ".json"
+                    sidecar_path = os.path.join(screenshots_dir, sidecar_name)
+                    if os.path.isfile(sidecar_path):
+                        try:
+                            with open(sidecar_path, "r", encoding="utf-8") as sf:
+                                sidecar = json.load(sf)
+                            data["app_name"] = sidecar.get("app_name", "")
+                            data["process_name"] = sidecar.get("process_name", "")
+                            data["window_title"] = sidecar.get("window_title", "")
+                            data["exe_path"] = sidecar.get("exe_path", "")
+                        except (json.JSONDecodeError, IOError):
+                            pass
+
                     events.append({
                         "type": "screenshot",
                         "timestamp": ts,
-                        "data": {
-                            "filename": fname,
-                            "path": os.path.abspath(os.path.join(screenshots_dir, fname)),
-                        },
+                        "data": data,
                     })
 
         # 2. Interactions from session.json

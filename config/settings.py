@@ -182,6 +182,7 @@ def _get_default_config():
         "periodic_screenshots_interval": 15,
         "periodic_screenshots_on_activity": False,
         "periodic_screenshots_activity_min_delay": 5,
+        "track_active_window": True,
     }
 
 

@@ -4,6 +4,7 @@ Captures full-screen screenshots during active sessions at a configurable
 interval and/or on keyboard/mouse activity.  Screenshots are saved to
 ``sessions/<session_id>/screenshots/`` with timestamped filenames.
 """
+import json
 import logging
 import os
 import threading
@@ -247,5 +248,27 @@ class PeriodicScreenshotService:
                 self._last_capture_time = time.monotonic()
 
             logger.debug("Periodic screenshot saved: %s", filepath)
+
+            # Write JSON sidecar with active window metadata
+            if self._config.get("track_active_window", True):
+                self._write_window_sidecar(save_dir, timestamp)
+
         except Exception as exc:
             logger.error("Failed to capture periodic screenshot: %s", exc)
+
+    def _write_window_sidecar(self, save_dir: str, timestamp: str) -> None:
+        """Write a JSON sidecar file with the active window's metadata."""
+        try:
+            from core.active_window import get_active_window_info  # noqa: PLC0415
+
+            info = get_active_window_info()
+            if info is None:
+                return
+
+            sidecar_path = os.path.join(save_dir, f"{timestamp}.json")
+            with open(sidecar_path, "w", encoding="utf-8") as f:
+                json.dump(info, f, ensure_ascii=False)
+
+            logger.debug("Window sidecar saved: %s", sidecar_path)
+        except Exception as exc:
+            logger.debug("Failed to write window sidecar: %s", exc)

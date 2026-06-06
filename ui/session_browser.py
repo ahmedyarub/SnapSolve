@@ -315,20 +315,17 @@ class SessionBrowserDialog(QDialog):
         # Default split: 30% tree, 70% content
         self.h_splitter.setSizes([350, 850])
 
-        # --- Outer vertical splitter: content above, timeline below ---
+        # --- Outer vertical splitter: content area (tree + panels) ---
         self.outer_v_splitter = QSplitter(Qt.Orientation.Vertical)
         self.outer_v_splitter.addWidget(self.h_splitter)
 
-        # Timeline widget
+        root_layout.addWidget(self.outer_v_splitter, stretch=1)
+
+        # Timeline widget (fixed height, not inside the splitter)
         self.timeline = SessionTimelineWidget()
         self.timeline.screenshotSelected.connect(self._on_timeline_screenshot_selected)
         self.timeline.interactionSelected.connect(self._on_timeline_interaction_selected)
-        self.outer_v_splitter.addWidget(self.timeline)
-
-        # Default split: 70% content, 30% timeline
-        self.outer_v_splitter.setSizes([600, 280])
-
-        root_layout.addWidget(self.outer_v_splitter, stretch=1)
+        root_layout.addWidget(self.timeline)
 
         # --- Status bar and Optional Select Button ---
         bottom_layout = QHBoxLayout()

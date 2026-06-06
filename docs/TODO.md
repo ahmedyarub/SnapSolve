@@ -3,13 +3,13 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Session Browser**: Full-featured session browser dialog with tree view, prompt/response panels, tag management, filtering, renaming, and multi-delete.
 - [x] **LLM Retry Mechanism**: Automatic retry with exponential backoff (up to 3 attempts) on transient LLM errors (503, rate limits, connection issues). Configurable via `llm_max_retries` and `llm_retry_base_delay`.
 - [x] **Elaborate Session Structure**: Per-session folder hierarchy (`sessions/<uuid>/`) with `session.json`, `images/`, and `transcription.txt`. Speaker name attribution in transcription segments. Source-type icons in session browser. Transparent migration of legacy flat-file sessions.
 - [x] **Transcription & TTS Language Selection**: Configurable transcription language (27 languages + auto-detect) in config UI, control panel, Android app, and CLI. Separate TTS language setting in config UI, CLI, and test_sound. Both languages passed to WhisperLive, Google Speech Recognition, and Piper TTS.
 - [x] **Optional Translation Language**: Configurable real-time translation of transcribed audio via WhisperLive. Target language selectable in config UI, control panel (audio mode), and CLI (`--translation-language`). Translated text displayed in subtitles; original transcription saved to session files.
 - [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
 - [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
+- [x] **App & Window Name Tracking**: Records the active foreground application name, process name, and window title alongside each periodic screenshot as a JSON sidecar file. Displayed on the Session Timeline as coloured app spans with hover tooltips. Configurable via `track_active_window`.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -66,7 +66,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 
 ### Capture & Context
 - [ ] **Accessibility Tree Capture** `[Screenpipe]`: Use the OS accessibility tree (UI Automation on Windows) as a faster primary text extraction method, falling back to PaddleOCR when structured UI data is unavailable (e.g., images, remote desktops).
-- [ ] **App & Window Name Tracking** `[Screenpipe]`: Record the active application name and window title alongside each capture. Useful for session review, filtering, and analytics.
+- [x] **App & Window Name Tracking** `[Screenpipe]`: Record the active application name and window title alongside each capture. Useful for session review, filtering, and analytics.
 - [ ] **Browser URL Tracking** `[Screenpipe]`: Capture the current browser URL when performing screen capture from a browser window. Enables linking captures back to source pages.
 - [x] **Session-Scoped Periodic Screenshots** `[Screenpipe]`: During active sessions, capture periodic full-screen screenshots (configurable interval, e.g., every 10–30 seconds) with optional keyboard/mouse activity triggers. Store in a `screenshots/` subfolder within the active session folder (`sessions/<uuid>/screenshots/`) with filenames including the date and time (e.g., `2026-06-06_10-30-15.png`). Configurable via config UI, CLI, control panel, and Android app.
 - [ ] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
