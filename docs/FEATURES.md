@@ -55,6 +55,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
 *   **Session Timeline View:** Screenpipe-inspired visual timeline in the Session Browser showing periodic screenshots as a scrollable filmstrip, event markers for different interaction types (🎤 audio, 🖼️ OCR, 📐 multi-select, 💬 text, 📝 transcription) with a time ruler. Features a draggable playhead that updates the screenshot preview and shows nearby transcription context. Clicking a transcription line jumps the timeline to that moment; clicking an event marker selects the corresponding prompt in the tree. Collapsible for space efficiency.
 *   **Transcription Persistence:** Audio transcriptions are saved to per-session transcription files with speaker attribution.
+*   **Auto-Summarize Transcription:** Automatically generate and save a summary of the entire audio conversation to the transcription file when recording stops. Configurable with a custom prompt prefix via the Configuration UI.
 *   **Context Manager:** Per-session context configuration dialog with:
     *   **Category Toggles:** Enable/disable inclusion of transcribed text, previous questions, and previous answers in the LLM prompt context. All categories are disabled by default.
     *   **Project Folder:** Set a local project directory for the session (used by the Antigravity engine for agentic coding). The text field autocompletes from recently used folder paths.

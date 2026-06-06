@@ -9,6 +9,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Transcription & TTS Language Selection**: Configurable transcription language (27 languages + auto-detect) in config UI, control panel, Android app, and CLI. Separate TTS language setting in config UI, CLI, and test_sound. Both languages passed to WhisperLive, Google Speech Recognition, and Piper TTS.
 - [x] **Optional Translation Language**: Configurable real-time translation of transcribed audio via WhisperLive. Target language selectable in config UI, control panel (audio mode), and CLI (`--translation-language`). Translated text displayed in subtitles; original transcription saved to session files.
 - [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
+- [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -32,7 +33,6 @@ This document tracks planned features, enhancements, and known issues that need 
     - [ ] **LLM Engine Updates**: Update LLM engines to support dynamic tool calling so models can query external data sources based on audio/OCR triggers.
     - [x] **Antigravity Integration**: `AntigravityEngine` communicates with a local FastAPI service that wraps the Google Antigravity SDK, enabling agentic coding with streaming SSE responses and project folder context.
 - [ ] **Local LLM Integration Tests**: Add robust integration tests that utilize a simple, small, local LLM model to verify the end-to-end processing pipeline offline.
-- [ ] **Summarize Audio Conversation**: Add the ability to summarize an entire audio conversation/session, producing a concise summary of the full transcription.
 
 ## Audio & Speech Features
 - [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
