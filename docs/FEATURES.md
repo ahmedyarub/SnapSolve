@@ -53,6 +53,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Tag Filtering:** Use the filter bar to search sessions by name, title, or tags.
 *   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. The entire session folder is removed.
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.
+*   **Session Timeline View:** Screenpipe-inspired visual timeline in the Session Browser showing periodic screenshots as a scrollable filmstrip, event markers for different interaction types (🎤 audio, 🖼️ OCR, 📐 multi-select, 💬 text, 📝 transcription) with a time ruler. Features a draggable playhead that updates the screenshot preview and shows nearby transcription context. Clicking a transcription line jumps the timeline to that moment; clicking an event marker selects the corresponding prompt in the tree. Collapsible for space efficiency.
 *   **Transcription Persistence:** Audio transcriptions are saved to per-session transcription files with speaker attribution.
 *   **Context Manager:** Per-session context configuration dialog with:
     *   **Category Toggles:** Enable/disable inclusion of transcribed text, previous questions, and previous answers in the LLM prompt context. All categories are disabled by default.

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut, QDesktopServices
+from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut, QDesktopServices
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
@@ -30,6 +30,115 @@ from PyQt6.QtWidgets import (
 
 from core.output import _PopupWebPage
 from core.session_manager import SessionManager
+from ui.timeline_widget import SessionTimelineWidget
+
+
+_PANE_HEADER_HEIGHT = 28
+
+
+class _CollapsiblePane(QWidget):
+    """A widget with a header bar and a collapsible content area.
+
+    When collapsed, the pane shrinks to just the header bar and signals
+    the parent splitter to reclaim the freed space.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        color: str,
+        content_widget: QWidget,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._content_widget = content_widget
+        self._collapsed = False
+        self._title = title
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(0)
+
+        # Header
+        header = QWidget()
+        header.setFixedHeight(_PANE_HEADER_HEIGHT)
+        h_layout = QHBoxLayout(header)
+        h_layout.setContentsMargins(8, 2, 4, 2)
+        h_layout.setSpacing(6)
+
+        self._label = QLabel(title)
+        self._label.setStyleSheet(
+            f"font-size: 13px; font-weight: bold; color: {color};"
+            " padding: 2px 0; background: transparent;"
+        )
+        h_layout.addWidget(self._label)
+        h_layout.addStretch()
+
+        self._btn = QPushButton("▼")
+        self._btn.setFixedSize(20, 20)
+        self._btn.setToolTip("Collapse / Expand")
+        self._btn.setStyleSheet("""
+            QPushButton {
+                background-color: #282c34; color: #8b95a7;
+                border: 1px solid #333840; border-radius: 3px;
+                font-size: 9px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #3e4451; color: #61afef; }
+        """)
+        self._btn.clicked.connect(self.toggle)
+        h_layout.addWidget(self._btn)
+
+        layout.addWidget(header)
+        layout.addWidget(content_widget)
+
+    def toggle(self) -> None:
+        self._collapsed = not self._collapsed
+        if self._collapsed:
+            self._content_widget.hide()
+            self.setFixedHeight(_PANE_HEADER_HEIGHT)
+            self._btn.setText("▶")
+        else:
+            self._content_widget.show()
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
+            self._btn.setText("▼")
+
+    @property
+    def collapsed(self) -> bool:
+        return self._collapsed
+
+
+class _ImageLabel(QLabel):
+    """A QLabel that correctly scales its pixmap while maintaining aspect ratio,
+    without artificially forcing the layout to grow."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setMinimumSize(1, 1)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pixmap: Optional[QPixmap] = None
+
+    def setPixmap(self, p: QPixmap) -> None:
+        self._pixmap = p
+        self.update()
+
+    # noinspection PyPep8Naming
+    def paintEvent(self, event) -> None:
+        if self._pixmap and not self._pixmap.isNull():
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            
+            scaled = self._pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
+        else:
+            super().paintEvent(event)
 
 
 # --- Tag badge colors (cycled for variety) ---
@@ -78,6 +187,11 @@ class SessionBrowserDialog(QDialog):
         self.selected_session_id: Optional[str] = None
         self._empty_count: int = 0
         self.btn_delete_empty: QPushButton | None = None
+        self.timeline: SessionTimelineWidget | None = None
+        self.screenshot_label: QLabel | None = None
+        self.screenshot_pane: _CollapsiblePane | None = None
+        self.prompt_pane: _CollapsiblePane | None = None
+        self.response_pane: _CollapsiblePane | None = None
 
         # Build UI
         self._build_ui()
@@ -144,38 +258,41 @@ class SessionBrowserDialog(QDialog):
         delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.tree)
         delete_shortcut.activated.connect(self._handle_delete_selected)
 
-        # Right: vertical splitter (prompt above, response below)
+        # Right: vertical splitter with 3 collapsible panes
         self.v_splitter = QSplitter(Qt.Orientation.Vertical)
 
-        # Prompt panel
-        prompt_container = QWidget()
-        prompt_layout = QVBoxLayout(prompt_container)
-        prompt_layout.setContentsMargins(4, 4, 4, 0)
-        prompt_layout.setSpacing(2)
-        prompt_header = QLabel("📝 Prompt")
-        prompt_header.setStyleSheet(
-            "font-size: 13px; font-weight: bold; color: #61afef; padding: 4px 8px;"
-            " background: transparent;"
+        # ── Screenshot pane ──
+        self.screenshot_label = _ImageLabel()
+        self.screenshot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.screenshot_label.setStyleSheet(
+            "background: #1e1e1e; border: 1px solid #333840; border-radius: 4px;"
         )
-        prompt_layout.addWidget(prompt_header)
+        self.screenshot_label.setScaledContents(False)
+        self.screenshot_label.setWordWrap(True)
+        self.screenshot_label.setText(
+            '<span style="color:#636d83; font-style:italic;">'
+            'Select a screenshot from the timeline</span>'
+        )
+        self.screenshot_pane = _CollapsiblePane(
+            "📸 Screenshot", "#d19a66", self.screenshot_label
+        )
+        self.v_splitter.addWidget(self.screenshot_pane)
+
+        # ── Prompt pane ──
         self.prompt_view = QTextBrowser()
         self.prompt_view.setOpenLinks(False)
         self.prompt_view.anchorClicked.connect(QDesktopServices.openUrl)
         self.prompt_view.setReadOnly(True)
-        prompt_layout.addWidget(self.prompt_view)
-        self.v_splitter.addWidget(prompt_container)
-
-        # Response panel (QWebEngineView reusing popup.html)
-        response_container = QWidget()
-        response_layout = QVBoxLayout(response_container)
-        response_layout.setContentsMargins(4, 0, 4, 4)
-        response_layout.setSpacing(2)
-        response_header = QLabel("💬 Response")
-        response_header.setStyleSheet(
-            "font-size: 13px; font-weight: bold; color: #98c379; padding: 4px 8px;"
-            " background: transparent;"
+        self.prompt_pane = _CollapsiblePane(
+            "📝 Prompt", "#61afef", self.prompt_view
         )
-        response_layout.addWidget(response_header)
+        self.v_splitter.addWidget(self.prompt_pane)
+
+        # ── Response pane ──
+        response_wrapper = QWidget()
+        response_wrapper_layout = QVBoxLayout(response_wrapper)
+        response_wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        response_wrapper_layout.setSpacing(0)
         self.response_view = QWebEngineView()
         self._response_page = _PopupWebPage(self.response_view)
         self.response_view.setPage(self._response_page)
@@ -184,18 +301,34 @@ class SessionBrowserDialog(QDialog):
         )
         self._response_page.setBackgroundColor(QColor(30, 30, 30))
         self.response_view.loadFinished.connect(self._on_response_loaded)
-        response_layout.addWidget(self.response_view)
-        self.v_splitter.addWidget(response_container)
+        response_wrapper_layout.addWidget(self.response_view)
+        self.response_pane = _CollapsiblePane(
+            "💬 Response", "#98c379", response_wrapper
+        )
+        self.v_splitter.addWidget(self.response_pane)
 
-        # Default split: 30% prompt, 70% response
-        self.v_splitter.setSizes([250, 550])
+        # Default split: 25% screenshot, 25% prompt, 50% response
+        self.v_splitter.setSizes([200, 200, 400])
 
         self.h_splitter.addWidget(self.v_splitter)
 
         # Default split: 30% tree, 70% content
         self.h_splitter.setSizes([350, 850])
 
-        root_layout.addWidget(self.h_splitter, stretch=1)
+        # --- Outer vertical splitter: content above, timeline below ---
+        self.outer_v_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.outer_v_splitter.addWidget(self.h_splitter)
+
+        # Timeline widget
+        self.timeline = SessionTimelineWidget()
+        self.timeline.screenshotSelected.connect(self._on_timeline_screenshot_selected)
+        self.timeline.interactionSelected.connect(self._on_timeline_interaction_selected)
+        self.outer_v_splitter.addWidget(self.timeline)
+
+        # Default split: 70% content, 30% timeline
+        self.outer_v_splitter.setSizes([600, 280])
+
+        root_layout.addWidget(self.outer_v_splitter, stretch=1)
 
         # --- Status bar and Optional Select Button ---
         bottom_layout = QHBoxLayout()
@@ -414,12 +547,24 @@ class SessionBrowserDialog(QDialog):
 
             # Source type icon
             source = interaction.get("source", "text")
-            if source == "audio":
-                icon = "🎤"
-            elif source == "image" or interaction.get("image"):
-                icon = "🖼️"
-            else:
-                icon = "💬"
+            
+            # Retroactive fix for old sessions
+            images = interaction.get("image", [])
+            if isinstance(images, str):
+                images = [images] if images else []
+
+            if source == "text":
+                if interaction.get("speaker_name"):
+                    source = "audio"
+                elif len(images) > 1:
+                    source = "image_multi"
+                elif len(images) == 1:
+                    source = "image"
+            elif source == "image" and len(images) > 1:
+                source = "image_multi"
+
+            from ui.timeline_widget import _EVENT_ICONS
+            icon = _EVENT_ICONS.get(source, "💬")
 
             child = QTreeWidgetItem([f"{icon}  {excerpt}"])
             child.setData(0, Qt.ItemDataRole.UserRole, session_id)
@@ -451,7 +596,11 @@ class SessionBrowserDialog(QDialog):
 
         item_type = current.data(0, Qt.ItemDataRole.UserRole + 1)
         if item_type != "prompt":
-            # Clicked a session root — clear panels
+            # Clicked a session root — load timeline + clear panels
+            session_id = current.data(0, Qt.ItemDataRole.UserRole)
+            if session_id and self.timeline:
+                self._current_session_id = session_id
+                self.timeline.load_session(session_id)
             self.prompt_view.clear()
             self._render_response("")
             return
@@ -533,6 +682,13 @@ class SessionBrowserDialog(QDialog):
         self.prompt_view.setHtml(full_prompt)
         self._render_response(interaction.get("response", ""))
 
+        # Navigate the timeline to this interaction's timestamp
+        if self.timeline and session_id:
+            if self._current_session_id != session_id:
+                self._current_session_id = session_id
+                self.timeline.load_session(session_id)
+            self.timeline.navigate_to_interaction(prompt_index)
+
         if self.selection_mode:
             self.btn_select.setEnabled(True)
 
@@ -569,6 +725,66 @@ class SessionBrowserDialog(QDialog):
         for js in self._pending_response_js:
             self.response_view.page().runJavaScript(js)
         self._pending_response_js.clear()
+
+    # ------------------------------------------------------------------ #
+    #  Timeline signal handlers
+    # ------------------------------------------------------------------ #
+
+    def _on_timeline_screenshot_selected(self, path: str):
+        """Display a full-resolution screenshot in the dedicated screenshot pane."""
+        import os
+        from datetime import datetime
+
+        if not self.screenshot_label:
+            return
+
+        abs_path = os.path.abspath(path)
+        pix = QPixmap(abs_path)
+        if pix.isNull():
+            self.screenshot_label.setText(
+                '<span style="color:#e06c75;">Failed to load screenshot</span>'
+            )
+            return
+
+        self.screenshot_label.setPixmap(pix)
+
+        # Update pane header with timestamp
+        fname = os.path.basename(path)
+        stem = os.path.splitext(fname)[0]
+        try:
+            dt = datetime.strptime(stem, "%Y-%m-%d_%H-%M-%S")
+            time_str = dt.strftime("%H:%M:%S")
+        except ValueError:
+            time_str = fname
+
+        if self.screenshot_pane:
+            self.screenshot_pane._label.setText(f"📸 Screenshot at {time_str}")
+
+    def _on_timeline_interaction_selected(self, index: int):
+        """Select the corresponding prompt child in the tree when an event marker is clicked."""
+        if not self._current_session_id:
+            return
+
+        # Find the session root item
+        for i in range(self.tree.topLevelItemCount()):
+            root_item = self.tree.topLevelItem(i)
+            if root_item is None:
+                continue
+            sid = root_item.data(0, Qt.ItemDataRole.UserRole)
+            if sid != self._current_session_id:
+                continue
+
+            # Find the child at the given interaction index
+            if index < root_item.childCount():
+                child = root_item.child(index)
+                # Expand parent and select child (block signals to avoid loop)
+                root_item.setExpanded(True)
+                self.tree.blockSignals(True)
+                self.tree.setCurrentItem(child)
+                self.tree.blockSignals(False)
+                # Manually trigger the selection handler
+                self._on_tree_selection(child, None)
+            break
 
     # ------------------------------------------------------------------ #
     #  Context menu (rename / tags)

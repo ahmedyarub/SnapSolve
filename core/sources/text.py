@@ -3,9 +3,12 @@ import threading
 
 
 class TextSource(Source):
+    def __init__(self):
+        self._source_name = "text"
+
     @property
     def name(self):
-        return "text"
+        return getattr(self, "_source_name", "text")
 
     def get_text(
         self, text: str = None, cancel_event: threading.Event = None, *args, **kwargs
