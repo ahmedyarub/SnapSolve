@@ -39,7 +39,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
 - [ ] **Audio Level Visualization**: Add real-time audio level visualization during recording.
 - [ ] **Fix Recording from Meetup Calls**: Investigate and fix issues with recording audio from Meetup/virtual meeting applications.
-- [ ] **Dual Audio Channel Recording**: Listen to both microphone and speaker simultaneously and record them as separate sentences, enabling speaker-attributed transcription.
+- [ ] **Dual Audio Channel Recording** `[Screenpipe]`: Listen to both microphone and speaker simultaneously and record them as separate sentences, enabling speaker-attributed transcription.
 
 ## Remote Control & Android Integration
 - [ ] **Android Session Browsing**: Allow browsing sessions and retrieving response images directly in the Android app.
@@ -53,6 +53,33 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Cross-Platform Testing**: Improve testing coverage for different operating systems (Windows, macOS, Linux).
 - [ ] **Error Recovery Testing**: Enhance testing for error recovery and fallback mechanisms.
 - [ ] **Audio Device Compatibility**: Improve testing with various audio devices and configurations.
+
+## Screenpipe-Inspired Features
+
+Features identified from a deep comparison with [Screenpipe](https://github.com/screenpipe/screenpipe), a complementary open-source 24/7 screen + audio recording tool. See [snapsolve_vs_screenpipe.md](../docs/snapsolve_vs_screenpipe.md) for the full analysis.
+
+### Extensibility & API
+- [ ] **REST API** `[Screenpipe]`: Add a lightweight local REST API (e.g., `localhost:3031`) exposing session data and query endpoints (`GET /sessions`, `GET /session/{id}`, `POST /query`). This unlocks third-party integrations without building each one manually.
+- [ ] **MCP Server** `[Screenpipe]`: Expose SnapSolve's session history, captured OCR text, and transcription data as an MCP server so external AI tools (Claude Desktop, Cursor, VS Code) can query past sessions.
+- [ ] **Plugin System (Pipes-Inspired)** `[Screenpipe]`: Implement a plugin/extension framework for context providers and post-session actions. Screenpipe uses markdown-defined "Pipes" — SnapSolve could adopt a similar pattern for community-built extensions (e.g., Jira sync, Obsidian export, Notion push).
+- [ ] **Webhook / Post-Session Actions** `[Screenpipe]`: After a session ends or a summary is generated, trigger configurable HTTP webhook actions (e.g., send summary to Slack, create Jira ticket, save to Obsidian vault).
+- [ ] **SDK for Integrations** `[Screenpipe]`: Provide a lightweight Python SDK or documented API contract that allows developers to build custom tools on top of SnapSolve's capture and session data.
+
+### Capture & Context
+- [ ] **Accessibility Tree Capture** `[Screenpipe]`: Use the OS accessibility tree (UI Automation on Windows) as a faster primary text extraction method, falling back to PaddleOCR when structured UI data is unavailable (e.g., images, remote desktops).
+- [ ] **App & Window Name Tracking** `[Screenpipe]`: Record the active application name and window title alongside each capture. Useful for session review, filtering, and analytics.
+- [ ] **Browser URL Tracking** `[Screenpipe]`: Capture the current browser URL when performing screen capture from a browser window. Enables linking captures back to source pages.
+- [ ] **Session-Scoped Periodic Screenshots** `[Screenpipe]`: During active audio recording sessions, capture periodic full-screen screenshots (configurable interval, e.g., every 10–30 seconds) without OCR processing. Store in a `screenshots/` subfolder within the active session folder (`sessions/<uuid>/screenshots/`) with filenames including the date and time (e.g., `2026-06-06_10-30-15.png`). These screenshots feed into the Session Timeline View for visual playback of what was on screen during the session.
+- [ ] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
+
+### Privacy & Security
+- [ ] **PII Filtering** `[Screenpipe]`: Add AI-based PII redaction (names, emails, phone numbers, SSNs) to OCR text and transcriptions before sending to cloud LLM APIs. Critical for SaaS trust and enterprise adoption.
+- [ ] **Encryption at Rest** `[Screenpipe]`: Optionally encrypt session data (JSON files, images, transcriptions) stored on disk using a user-provided key or OS credential store.
+
+### Search & Review
+- [ ] **Natural Language Session Search** `[Screenpipe]`: Enable semantic search across all session history using embeddings (e.g., Gemini `text-embedding-004`). Allow queries like "What did the interviewer ask about microservices?" across weeks of sessions.
+- [ ] **Session Timeline View** `[Screenpipe]`: Add a visual timeline for each session showing timestamped events (recording start, screenshots, OCR captures, LLM queries, responses) rendered in the Session Browser.
+- [ ] **Auto-Summary on Session End** `[Screenpipe]`: Automatically generate a structured summary (key topics, questions asked, answers given, action items) when a session ends. Store as `session_summary.md` in the session folder.
 
 ## Documentation
 - [ ] **User Guide**: Create comprehensive user guide with screenshots and tutorials.
