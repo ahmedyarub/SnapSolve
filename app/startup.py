@@ -26,6 +26,7 @@ from app.handlers.cancel import handle_cancel
 from app.handlers.capture import handle_capture
 from app.handlers.multi_capture import handle_multi_capture, handle_end_multi_capture
 from app.handlers.navigation import handle_open_context_manager
+from app.handlers.periodic_screenshots import handle_toggle_periodic_screenshots
 from app.handlers.session import handle_toggle_chat_sessions
 from app.handlers.source import handle_cycle_source, handle_reselect
 from app.handlers.text import handle_text_submit
@@ -39,6 +40,7 @@ from core.output import (
     set_app_callbacks,
     toggle_control_panel,
     set_chat_sessions_btn_state,
+    set_periodic_screenshots_btn_state,
 )
 from core.remote_control_server import start_remote_control_server
 from core.session_manager import SessionManager
@@ -151,6 +153,7 @@ def _setup_ui_callbacks(config, active_profile, active_prompt_text, session_mana
             config, active_profile, active_prompt_text, is_long_press
         ),
         "open_context_manager": lambda: handle_open_context_manager(session_manager),
+        "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(config),
     }
     return callbacks
 
@@ -241,6 +244,14 @@ def main():
         active_profile["enable_chat_sessions"] = config["enable_chat_sessions"]
 
     set_chat_sessions_btn_state(active_profile.get("enable_chat_sessions", True))
+
+    # Initialize periodic screenshot service
+    from core.periodic_screenshots import PeriodicScreenshotService  # noqa: PLC0415
+
+    state.periodic_screenshot_service = PeriodicScreenshotService(config, state.session_manager)
+    if config.get("periodic_screenshots_enabled", False):
+        state.periodic_screenshot_service.start()
+    set_periodic_screenshots_btn_state(config.get("periodic_screenshots_enabled", False))
 
     # Start remote control server if enabled
     if config.get("enable_remote_control", False):

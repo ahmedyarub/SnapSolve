@@ -300,6 +300,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         handle_reselect,
         handle_toggle_panel,
         handle_toggle_chat_sessions,
+        handle_toggle_periodic_screenshots,
     )
     from config.settings import load_profiles, load_prompts  # noqa: PLC0415
 
@@ -338,6 +339,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
             "cycle_source": lambda: handle_cycle_source(app_config, active_profile),
             "toggle_panel": handle_toggle_panel,
             "new_chat_session": lambda: handle_new_chat_session(app_config),
+            "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(app_config),
         }
 
         fn = action_map.get(action)
@@ -784,6 +786,7 @@ class RemoteControlServer:
             "buttons": state,
             "has_new_response_image": has_image,
             "transcription_language": self.app_config.get("transcription_language", "en"),
+            "periodic_screenshots_enabled": self.app_config.get("periodic_screenshots_enabled", False),
         })
 
         try:

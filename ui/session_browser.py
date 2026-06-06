@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QApplication,
     QAbstractItemView,
+    QPushButton,
 )
 
 from core.output import _PopupWebPage
@@ -75,6 +76,8 @@ class SessionBrowserDialog(QDialog):
         self._pending_response_js: list[str] = []
         self._response_page: _PopupWebPage | None = None
         self.selected_session_id: Optional[str] = None
+        self._empty_count: int = 0
+        self.btn_delete_empty: QPushButton | None = None
 
         # Build UI
         self._build_ui()
@@ -101,6 +104,24 @@ class SessionBrowserDialog(QDialog):
         self.filter_input.textChanged.connect(self._apply_filter)
         filter_bar.addWidget(filter_icon)
         filter_bar.addWidget(self.filter_input)
+
+        # "Delete Empty Sessions" button
+        self.btn_delete_empty = QPushButton("🗑️ Delete Empty")
+        self.btn_delete_empty.setToolTip(
+            "Delete all sessions with no interactions and no screenshots"
+        )
+        self.btn_delete_empty.setStyleSheet("""
+            QPushButton {
+                background-color: #3e4451; color: #e06c75; font-weight: bold;
+                border: 1px solid #e06c75; border-radius: 4px; padding: 4px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover { background-color: #4b5263; }
+            QPushButton:disabled { color: #636d83; border-color: #636d83; }
+        """)
+        self.btn_delete_empty.clicked.connect(self._handle_delete_empty_sessions)
+        filter_bar.addWidget(self.btn_delete_empty)
+
         root_layout.addLayout(filter_bar)
 
         # --- Main horizontal splitter ---
@@ -188,7 +209,6 @@ class SessionBrowserDialog(QDialog):
         bottom_layout.addWidget(self.status_bar, stretch=1)
         
         if self.selection_mode:
-            from PyQt6.QtWidgets import QPushButton
             self.btn_select = QPushButton("✔️ Select Session")
             self.btn_select.setStyleSheet("""
                 QPushButton {
@@ -301,6 +321,7 @@ class SessionBrowserDialog(QDialog):
 
     def _load_sessions(self):
         self._sessions_meta = SessionManager.list_all_sessions()
+        self._empty_count = SessionManager.count_empty_sessions()
         self._populate_tree()
 
     def _populate_tree(self, filter_text: str = ""):
@@ -371,7 +392,10 @@ class SessionBrowserDialog(QDialog):
 
         self.status_bar.showMessage(
             f"{visible_sessions} sessions  •  {total_prompts} prompts"
+            f"  •  {self._empty_count} empty (hidden)"
         )
+        if self.btn_delete_empty is not None:
+            self.btn_delete_empty.setEnabled(self._empty_count > 0)
 
     def _populate_session_children(self, root_item: QTreeWidgetItem, session_id: str):
         """Add prompt excerpt children to a session root item."""
@@ -709,6 +733,29 @@ class SessionBrowserDialog(QDialog):
         self._render_response("")
         self._load_sessions()
         self.status_bar.showMessage(f"Deleted {deleted} session(s)", 5000)
+
+    def _handle_delete_empty_sessions(self):
+        """Delete all empty sessions (no interactions and no screenshots)."""
+        if self._empty_count == 0:
+            return
+
+        reply = QMessageBox.warning(
+            self,
+            "Delete Empty Sessions",
+            f"Delete {self._empty_count} empty session(s) with no interactions"
+            f" and no screenshots?\n\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted = SessionManager.delete_empty_sessions()
+        self._loaded_sessions.clear()
+        self.prompt_view.clear()
+        self._render_response("")
+        self._load_sessions()
+        self.status_bar.showMessage(f"Deleted {deleted} empty session(s)", 5000)
 
     # ------------------------------------------------------------------ #
     #  Filter

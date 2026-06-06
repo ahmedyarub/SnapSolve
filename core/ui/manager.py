@@ -75,6 +75,7 @@ class UIManager(QObject):
         ui_signals.open_context_manager.connect(self._on_open_context_manager)
         ui_signals.set_transcription_language.connect(self._on_set_transcription_language)
         ui_signals.update_chat_sessions_btn.connect(self._on_update_chat_sessions_btn)
+        ui_signals.update_periodic_screenshots_btn.connect(self._on_update_periodic_screenshots_btn)
         ui_signals.ocr_text_to_input.connect(self._on_ocr_text_to_input)
 
     def _on_update_chat_sessions_btn(self, enabled: bool):
@@ -83,6 +84,14 @@ class UIManager(QObject):
             self.panel.btn_chat_sessions.setText("💬 Chat Sessions: ON")
         else:
             self.panel.btn_chat_sessions.setText("💬 Chat Sessions: OFF")
+        self.panel._apply_opacity(self._global_opacity)
+
+    def _on_update_periodic_screenshots_btn(self, enabled: bool):
+        self.panel.periodic_screenshots_enabled = enabled
+        if enabled:
+            self.panel.btn_periodic_screenshots.setText("📷 Screenshots: ON")
+        else:
+            self.panel.btn_periodic_screenshots.setText("📷 Screenshots: OFF")
         self.panel._apply_opacity(self._global_opacity)
 
     def _on_open_url(self, url: str):

@@ -39,6 +39,18 @@ def _session_transcription_path(session_id: str) -> str:
     return os.path.join(_session_dir(session_id), "transcription.txt")
 
 
+def _session_screenshots_dir(session_id: str) -> str:
+    """Return the per-session screenshots directory: sessions/<session_id>/screenshots/"""
+    return os.path.join(_session_dir(session_id), "screenshots")
+
+
+def _has_screenshots(session_id: str) -> bool:
+    """Return True if the session has at least one captured screenshot."""
+    screenshots_dir = _session_screenshots_dir(session_id)
+    if not os.path.isdir(screenshots_dir):
+        return False
+    return any(f.endswith(".png") for f in os.listdir(screenshots_dir))
+
 def _legacy_session_json_path(session_id: str) -> str:
     """Return the legacy flat-file session path: sessions/<session_id>.json"""
     return os.path.join(SESSIONS_DIR, f"{session_id}.json")
@@ -156,6 +168,7 @@ class SessionManager:
         """Create the per-session directory structure."""
         os.makedirs(_session_dir(session_id), exist_ok=True)
         os.makedirs(_session_images_dir(session_id), exist_ok=True)
+        os.makedirs(_session_screenshots_dir(session_id), exist_ok=True)
 
     def start_new_session(self) -> str:
         """Starts a completely new session and returns its ID."""
@@ -527,7 +540,49 @@ class SessionManager:
 
     @staticmethod
     def list_all_sessions() -> List[Dict[str, Any]]:
-        """Returns lightweight metadata for all sessions, sorted by updated_at descending.
+        """Returns lightweight metadata for all non-empty sessions, sorted by updated_at descending.
+
+        Scans for both new-style (folder-based) and legacy (flat-file) sessions.
+        Legacy sessions are transparently migrated on access.
+        """
+        sessions = SessionManager._list_all_sessions_unfiltered()
+
+        # Filter out empty sessions (no interactions and no screenshots)
+        sessions = [
+            s for s in sessions
+            if s["interaction_count"] > 0
+            or _has_screenshots(s["id"])
+        ]
+
+        sessions.sort(key=lambda s: s["updated_at"], reverse=True)
+        return sessions
+
+    @staticmethod
+    def count_empty_sessions() -> int:
+        """Return the number of empty sessions (no interactions and no screenshots)."""
+        all_sessions = SessionManager._list_all_sessions_unfiltered()
+        return sum(
+            1 for s in all_sessions
+            if s["interaction_count"] == 0 and not _has_screenshots(s["id"])
+        )
+
+    @staticmethod
+    def delete_empty_sessions() -> int:
+        """Delete all empty sessions and return the count of deleted sessions."""
+        all_sessions = SessionManager._list_all_sessions_unfiltered()
+        empty_ids = [
+            s["id"] for s in all_sessions
+            if s["interaction_count"] == 0 and not _has_screenshots(s["id"])
+        ]
+        deleted = 0
+        for sid in empty_ids:
+            if SessionManager.delete_session(sid):
+                deleted += 1
+        return deleted
+
+    @staticmethod
+    def _list_all_sessions_unfiltered() -> List[Dict[str, Any]]:
+        """Returns lightweight metadata for ALL sessions (including empty ones).
 
         Scans for both new-style (folder-based) and legacy (flat-file) sessions.
         Legacy sessions are transparently migrated on access.
@@ -593,10 +648,6 @@ class SessionManager:
             except (json.JSONDecodeError, IOError):
                 continue
 
-        # Filter out empty sessions (no interactions)
-        sessions = [s for s in sessions if s["interaction_count"] > 0]
-
-        sessions.sort(key=lambda s: s["updated_at"], reverse=True)
         return sessions
 
     @staticmethod

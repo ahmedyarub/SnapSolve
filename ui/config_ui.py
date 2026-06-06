@@ -166,6 +166,18 @@ class ConfigUI(QDialog):
             str(self.config.get("llm_retry_base_delay", 5))
         )
 
+        # Periodic Screenshots settings
+        self.periodic_screenshots_enabled = QCheckBox("Enable Periodic Screenshots")
+        self.periodic_screenshots_interval = QLineEdit(
+            str(self.config.get("periodic_screenshots_interval", 15))
+        )
+        self.periodic_screenshots_on_activity = QCheckBox(
+            "Capture on Keyboard/Mouse Activity"
+        )
+        self.periodic_screenshots_activity_min_delay = QLineEdit(
+            str(self.config.get("periodic_screenshots_activity_min_delay", 5))
+        )
+
         self.setWindowTitle("Application Configuration")
         self.resize(600, 500)
 
@@ -319,6 +331,31 @@ class ConfigUI(QDialog):
         layout.addRow("Antigravity IDE Path:", antigravity_layout)
 
         layout.addRow("Antigravity Service URL:", self.antigravity_service_url)
+
+        # Periodic Screenshots
+        layout.addRow(QLabel("<b>Periodic Screenshots</b>"))
+
+        self.periodic_screenshots_enabled.setChecked(
+            self.config.get("periodic_screenshots_enabled", False)
+        )
+        layout.addRow("Periodic Screenshots:", self.periodic_screenshots_enabled)
+
+        self.periodic_screenshots_interval.setPlaceholderText("e.g. 15")
+        layout.addRow("Screenshot Interval (s):", self.periodic_screenshots_interval)
+
+        self.periodic_screenshots_on_activity.setChecked(
+            self.config.get("periodic_screenshots_on_activity", False)
+        )
+        layout.addRow("Activity Trigger:", self.periodic_screenshots_on_activity)
+
+        self.periodic_screenshots_activity_min_delay.setPlaceholderText("e.g. 5")
+        self.periodic_screenshots_activity_min_delay.setEnabled(
+            self.periodic_screenshots_on_activity.isChecked()
+        )
+        self.periodic_screenshots_on_activity.toggled.connect(
+            self.periodic_screenshots_activity_min_delay.setEnabled
+        )
+        layout.addRow("Activity Min Delay (s):", self.periodic_screenshots_activity_min_delay)
 
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
@@ -784,6 +821,27 @@ class ConfigUI(QDialog):
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:
             del self.config["piper_path"]
+
+        # Periodic Screenshots
+        self.config["periodic_screenshots_enabled"] = (
+            self.periodic_screenshots_enabled.isChecked()
+        )
+        try:
+            self.config["periodic_screenshots_interval"] = int(
+                self.periodic_screenshots_interval.text().strip() or "15"
+            )
+        except ValueError:
+            self.config["periodic_screenshots_interval"] = 15
+
+        self.config["periodic_screenshots_on_activity"] = (
+            self.periodic_screenshots_on_activity.isChecked()
+        )
+        try:
+            self.config["periodic_screenshots_activity_min_delay"] = int(
+                self.periodic_screenshots_activity_min_delay.text().strip() or "5"
+            )
+        except ValueError:
+            self.config["periodic_screenshots_activity_min_delay"] = 5
 
         # Save Profile Settings
         self.save_current_profile()

@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     private lateinit var newChatButton: MaterialButton
     private lateinit var cancelButton: MaterialButton
     private lateinit var typeTextButton: MaterialButton
+    private lateinit var periodicScreenshotsButton: MaterialButton
     private lateinit var langSpinner: Spinner
 
     // Language codes matching the spinner entries (see strings.xml)
@@ -141,6 +142,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         newChatButton = findViewById(R.id.newChatButton)
         cancelButton = findViewById(R.id.cancelButton)
         typeTextButton = findViewById(R.id.typeTextButton)
+        periodicScreenshotsButton = findViewById(R.id.periodicScreenshotsButton)
         langSpinner = findViewById(R.id.langSpinner)
 
         touchpadView.setRemoteControlClient(remoteControlClient)
@@ -260,13 +262,21 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         }
     }
 
-    override fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean, transcriptionLanguage: String?) {
+    override fun onStateUpdate(
+        buttons: JSONObject?,
+        hasNewResponseImage: Boolean,
+        transcriptionLanguage: String?,
+        periodicScreenshotsEnabled: Boolean?,
+    ) {
         runOnUiThread {
             if (buttons != null) {
                 updateButtonStates(buttons)
             }
             if (transcriptionLanguage != null) {
                 syncLanguageSpinner(transcriptionLanguage)
+            }
+            if (periodicScreenshotsEnabled != null) {
+                syncPeriodicScreenshotsButton(periodicScreenshotsEnabled)
             }
         }
         if (hasNewResponseImage) {
@@ -295,6 +305,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         newChatButton.setOnClickListener { executeAction("new_chat_session") }
         cancelButton.setOnClickListener { executeAction("cancel") }
         typeTextButton.setOnClickListener { showTypeTextDialog() }
+        periodicScreenshotsButton.setOnClickListener { executeAction("toggle_periodic_screenshots") }
     }
 
     /**
@@ -338,7 +349,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         val actionButtons = listOf(
             captureButton, reselectButton, multiCaptureButton, endMultiButton,
             toggleStitchingButton, cycleSourceButton, togglePanelButton,
-            newChatButton, cancelButton, typeTextButton,
+            newChatButton, cancelButton, typeTextButton, periodicScreenshotsButton,
         )
         actionButtons.forEach { it.isEnabled = connected }
         langSpinner.isEnabled = connected
@@ -365,6 +376,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         updateBtn(toggleStitchingButton, "stitching")
         updateBtn(cycleSourceButton, "cycle")
         updateBtn(cancelButton, "cancel")
+        updateBtn(periodicScreenshotsButton, "periodic_screenshots")
         // newChatButton and togglePanelButton are kept always visible.
     }
 
@@ -448,6 +460,13 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
             suppressLangSync = true
             langSpinner.setSelection(idx)
         }
+    }
+
+    /**
+     * Sync the periodic screenshots button text to match the server state.
+     */
+    private fun syncPeriodicScreenshotsButton(enabled: Boolean) {
+        periodicScreenshotsButton.text = if (enabled) "📷 Screenshots: ON" else "📷 Screenshots: OFF"
     }
 
     private fun showTypeTextDialog() {

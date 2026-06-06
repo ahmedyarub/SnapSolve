@@ -67,6 +67,11 @@ def set_chat_sessions_btn_state(enabled: bool):
     ui_signals.update_chat_sessions_btn.emit(enabled)
 
 
+def set_periodic_screenshots_btn_state(enabled: bool):
+    """Update the periodic screenshots toggle button text (thread-safe)."""
+    ui_signals.update_periodic_screenshots_btn.emit(enabled)
+
+
 def send_ocr_text_to_input(text: str):
     """Send OCR'd text to the text input widget (thread-safe)."""
     ui_signals.ocr_text_to_input.emit(text)

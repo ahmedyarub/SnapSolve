@@ -24,6 +24,7 @@
     <string name="btn_new_chat">💬 New Chat</string>
     <string name="btn_cancel">❌ Cancel</string>
     <string name="btn_type_text">⌨️ Type Text</string>
+    <string name="btn_periodic_screenshots">📷 Screenshots</string>
 
     <!-- Touchpad instructions -->
     <string name="touchpad_instructions">Touchpad: Single tap = Left click | Double tap = Double click | Two-finger tap = Right click | Three-finger tap = Middle click | Two-finger scroll = Scroll | Long press = Drag</string>

@@ -54,5 +54,9 @@
   "share_response_with_android": false,
   "llm_max_retries": 3,
   "llm_retry_base_delay": 5,
-  "max_prompt_history": 100
+  "max_prompt_history": 100,
+  "periodic_screenshots_enabled": false,
+  "periodic_screenshots_interval": 15,
+  "periodic_screenshots_on_activity": false,
+  "periodic_screenshots_activity_min_delay": 5
 }

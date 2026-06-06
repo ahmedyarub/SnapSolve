@@ -175,6 +175,11 @@ def _get_default_config():
         "llm_retry_base_delay": 5,
         # Maximum number of prompts to keep in text input history
         "max_prompt_history": 100,
+        # Periodic screenshots
+        "periodic_screenshots_enabled": False,
+        "periodic_screenshots_interval": 15,
+        "periodic_screenshots_on_activity": False,
+        "periodic_screenshots_activity_min_delay": 5,
     }
 
 
@@ -421,6 +426,36 @@ def parse_args():
         action="store_true",
         help="Disable hiding windows from screen capture (useful for e2e tests)",
     )
+    parser.add_argument(
+        "--enable-periodic-screenshots",
+        action="store_true",
+        help="Enable periodic screenshots during sessions",
+    )
+    parser.add_argument(
+        "--disable-periodic-screenshots",
+        action="store_true",
+        help="Disable periodic screenshots during sessions",
+    )
+    parser.add_argument(
+        "--periodic-screenshots-interval",
+        type=int,
+        help="Seconds between periodic screenshot captures (default: 15)",
+    )
+    parser.add_argument(
+        "--enable-periodic-screenshots-on-activity",
+        action="store_true",
+        help="Enable screenshot capture on keyboard/mouse activity",
+    )
+    parser.add_argument(
+        "--disable-periodic-screenshots-on-activity",
+        action="store_true",
+        help="Disable screenshot capture on keyboard/mouse activity",
+    )
+    parser.add_argument(
+        "--periodic-screenshots-activity-min-delay",
+        type=int,
+        help="Minimum seconds between activity-triggered screenshots (default: 5)",
+    )
 
     return parser.parse_args()
 
@@ -545,6 +580,25 @@ def _apply_transcription_config(config, args):
         config["translation_language"] = args.translation_language
 
 
+def _apply_periodic_screenshots_config(config, args):
+    """Apply periodic screenshots configuration options from command line args."""
+    if args.enable_periodic_screenshots:
+        config["periodic_screenshots_enabled"] = True
+    elif args.disable_periodic_screenshots:
+        config["periodic_screenshots_enabled"] = False
+
+    if args.periodic_screenshots_interval is not None:
+        config["periodic_screenshots_interval"] = args.periodic_screenshots_interval
+
+    if args.enable_periodic_screenshots_on_activity:
+        config["periodic_screenshots_on_activity"] = True
+    elif args.disable_periodic_screenshots_on_activity:
+        config["periodic_screenshots_on_activity"] = False
+
+    if args.periodic_screenshots_activity_min_delay is not None:
+        config["periodic_screenshots_activity_min_delay"] = args.periodic_screenshots_activity_min_delay
+
+
 def get_config():
     config = load_config()
     args = parse_args()
@@ -555,5 +609,6 @@ def get_config():
     _apply_warmup_config(config, args)
     _apply_audio_config(config, args)
     _apply_transcription_config(config, args)
+    _apply_periodic_screenshots_config(config, args)
 
     return config

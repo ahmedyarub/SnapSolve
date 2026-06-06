@@ -24,6 +24,7 @@ class UISignals(QObject):
     open_context_manager = pyqtSignal()
     set_transcription_language = pyqtSignal(str)
     update_chat_sessions_btn = pyqtSignal(bool)
+    update_periodic_screenshots_btn = pyqtSignal(bool)
     ocr_text_to_input = pyqtSignal(str)
 
 

@@ -21,6 +21,7 @@ llm_engine_instance = None  # LLMEngine | None
 fallback_llm_engine_instance = None  # LLMEngine | None
 session_manager = None  # SessionManager | None
 audio_sink_instance = None  # AudioSink | None
+periodic_screenshot_service = None  # PeriodicScreenshotService | None
 
 # Multi-capture state
 is_multi_capturing = False
@@ -99,6 +100,12 @@ def exit_app():
                 session_manager.cleanup()
             except Exception as e:
                 print(f"Error cleaning up session manager: {e}")
+
+        if periodic_screenshot_service:
+            try:
+                periodic_screenshot_service.stop()
+            except Exception as e:
+                print(f"Error stopping periodic screenshot service: {e}")
 
     # Run cleanup on a daemon thread so it cannot block the exit.
     cleanup_thread = threading.Thread(target=_cleanup, daemon=True)

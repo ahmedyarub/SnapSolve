@@ -3,7 +3,6 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Active Profile Placement**: Moved active profile selection to the main application tab for easier access.
 - [x] **Android App Response Viewer**: Display rendered Markdown responses directly in the Android app.
 - [x] **Session Browser**: Full-featured session browser dialog with tree view, prompt/response panels, tag management, filtering, renaming, and multi-delete.
 - [x] **LLM Retry Mechanism**: Automatic retry with exponential backoff (up to 3 attempts) on transient LLM errors (503, rate limits, connection issues). Configurable via `llm_max_retries` and `llm_retry_base_delay`.
@@ -69,7 +68,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 - [ ] **Accessibility Tree Capture** `[Screenpipe]`: Use the OS accessibility tree (UI Automation on Windows) as a faster primary text extraction method, falling back to PaddleOCR when structured UI data is unavailable (e.g., images, remote desktops).
 - [ ] **App & Window Name Tracking** `[Screenpipe]`: Record the active application name and window title alongside each capture. Useful for session review, filtering, and analytics.
 - [ ] **Browser URL Tracking** `[Screenpipe]`: Capture the current browser URL when performing screen capture from a browser window. Enables linking captures back to source pages.
-- [ ] **Session-Scoped Periodic Screenshots** `[Screenpipe]`: During active audio recording sessions, capture periodic full-screen screenshots (configurable interval, e.g., every 10–30 seconds) without OCR processing. Store in a `screenshots/` subfolder within the active session folder (`sessions/<uuid>/screenshots/`) with filenames including the date and time (e.g., `2026-06-06_10-30-15.png`). These screenshots feed into the Session Timeline View for visual playback of what was on screen during the session.
+- [x] **Session-Scoped Periodic Screenshots** `[Screenpipe]`: During active sessions, capture periodic full-screen screenshots (configurable interval, e.g., every 10–30 seconds) with optional keyboard/mouse activity triggers. Store in a `screenshots/` subfolder within the active session folder (`sessions/<uuid>/screenshots/`) with filenames including the date and time (e.g., `2026-06-06_10-30-15.png`). Configurable via config UI, CLI, control panel, and Android app.
 - [ ] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 
 ### Privacy & Security

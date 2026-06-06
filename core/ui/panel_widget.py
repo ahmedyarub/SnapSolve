@@ -108,6 +108,11 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.layout.addWidget(self.btn_context)
         self.buttons["context"] = self.btn_context
 
+        self.btn_periodic_screenshots = create_btn(
+            "periodic_screenshots", "📷 Screenshots: OFF", "toggle_periodic_screenshots"
+        )
+        self.periodic_screenshots_enabled = False
+
         self.btn_cancel = create_btn(
             "cancel", "❌ Cancel", "cancel", style=cancel_btn_style
         )
@@ -275,6 +280,21 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
                 btn.setStyleSheet(cancel_style)
             elif name == "chat_sessions":
                 if getattr(self, "chat_sessions_enabled", True):
+                    btn.setStyleSheet(
+                        f"QPushButton {{ background-color: rgba(45, 45, 45, {alpha_int}); color: #7fdbca;"
+                        f" border: 1px solid #7fdbca; padding: 8px; border-radius: 4px; font-size: 14px;}}"
+                        f" QPushButton:hover {{ background-color: rgba(62, 62, 62, {alpha_int}); }}"
+                        f" QPushButton:disabled {{ color: #777; }}"
+                    )
+                else:
+                    btn.setStyleSheet(
+                        f"QPushButton {{ background-color: rgba(45, 45, 45, {alpha_int}); color: gray;"
+                        f" border: none; padding: 8px; border-radius: 4px; font-size: 14px;}}"
+                        f" QPushButton:hover {{ background-color: rgba(62, 62, 62, {alpha_int}); }}"
+                        f" QPushButton:disabled {{ color: #777; }}"
+                    )
+            elif name == "periodic_screenshots":
+                if getattr(self, "periodic_screenshots_enabled", False):
                     btn.setStyleSheet(
                         f"QPushButton {{ background-color: rgba(45, 45, 45, {alpha_int}); color: #7fdbca;"
                         f" border: 1px solid #7fdbca; padding: 8px; border-radius: 4px; font-size: 14px;}}"

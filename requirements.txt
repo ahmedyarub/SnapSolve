@@ -1,4 +1,5 @@
 keyboard
+mouse
 pillow
 pystray
 google-genai

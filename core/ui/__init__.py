@@ -41,6 +41,7 @@ from core.ui.api import (  # noqa: F401
     close_popup,
     share_response_screenshot,
     set_chat_sessions_btn_state,
+    set_periodic_screenshots_btn_state,
     send_ocr_text_to_input,
     is_autosubmit_enabled,
     show_subtitle,

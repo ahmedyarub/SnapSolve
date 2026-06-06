@@ -21,6 +21,7 @@
     <color name="btn_new_chat">#795548</color>
     <color name="btn_cancel">#F44336</color>
     <color name="btn_type_text">#9E9E9E</color>
+    <color name="btn_periodic_screenshots">#26A69A</color>
     <color name="btn_connect">#4CAF50</color>
 
     <!-- Status indicator colors -->

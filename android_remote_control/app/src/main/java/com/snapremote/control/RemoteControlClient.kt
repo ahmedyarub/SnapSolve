@@ -23,7 +23,12 @@ interface RemoteControlListener {
     fun onDisconnected(reason: String)
 
     /** Called when the server pushes a UI state update. */
-    fun onStateUpdate(buttons: JSONObject?, hasNewResponseImage: Boolean, transcriptionLanguage: String?)
+    fun onStateUpdate(
+        buttons: JSONObject?,
+        hasNewResponseImage: Boolean,
+        transcriptionLanguage: String?,
+        periodicScreenshotsEnabled: Boolean?,
+    )
 
     /** Called when a network or protocol error occurs. */
     fun onError(message: String)
@@ -302,7 +307,12 @@ class RemoteControlClient {
                     val buttons = json.optJSONObject("buttons")
                     val hasNewImage = json.optBoolean("has_new_response_image", false)
                     val transLang = json.optString("transcription_language", null)
-                    listener?.onStateUpdate(buttons, hasNewImage, transLang)
+                    val periodicScreenshots = if (json.has("periodic_screenshots_enabled")) {
+                        json.optBoolean("periodic_screenshots_enabled", false)
+                    } else {
+                        null
+                    }
+                    listener?.onStateUpdate(buttons, hasNewImage, transLang, periodicScreenshots)
                 }
 
                 "error" -> {
