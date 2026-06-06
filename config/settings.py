@@ -139,6 +139,8 @@ def _get_default_config():
         ],
         "save_images": True,
         "save_transcriptions": True,
+        "auto_summarize_transcription": False,
+        "summarize_transcription_prompt": "Summarize the following transcribed conversation:\n",
         "speaker_name": "interviewer",
         "coordinates": None,
         "background": False,

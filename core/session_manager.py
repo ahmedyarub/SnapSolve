@@ -534,6 +534,19 @@ class SessionManager:
             )
         self.transcription_file = None
 
+    def get_full_transcription(self) -> Optional[str]:
+        """Returns the full contents of the active session's transcription file, if it exists."""
+        if not self.transcription_file or not os.path.exists(self.transcription_file):
+            return None
+            
+        try:
+            with open(self.transcription_file, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                return content if content else None
+        except IOError as e:
+            logger.error(f"[SessionManager] Failed to read transcription file: {e}")
+            return None
+
     def cleanup(self):
         """Perform any necessary cleanup."""
         self._close_transcription_file()

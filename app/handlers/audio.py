@@ -59,6 +59,18 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
             from core.output import clear_subtitles
 
             clear_subtitles()
+            
+            if config.get("auto_summarize_transcription", False):
+                import app.state as state
+                if state.session_manager:
+                    full_transcription = state.session_manager.get_full_transcription()
+                    if full_transcription:
+                        prompt_prefix = config.get("summarize_transcription_prompt", "Summarize the following transcribed conversation:\n")
+                        summary_prompt = f"{prompt_prefix}\n\n{full_transcription}"
+                        status_update("Summarizing transcription...")
+                        from app.handlers.text import handle_text_submit
+                        handle_text_submit(config, active_profile, summary_prompt, source_name="audio")
+                        
             return
 
         if not text:

@@ -116,6 +116,10 @@ class ConfigUI(QDialog):
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
+        self.auto_summarize_transcription = QCheckBox("Auto-summarize transcription on stop")
+        self.summarize_transcription_prompt = QLineEdit(
+            self.config.get("summarize_transcription_prompt", "Summarize the following transcribed conversation:\n")
+        )
         self.transcription_language = QComboBox()
         self.tts_language = QComboBox()
         self.translation_language = QComboBox()
@@ -468,6 +472,14 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Save Transcriptions:", self.save_transcriptions)
 
+        self.auto_summarize_transcription.setChecked(
+            self.config.get("auto_summarize_transcription", False)
+        )
+        layout.addRow("Auto-summarize:", self.auto_summarize_transcription)
+        
+        self.summarize_transcription_prompt.setPlaceholderText("e.g. Summarize the following transcribed conversation:")
+        layout.addRow("Summary Prompt:", self.summarize_transcription_prompt)
+
         self.speaker_name.setPlaceholderText("e.g. interviewer")
         self.speaker_name.setToolTip(
             "Name attributed to the speaker in transcription files.\n"
@@ -751,6 +763,8 @@ class ConfigUI(QDialog):
             self.translation_language.currentData() or ""
         )
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
+        self.config["auto_summarize_transcription"] = self.auto_summarize_transcription.isChecked()
+        self.config["summarize_transcription_prompt"] = self.summarize_transcription_prompt.text()
         self.config["save_images"] = self.save_images.isChecked()
         self.config["speaker_name"] = self.speaker_name.text().strip() or "interviewer"
         self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
