@@ -188,6 +188,7 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 status_update,
                 text=combined_text,
                 image_paths=state.multi_capture_images if state.multi_capture_images else None,
+                source_name="image",
             )
 
         except Exception as multi_error:

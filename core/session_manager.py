@@ -768,3 +768,128 @@ class SessionManager:
         except OSError as e:
             logger.error(f"[SessionManager] Failed to delete session {session_id}: {e}")
             return False
+
+    @staticmethod
+    def _parse_screenshot_timestamp(filename: str) -> Optional[float]:
+        """Parse a screenshot filename like ``2026-06-06_10-30-15.png`` to epoch seconds.
+
+        Returns ``None`` if the filename does not match the expected format.
+        """
+        stem = os.path.splitext(filename)[0]
+        try:
+            dt = datetime.strptime(stem, DATE_FORMAT)
+            return dt.timestamp()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def get_timeline_events(session_id: str) -> List[Dict[str, Any]]:
+        """Return chronologically sorted timeline events for a session.
+
+        Each event dict contains:
+
+        * ``type`` — ``"screenshot"`` | ``"interaction"`` | ``"transcription_separator"``
+        * ``timestamp`` — float (epoch seconds)
+        * ``data`` — type-specific payload dict
+
+        Screenshot data::
+
+            {"filename": "2026-06-06_10-30-15.png", "path": "<absolute path>"}
+
+        Interaction data::
+
+            {"index": 0, "source": "text"|"audio"|"image", "prompt_excerpt": "...",
+             "has_image": True/False, "image_count": 1}
+
+        Transcription separator data::
+
+            {"line": "--- [interviewer] ---"}
+        """
+        events: List[Dict[str, Any]] = []
+
+        # 1. Screenshots
+        screenshots_dir = _session_screenshots_dir(session_id)
+        if os.path.isdir(screenshots_dir):
+            for fname in os.listdir(screenshots_dir):
+                if not fname.lower().endswith(".png"):
+                    continue
+                ts = SessionManager._parse_screenshot_timestamp(fname)
+                if ts is not None:
+                    events.append({
+                        "type": "screenshot",
+                        "timestamp": ts,
+                        "data": {
+                            "filename": fname,
+                            "path": os.path.abspath(os.path.join(screenshots_dir, fname)),
+                        },
+                    })
+
+        # 2. Interactions from session.json
+        session_data = SessionManager.load_session_data(session_id)
+        if session_data:
+            for idx, interaction in enumerate(session_data.get("history", [])):
+                ts = interaction.get("timestamp", 0)
+                source = interaction.get("source", "text")
+                prompt = interaction.get("prompt", "")
+
+                images = interaction.get("image", [])
+                if isinstance(images, str):
+                    images = [images] if images else []
+
+                if source == "text":
+                    if interaction.get("speaker_name"):
+                        source = "audio"
+                    elif len(images) > 1:
+                        source = "image_multi"
+                    elif len(images) == 1:
+                        source = "image"
+                elif source == "image" and len(images) > 1:
+                    source = "image_multi"
+                prompt_clean = prompt.replace("\n", " ").strip()
+                excerpt = prompt_clean[:80] + ("..." if len(prompt_clean) > 80 else "")
+
+                images = interaction.get("image", [])
+                if isinstance(images, str):
+                    images = [images] if images else []
+
+                events.append({
+                    "type": "interaction",
+                    "timestamp": ts,
+                    "data": {
+                        "index": idx,
+                        "source": source,
+                        "prompt_excerpt": excerpt,
+                        "has_image": len(images) > 0,
+                        "image_count": len(images),
+                    },
+                })
+
+        # 3. Transcription separators (timestamps inferred from position)
+        trans_path = _session_transcription_path(session_id)
+        if os.path.isfile(trans_path):
+            try:
+                with open(trans_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped.startswith("--- ") and stripped.endswith(" ---"):
+                            # Try to extract timestamp from AI Response lines
+                            if "AI Response" in stripped:
+                                # Format: --- AI Response (2026-06-06 10:30:15) ---
+                                import re
+                                m = re.search(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)", stripped)
+                                if m:
+                                    try:
+                                        dt = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+                                        events.append({
+                                            "type": "transcription_separator",
+                                            "timestamp": dt.timestamp(),
+                                            "data": {"line": stripped},
+                                        })
+                                    except ValueError:
+                                        pass
+            except IOError:
+                pass
+
+        # Sort by timestamp
+        events.sort(key=lambda e: e["timestamp"])
+        return events

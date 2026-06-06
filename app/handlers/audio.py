@@ -70,6 +70,6 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
 
         from app.handlers.text import handle_text_submit
 
-        handle_text_submit(config, active_profile, text)
+        handle_text_submit(config, active_profile, text, source_name="audio")
 
     threading.Thread(target=_process_audio, daemon=True).start()

@@ -3,12 +3,12 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Android App Response Viewer**: Display rendered Markdown responses directly in the Android app.
 - [x] **Session Browser**: Full-featured session browser dialog with tree view, prompt/response panels, tag management, filtering, renaming, and multi-delete.
 - [x] **LLM Retry Mechanism**: Automatic retry with exponential backoff (up to 3 attempts) on transient LLM errors (503, rate limits, connection issues). Configurable via `llm_max_retries` and `llm_retry_base_delay`.
 - [x] **Elaborate Session Structure**: Per-session folder hierarchy (`sessions/<uuid>/`) with `session.json`, `images/`, and `transcription.txt`. Speaker name attribution in transcription segments. Source-type icons in session browser. Transparent migration of legacy flat-file sessions.
 - [x] **Transcription & TTS Language Selection**: Configurable transcription language (27 languages + auto-detect) in config UI, control panel, Android app, and CLI. Separate TTS language setting in config UI, CLI, and test_sound. Both languages passed to WhisperLive, Google Speech Recognition, and Piper TTS.
 - [x] **Optional Translation Language**: Configurable real-time translation of transcribed audio via WhisperLive. Target language selectable in config UI, control panel (audio mode), and CLI (`--translation-language`). Translated text displayed in subtitles; original transcription saved to session files.
+- [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -77,7 +77,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 
 ### Search & Review
 - [ ] **Natural Language Session Search** `[Screenpipe]`: Enable semantic search across all session history using embeddings (e.g., Gemini `text-embedding-004`). Allow queries like "What did the interviewer ask about microservices?" across weeks of sessions.
-- [ ] **Session Timeline View** `[Screenpipe]`: Add a visual timeline for each session showing timestamped events (recording start, screenshots, OCR captures, LLM queries, responses) rendered in the Session Browser.
+- [x] **Session Timeline View** `[Screenpipe]`: Add a visual timeline for each session showing timestamped events (recording start, screenshots, OCR captures, LLM queries, responses) rendered in the Session Browser.
 - [ ] **Auto-Summary on Session End** `[Screenpipe]`: Automatically generate a structured summary (key topics, questions asked, answers given, action items) when a session ends. Store as `session_summary.md` in the session folder.
 
 ## Documentation

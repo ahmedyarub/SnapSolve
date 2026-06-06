@@ -7,7 +7,7 @@ from core.sources import TextSource
 
 
 def _execute_text_pipeline(
-    config, active_profile, prompt_text, status_update, text=None, image_paths=None
+    config, active_profile, prompt_text, status_update, text=None, image_paths=None, source_name="text"
 ):
     """Execute text pipeline."""
     if text is None:
@@ -21,6 +21,7 @@ def _execute_text_pipeline(
     )
 
     temp_source = TextSource()
+    temp_source._source_name = source_name
 
     assert state.llm_engine_instance is not None
 
@@ -56,7 +57,7 @@ def _execute_text_pipeline(
     return result
 
 
-def handle_text_submit(config, active_profile, text):
+def handle_text_submit(config, active_profile, text, source_name="text"):
     """Handle text input submission."""
     if state.is_processing:
         return
@@ -68,6 +69,6 @@ def handle_text_submit(config, active_profile, text):
 
     _run_in_processing_thread(
         config,
-        lambda: _execute_text_pipeline(config, active_profile, text, status_update),
+        lambda: _execute_text_pipeline(config, active_profile, text, status_update, source_name=source_name),
         error_label="processing text input",
     )
