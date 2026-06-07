@@ -105,7 +105,8 @@ The Screen Capture & QA application provides several customizable features organ
 
 ## API, Remote Control & Android Integration
 
-*   **Unified API Server:** A local FastAPI-based server (`http://0.0.0.0:3031`) exposing both REST endpoints (Screenpipe-inspired endpoints like `/sessions`, `/search`, `/health`, `/config` and Android parity endpoints like `/response_image/ack`, `/config/transcription_language`) and a legacy WebSocket endpoint (`/ws`) for the Android companion app. Supports optional API key authentication and includes a Swagger UI at the root (`/`).
+*   **Unified API Server**: A local FastAPI-based server (`http://0.0.0.0:3031`) exposing both REST endpoints (Screenpipe-inspired endpoints like `/sessions`, `/search`, `/health`, `/config` and Android parity endpoints like `/response_image/ack`, `/config/transcription_language`) and a legacy WebSocket endpoint (`/ws`) for the Android companion app. Supports optional API key authentication and includes a Swagger UI at the root (`/`).
+*   **Model Context Protocol (MCP) Server**: Exposes SnapSolve's session history, OCR texts, and transcriptions to external AI tools (Claude Desktop, Cursor, VS Code) via standard MCP tools.
 *   **Mouse Control:** Relative mouse movement, click (left/right/middle), double-click, drag (start/end), and scroll via REST endpoints or the Android touchpad.
 *   **Physical Mouse Blocking:** Blocks physical mouse input while Android remote control is active using a `WH_MOUSE_LL` hook. Injected (pyautogui) events pass through. Automatically re-enables after a configurable idle timeout.
 *   **Action Dispatch:** Trigger any SnapSolve action (capture, reselect, multi-capture, cancel, cycle source, toggle panel, new session, etc.) from the Android app.

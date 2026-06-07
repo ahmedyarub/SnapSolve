@@ -11,6 +11,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
 - [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
 - [x] **App & Window Name Tracking**: Records the active foreground application name, process name, and window title alongside each periodic screenshot as a JSON sidecar file. Displayed on the Session Timeline as coloured app spans with hover tooltips. Configurable via `track_active_window`.
+- [x] **MCP Server**: Implemented a Model Context Protocol (MCP) server using FastMCP to expose SnapSolve session history, OCR texts, and transcriptions to external IDEs (Claude Desktop, Cursor).
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -60,7 +61,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 
 ### Extensibility & API
 - [x] **REST API** `[Screenpipe]`: Added a lightweight local REST API (default `localhost:3031`) exposing session data and query endpoints (`GET /sessions`, `GET /sessions/{id}`, `GET /search`, `GET /tags`, `POST /action`, `GET /config`, `GET /health` with downstream status, `POST /response_image/ack`, `POST /config/transcription_language`). This unlocks third-party integrations without building each one manually, complete with Swagger UI.
-- [ ] **MCP Server** `[Screenpipe]`: Expose SnapSolve's session history, captured OCR text, and transcription data as an MCP server so external AI tools (Claude Desktop, Cursor, VS Code) can query past sessions.
+- [x] **MCP Server** `[Screenpipe]`: Expose SnapSolve's session history, captured OCR text, and transcription data as an MCP server so external AI tools (Claude Desktop, Cursor, VS Code) can query past sessions.
 - [ ] **Plugin System (Pipes-Inspired)** `[Screenpipe]`: Implement a plugin/extension framework for context providers and post-session actions. Screenpipe uses markdown-defined "Pipes" — SnapSolve could adopt a similar pattern for community-built extensions (e.g., Jira sync, Obsidian export, Notion push).
 - [ ] **Webhook / Post-Session Actions** `[Screenpipe]`: After a session ends or a summary is generated, trigger configurable HTTP webhook actions (e.g., send summary to Slack, create Jira ticket, save to Obsidian vault).
 - [ ] **SDK for Integrations** `[Screenpipe]`: Provide a lightweight Python SDK or documented API contract that allows developers to build custom tools on top of SnapSolve's capture and session data.
