@@ -1,0 +1,15 @@
+meta {
+  name: Get Response Image
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/response_image
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}

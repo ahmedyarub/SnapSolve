@@ -102,10 +102,10 @@ The Screen Capture & QA application provides several customizable features organ
 *   **URL Viewer:** Open any URL directly in the popup's web view via hotkey (`Ctrl+Alt+U`), allowing quick reference without switching windows.
 *   **Real-time Subtitles:** WhisperLive-powered subtitle widget with fading effects, positioned at the bottom of the screen during audio recording.
 
-## Remote Control & Android Integration
+## API, Remote Control & Android Integration
 
-*   **WebSocket Server:** A WebSocket-based remote control server (`ws://0.0.0.0:8080`) for LAN-based Android control, with single-client enforcement and automatic state push.
-*   **Mouse Control:** Relative mouse movement, click (left/right/middle), double-click, drag (start/end), and scroll via the Android touchpad.
+*   **Unified API Server:** A local FastAPI-based server (`http://0.0.0.0:3031`) exposing both REST endpoints (Screenpipe-inspired endpoints like `/sessions`, `/search`, `/health`, `/config` and Android parity endpoints like `/response_image/ack`, `/config/transcription_language`) and a legacy WebSocket endpoint (`/ws`) for the Android companion app. Supports optional API key authentication and includes a Swagger UI at the root (`/`).
+*   **Mouse Control:** Relative mouse movement, click (left/right/middle), double-click, drag (start/end), and scroll via REST endpoints or the Android touchpad.
 *   **Physical Mouse Blocking:** Blocks physical mouse input while Android remote control is active using a `WH_MOUSE_LL` hook. Injected (pyautogui) events pass through. Automatically re-enables after a configurable idle timeout.
 *   **Action Dispatch:** Trigger any SnapSolve action (capture, reselect, multi-capture, cancel, cycle source, toggle panel, new session, etc.) from the Android app.
 *   **Button State Sync:** Real-time button visibility and state synchronization between the main app and the Android companion.

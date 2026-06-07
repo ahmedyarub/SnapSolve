@@ -1,0 +1,21 @@
+meta {
+  name: Set Transcription Language
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{base_url}}/config/transcription_language
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}
+
+body:json {
+  {
+    "language": "en"
+  }
+}

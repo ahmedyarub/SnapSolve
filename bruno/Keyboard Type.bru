@@ -1,0 +1,21 @@
+meta {
+  name: Keyboard Type
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{base_url}}/keyboard/type
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}
+
+body:json {
+{
+  "text": "Hello World"
+}
+}

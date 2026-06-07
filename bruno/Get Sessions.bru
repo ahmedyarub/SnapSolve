@@ -1,0 +1,15 @@
+meta {
+  name: Get Sessions
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/sessions?limit=10&offset=0
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}

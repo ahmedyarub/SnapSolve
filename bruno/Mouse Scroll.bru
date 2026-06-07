@@ -1,0 +1,21 @@
+meta {
+  name: Mouse Scroll
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{base_url}}/mouse/scroll
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}
+
+body:json {
+{
+  "delta": 1
+}
+}

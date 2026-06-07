@@ -48,9 +48,10 @@
     "remote_ocr_host": "127.0.0.1",
     "port": 8000
   },
-  "enable_remote_control": false,
-  "remote_control_host": "0.0.0.0",
-  "remote_control_port": 8080,
+  "enable_api_server": false,
+  "api_server_host": "0.0.0.0",
+  "api_server_port": 3031,
+  "api_server_key": "",
   "mouse_sensitivity": 1.5,
   "remote_mouse_idle_timeout": 3.0,
   "share_response_with_android": false,

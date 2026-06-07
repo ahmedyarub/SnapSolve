@@ -1,0 +1,22 @@
+meta {
+  name: Mouse Move
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{base_url}}/mouse/move
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: {{api_key}}
+}
+
+body:json {
+{
+  "dx": 0.5,
+  "dy": 0.5
+}
+}

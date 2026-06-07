@@ -7,7 +7,7 @@ import os
 import threading
 
 from core.output import show_popup, set_app_processing_state
-from core.remote_control_server import stop_remote_control_server
+from core.api_server import stop_api_server
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -91,7 +91,7 @@ def exit_app():
     def _cleanup():
         """Best-effort cleanup on a background thread."""
         try:
-            stop_remote_control_server()
+            stop_api_server()
         except Exception as e:
             print(f"Error stopping remote control server: {e}")
 

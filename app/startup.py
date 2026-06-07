@@ -42,7 +42,7 @@ from core.output import (
     set_chat_sessions_btn_state,
     set_periodic_screenshots_btn_state,
 )
-from core.remote_control_server import start_remote_control_server
+from core.api_server import start_api_server
 from core.session_manager import SessionManager
 from core.sources import (
     ScreenshotSource,
@@ -253,14 +253,14 @@ def main():
         state.periodic_screenshot_service.start()
     set_periodic_screenshots_btn_state(config.get("periodic_screenshots_enabled", False))
 
-    # Start remote control server if enabled
-    if config.get("enable_remote_control", False):
-        remote_host = config.get("remote_control_host", "0.0.0.0")
-        remote_port = config.get("remote_control_port", 8080)
+    # Start API server if enabled
+    if config.get("enable_api_server", False):
+        api_host = config.get("api_server_host", "0.0.0.0")
+        api_port = config.get("api_server_port", 3031)
         try:
-            start_remote_control_server(remote_host, remote_port, config)
-        except Exception as remote_error:
-            print(f"Failed to start remote control server: {remote_error}")
+            start_api_server(api_host, api_port, config)
+        except Exception as api_error:
+            print(f"Failed to start API server: {api_error}")
 
     _register_keyboard_shortcuts(config, active_profile, active_prompt_text)
 

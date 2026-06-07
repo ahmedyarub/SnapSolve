@@ -66,7 +66,7 @@ class _DragHandleBar(QWidget):
         super().__init__(parent_window)
         self._parent_window = parent_window
         self._drag_pos: QPoint | None = None
-        self.setFixedHeight(24)
+        self.setFixedHeight(36)
         self.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
         self.setStyleSheet(
             "background-color: rgba(50, 50, 50, 200); border: none;"
@@ -77,15 +77,15 @@ class _DragHandleBar(QWidget):
         bar_layout.setContentsMargins(8, 2, 4, 2)
 
         grip_label = QLabel("⠿")
-        grip_label.setStyleSheet("color: #888; font-size: 14px; background: transparent;")
+        grip_label.setStyleSheet("color: #888; font-size: 18px; background: transparent;")
         bar_layout.addWidget(grip_label)
         bar_layout.addStretch()
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(20, 20)
+        close_btn.setFixedSize(32, 32)
         close_btn.setStyleSheet(
             "QPushButton { background-color: transparent; color: gray;"
-            " border: none; font-weight: bold; }"
+            " border: none; font-size: 20px; font-weight: bold; }"
             " QPushButton:hover { color: white; }"
         )
         close_btn.clicked.connect(parent_window.hide)

@@ -3,6 +3,7 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
+- [x] **Unified REST & WebSocket API**: Replaced custom `RemoteControlServer` with a FastAPI-powered local server (default port 3031). Exposes endpoints like `/health` (with downstream statuses), `/search`, `/tags`, `/sessions`, `/config` (redacted), and Android parity endpoints like `/response_image/ack` and `/config/transcription_language`. Optional API key authentication (`Depends(verify_api_key)`), Swagger UI at root, while preserving backwards compatibility for the Android app on the `/ws` route.
 - [x] **LLM Retry Mechanism**: Automatic retry with exponential backoff (up to 3 attempts) on transient LLM errors (503, rate limits, connection issues). Configurable via `llm_max_retries` and `llm_retry_base_delay`.
 - [x] **Elaborate Session Structure**: Per-session folder hierarchy (`sessions/<uuid>/`) with `session.json`, `images/`, and `transcription.txt`. Speaker name attribution in transcription segments. Source-type icons in session browser. Transparent migration of legacy flat-file sessions.
 - [x] **Transcription & TTS Language Selection**: Configurable transcription language (27 languages + auto-detect) in config UI, control panel, Android app, and CLI. Separate TTS language setting in config UI, CLI, and test_sound. Both languages passed to WhisperLive, Google Speech Recognition, and Piper TTS.
@@ -58,7 +59,7 @@ This document tracks planned features, enhancements, and known issues that need 
 Features identified from a deep comparison with [Screenpipe](https://github.com/screenpipe/screenpipe), a complementary open-source 24/7 screen + audio recording tool. See [snapsolve_vs_screenpipe.md](../docs/snapsolve_vs_screenpipe.md) for the full analysis.
 
 ### Extensibility & API
-- [ ] **REST API** `[Screenpipe]`: Add a lightweight local REST API (e.g., `localhost:3031`) exposing session data and query endpoints (`GET /sessions`, `GET /session/{id}`, `POST /query`). This unlocks third-party integrations without building each one manually.
+- [x] **REST API** `[Screenpipe]`: Added a lightweight local REST API (default `localhost:3031`) exposing session data and query endpoints (`GET /sessions`, `GET /sessions/{id}`, `GET /search`, `GET /tags`, `POST /action`, `GET /config`, `GET /health` with downstream status, `POST /response_image/ack`, `POST /config/transcription_language`). This unlocks third-party integrations without building each one manually, complete with Swagger UI.
 - [ ] **MCP Server** `[Screenpipe]`: Expose SnapSolve's session history, captured OCR text, and transcription data as an MCP server so external AI tools (Claude Desktop, Cursor, VS Code) can query past sessions.
 - [ ] **Plugin System (Pipes-Inspired)** `[Screenpipe]`: Implement a plugin/extension framework for context providers and post-session actions. Screenpipe uses markdown-defined "Pipes" — SnapSolve could adopt a similar pattern for community-built extensions (e.g., Jira sync, Obsidian export, Notion push).
 - [ ] **Webhook / Post-Session Actions** `[Screenpipe]`: After a session ends or a summary is generated, trigger configurable HTTP webhook actions (e.g., send summary to Slack, create Jira ticket, save to Obsidian vault).

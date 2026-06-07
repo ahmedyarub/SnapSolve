@@ -164,10 +164,11 @@ def _get_default_config():
         "transcription_language": "en",
         "tts_language": "en",
         "translation_language": "",
-        # Remote control server (Android app integration)
-        "enable_remote_control": False,
-        "remote_control_host": "0.0.0.0",
-        "remote_control_port": 8080,
+        # API & Remote Control server
+        "enable_api_server": False,
+        "api_server_host": "0.0.0.0",
+        "api_server_port": 3031,
+        "api_server_key": "",
         "remote_mouse_idle_timeout": 3.0,
         "share_response_with_android": False,
         "ide_pycharm_path": "pycharm",
@@ -257,11 +258,26 @@ def load_config():
 
     file_config = _load_config_from_file()
 
-    # Migrate renamed key
+    # Migrate renamed keys
     if "popup_opacity" in file_config and "opacity" not in file_config:
         file_config["opacity"] = file_config.pop("popup_opacity")
     elif "popup_opacity" in file_config:
         del file_config["popup_opacity"]
+
+    if "enable_remote_control" in file_config and "enable_api_server" not in file_config:
+        file_config["enable_api_server"] = file_config.pop("enable_remote_control")
+    elif "enable_remote_control" in file_config:
+        del file_config["enable_remote_control"]
+
+    if "remote_control_host" in file_config and "api_server_host" not in file_config:
+        file_config["api_server_host"] = file_config.pop("remote_control_host")
+    elif "remote_control_host" in file_config:
+        del file_config["remote_control_host"]
+
+    if "remote_control_port" in file_config and "api_server_port" not in file_config:
+        file_config["api_server_port"] = file_config.pop("remote_control_port")
+    elif "remote_control_port" in file_config:
+        del file_config["remote_control_port"]
 
     config.update(file_config)
 
@@ -317,6 +333,9 @@ def parse_args():
         help="Ollama API URL (default: http://localhost:11434)",
     )
     parser.add_argument("--gemini-api-key", type=str, help="Gemini API Key")
+    parser.add_argument("--api-server-host", type=str, help="Host/IP for the API Server")
+    parser.add_argument("--api-server-port", type=int, help="Port for the API Server")
+    parser.add_argument("--api-key", type=str, help="API Key required for REST endpoints")
     parser.add_argument(
         "--auto-close-results", action="store_true", help="Auto close result popups"
     )
@@ -503,6 +522,15 @@ def _apply_basic_config(config, args):
 
     if args.gemini_api_key:
         config["gemini_api_key"] = args.gemini_api_key
+
+    if args.api_server_host:
+        config["api_server_host"] = args.api_server_host
+
+    if args.api_server_port:
+        config["api_server_port"] = args.api_server_port
+
+    if args.api_key is not None:
+        config["api_server_key"] = args.api_key
 
     if args.auto_close_results:
         config["auto_close_results"] = True

@@ -143,15 +143,20 @@ class ConfigUI(QDialog):
             lambda v: self.opacity_label.setText(f"{v}%")
         )
 
-        # Remote Control tab widgets
+        # API & Remote Control tab widgets
         self.remote_control_tab = QWidget()
-        self.enable_remote_control = QCheckBox("Enable Remote Control Server")
-        self.remote_control_host = QLineEdit(
-            self.config.get("remote_control_host", "0.0.0.0")
+        self.enable_api_server = QCheckBox("Enable API & Remote Control Server")
+        self.api_server_host = QLineEdit(
+            self.config.get("api_server_host", "0.0.0.0")
         )
-        self.remote_control_port = QLineEdit(
-            str(self.config.get("remote_control_port", 8080))
+        self.api_server_port = QLineEdit(
+            str(self.config.get("api_server_port", 3031))
         )
+        self.api_server_key = QLineEdit(
+            self.config.get("api_server_key", "")
+        )
+        self.api_server_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_server_key.setPlaceholderText("Optional API Key for REST endpoints")
         self.mouse_sensitivity = QLineEdit(
             str(self.config.get("mouse_sensitivity", 1.5))
         )
@@ -219,7 +224,7 @@ class ConfigUI(QDialog):
         self.tabs.addTab(self.llm_tab, "LLM Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
-        self.tabs.addTab(self.remote_control_tab, "Remote Control")
+        self.tabs.addTab(self.remote_control_tab, "API & Remote Control")
 
         self.setup_app_tab()
         self.setup_audio_tab()
@@ -680,24 +685,26 @@ class ConfigUI(QDialog):
         layout.addRow("Real-time Transcription:", self.warmup_realtime_transcription)
 
     def setup_remote_control_tab(self):
-        """Build the Remote Control settings tab.
+        """Build the API & Remote Control settings tab.
 
-        Allows the user to enable the Android remote control server, set the
+        Allows the user to enable the local FastAPI server, set the
         network interface it binds to, and choose the TCP port.
         Restart required for changes to take effect.
         """
         layout = QFormLayout(self.remote_control_tab)
 
-        self.enable_remote_control.setChecked(
-            self.config.get("enable_remote_control", False)
+        self.enable_api_server.setChecked(
+            self.config.get("enable_api_server", False)
         )
-        layout.addRow("Enable Remote Control:", self.enable_remote_control)
+        layout.addRow("Enable Server:", self.enable_api_server)
 
-        self.remote_control_host.setPlaceholderText("e.g. 0.0.0.0 (all interfaces)")
-        layout.addRow("Host / Interface:", self.remote_control_host)
+        self.api_server_host.setPlaceholderText("e.g. 0.0.0.0 (all interfaces)")
+        layout.addRow("Host / Interface:", self.api_server_host)
 
-        self.remote_control_port.setPlaceholderText("e.g. 8080")
-        layout.addRow("Port:", self.remote_control_port)
+        self.api_server_port.setPlaceholderText("e.g. 3031")
+        layout.addRow("Port:", self.api_server_port)
+
+        layout.addRow("API Key:", self.api_server_key)
 
         self.mouse_sensitivity.setPlaceholderText("e.g. 1.5")
         layout.addRow("Mouse Sensitivity:", self.mouse_sensitivity)
@@ -711,11 +718,12 @@ class ConfigUI(QDialog):
         layout.addRow("Response Screenshot:", self.share_response_with_android)
 
         hint = QLabel(
-            "When enabled, SnapSolve listens for connections from the Android remote "
-            "control app on the specified port.\n"
+            "When enabled, SnapSolve runs a local API server on the specified port.\n"
+            "This provides both REST endpoints (like Screenpipe) and WebSocket access\n"
+            "for the Android remote control app.\n"
             "Make sure your firewall allows inbound TCP traffic on that port.\n"
-            "When 'Share LLM response screenshot' is enabled, a full-page screenshot\n"
-            "of each response is sent to the connected Android app for viewing.\n"
+            "If an API key is set, it must be provided in the 'Authorization' or 'x-api-key' header.\n"
+            "When 'Response Screenshot' is enabled, an image is sent to the Android app.\n"
             "A restart is required for changes to take effect."
         )
         hint.setWordWrap(True)
@@ -827,14 +835,15 @@ class ConfigUI(QDialog):
             self.audio_input_device_combo.currentData()
         )
 
-        # Remote Control settings
-        self.config["enable_remote_control"] = self.enable_remote_control.isChecked()
-        self.config["remote_control_host"] = (
-            self.remote_control_host.text().strip() or "0.0.0.0"
+        # API & Remote Control settings
+        self.config["enable_api_server"] = self.enable_api_server.isChecked()
+        self.config["api_server_host"] = (
+            self.api_server_host.text().strip() or "0.0.0.0"
         )
-        self.config["remote_control_port"] = int(
-            self.remote_control_port.text().strip() or "8080"
+        self.config["api_server_port"] = int(
+            self.api_server_port.text().strip() or "3031"
         )
+        self.config["api_server_key"] = self.api_server_key.text()
         try:
             self.config["mouse_sensitivity"] = float(
                 self.mouse_sensitivity.text().strip() or "1.5"
