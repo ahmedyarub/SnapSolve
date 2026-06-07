@@ -26,6 +26,7 @@ class UISignals(QObject):
     update_chat_sessions_btn = pyqtSignal(bool)
     update_periodic_screenshots_btn = pyqtSignal(bool)
     ocr_text_to_input = pyqtSignal(str)
+    update_volume = pyqtSignal(int)
 
 
 class SelectorSignals(QObject):
