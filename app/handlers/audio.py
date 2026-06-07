@@ -69,7 +69,13 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
                         summary_prompt = f"{prompt_prefix}\n\n{full_transcription}"
                         status_update("Summarizing transcription...")
                         from app.handlers.text import handle_text_submit
-                        handle_text_submit(config, active_profile, summary_prompt, source_name="audio")
+                        
+                        def _on_summary_complete(summary_text):
+                            if config.get("webhook_trigger_on_summary", False):
+                                from core.webhook import trigger_webhook
+                                trigger_webhook(config, state.session_manager, state.session_manager.current_session_id, summary_text)
+
+                        handle_text_submit(config, active_profile, summary_prompt, source_name="audio", post_action=_on_summary_complete)
                         
             return
 

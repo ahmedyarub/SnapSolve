@@ -364,6 +364,20 @@ class SessionBrowserDialog(QDialog):
         )
         bottom_layout.addWidget(self.status_bar, stretch=1)
         
+        self.btn_webhook = QPushButton("🚀 Trigger Webhook")
+        self.btn_webhook.setStyleSheet("""
+            QPushButton {
+                background-color: #3e4451; color: #61afef; font-weight: bold;
+                border: 1px solid #61afef; border-radius: 4px; padding: 4px 12px; margin: 2px;
+            }
+            QPushButton:hover { background-color: #4b5263; }
+            QPushButton:disabled { color: #636d83; border-color: #636d83; }
+        """)
+        self.btn_webhook.setEnabled(False)
+        self.btn_webhook.clicked.connect(self._handle_trigger_webhook)
+        self.btn_webhook.setToolTip("Send this session to the configured webhook URL")
+        bottom_layout.addWidget(self.btn_webhook)
+        
         if self.selection_mode:
             self.btn_select = QPushButton("✔️ Select Session")
             self.btn_select.setStyleSheet("""
@@ -407,6 +421,25 @@ class SessionBrowserDialog(QDialog):
             action.triggered.connect(lambda checked, k=key: self._toggle_search_type(k, checked))
             
         menu.exec(self.btn_search_settings.mapToGlobal(self.btn_search_settings.rect().bottomLeft()))
+
+    def _handle_trigger_webhook(self):
+        if not self._current_session_id:
+            return
+            
+        import app.state as state
+        from core.webhook import trigger_webhook
+        from config.settings import load_config
+        
+        config = load_config()
+        webhook_url = config.get("webhook_url", "").strip()
+        
+        if not webhook_url:
+            QMessageBox.warning(self, "Webhook Not Configured", "Please configure a Webhook URL in the application settings first.")
+            return
+            
+        if state.session_manager:
+            trigger_webhook(config, state.session_manager, self._current_session_id)
+            self.status_bar.showMessage("Webhook triggered manually.", 3000)
 
     def _toggle_search_type(self, key: str, checked: bool):
         self.search_types[key] = checked
@@ -718,6 +751,8 @@ class SessionBrowserDialog(QDialog):
             if session_id and self.timeline:
                 self._current_session_id = session_id
                 self.timeline.load_session(session_id)
+                if hasattr(self, 'btn_webhook'):
+                    self.btn_webhook.setEnabled(True)
                 
             # Show transcription if it exists for the root session
             data = self._get_session_data(session_id)
@@ -752,6 +787,10 @@ class SessionBrowserDialog(QDialog):
 
         session_id = current.data(0, Qt.ItemDataRole.UserRole)
         prompt_index = current.data(0, Qt.ItemDataRole.UserRole + 2)
+        
+        self._current_session_id = session_id
+        if hasattr(self, 'btn_webhook'):
+            self.btn_webhook.setEnabled(True)
 
         data = self._get_session_data(session_id)
         if not data:

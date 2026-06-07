@@ -7,7 +7,7 @@ from core.sources import TextSource
 
 
 def _execute_text_pipeline(
-    config, active_profile, prompt_text, status_update, text=None, image_paths=None, source_name="text"
+    config, active_profile, prompt_text, status_update, text=None, image_paths=None, source_name="text", post_action=None
 ):
     """Execute text pipeline."""
     if text is None:
@@ -54,10 +54,16 @@ def _execute_text_pipeline(
         result, show_headers, popup_sink, fallback_model, main_model, config
     )
 
+    if post_action:
+        try:
+            post_action(result)
+        except Exception as e:
+            print(f"Error in post_action: {e}")
+
     return result
 
 
-def handle_text_submit(config, active_profile, text, source_name="text"):
+def handle_text_submit(config, active_profile, text, source_name="text", post_action=None):
     """Handle text input submission."""
     if state.is_processing:
         return
@@ -69,6 +75,6 @@ def handle_text_submit(config, active_profile, text, source_name="text"):
 
     _run_in_processing_thread(
         config,
-        lambda: _execute_text_pipeline(config, active_profile, text, status_update, source_name=source_name),
+        lambda: _execute_text_pipeline(config, active_profile, text, status_update, source_name=source_name, post_action=post_action),
         error_label="processing text input",
     )

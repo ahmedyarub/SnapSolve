@@ -173,6 +173,10 @@ class ConfigUI(QDialog):
         self.share_response_with_android = QCheckBox(
             "Share LLM response screenshot with Android app"
         )
+        
+        # Webhook settings
+        self.webhook_url = QLineEdit(self.config.get("webhook_url", ""))
+        self.webhook_trigger_on_summary = QCheckBox("Trigger webhook when a session summary is generated")
 
         # LLM Retry settings
         self.llm_max_retries = QLineEdit(
@@ -745,6 +749,13 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Response Screenshot:", self.share_response_with_android)
 
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Webhooks / Integrations</b>"))
+        self.webhook_url.setPlaceholderText("e.g. https://hooks.slack.com/services/...")
+        layout.addRow("Webhook URL:", self.webhook_url)
+        self.webhook_trigger_on_summary.setChecked(self.config.get("webhook_trigger_on_summary", False))
+        layout.addRow("Auto-Trigger:", self.webhook_trigger_on_summary)
+
         hint = QLabel(
             "When enabled, SnapSolve runs a local API server on the specified port.\n"
             "This provides both REST endpoints (like Screenpipe) and WebSocket access\n"
@@ -752,6 +763,7 @@ class ConfigUI(QDialog):
             "Make sure your firewall allows inbound TCP traffic on that port.\n"
             "If an API key is set, it must be provided in the 'Authorization' or 'x-api-key' header.\n"
             "When 'Response Screenshot' is enabled, an image is sent to the Android app.\n"
+            "Webhooks allow sending session summaries to external services (Slack, Zapier, n8n).\n"
             "A restart is required for changes to take effect."
         )
         hint.setWordWrap(True)
@@ -890,6 +902,8 @@ class ConfigUI(QDialog):
         self.config["share_response_with_android"] = (
             self.share_response_with_android.isChecked()
         )
+        self.config["webhook_url"] = self.webhook_url.text().strip()
+        self.config["webhook_trigger_on_summary"] = self.webhook_trigger_on_summary.isChecked()
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:
