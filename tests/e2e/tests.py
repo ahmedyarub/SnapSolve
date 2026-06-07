@@ -29,7 +29,7 @@ from config import (
     START_MULTISELECT_SOURCE,
     TARGET_WORD_BASIC,
     TARGET_WORD_PROGRAMMING,
-    TTS_INPUT_DEVICE_NAME,
+    TTS_LOOPBACK_DEVICE_NAME,
     WORKING_DIR,
     RECORD_BUTTON,
     TTS_OUTPUT_DEVICE_NAME,
@@ -171,7 +171,7 @@ def _setup_recording_thread():
         except queue.Empty:
             pass
 
-    mic_index = get_microphone_index(TTS_INPUT_DEVICE_NAME)
+    mic_index = get_microphone_index(TTS_LOOPBACK_DEVICE_NAME)
 
     _recording_thread = threading.Thread(
         target=record_audio_in_background,
@@ -334,7 +334,7 @@ def test_audio_transcription():
         time.sleep(1)
 
     with _step("test_audio_transcription", "Speak question"):
-        speak("Answer with one word only: " + BASIC_QUESTION, TTS_OUTPUT_DEVICE_NAME)
+        speak("Answer with one word only:\n" + BASIC_QUESTION, TTS_OUTPUT_DEVICE_NAME)
         time.sleep(1)
 
     with _step("test_audio_transcription", "Click transcription"):
