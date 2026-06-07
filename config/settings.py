@@ -119,6 +119,26 @@ def get_audio_input_devices():
     return input_devices
 
 
+def get_audio_loopback_devices():
+    """
+    Lists all available system loopback devices (speakers) via soundcard.
+    Returns their name.
+    """
+    try:
+        import soundcard as sc
+        loopback_devices = []
+        for speaker in sc.all_speakers():
+            loopback_devices.append({
+                "name": speaker.name,
+                "id": speaker.id
+            })
+        loopback_devices.sort(key=lambda x: x["name"].lower())
+        return loopback_devices
+    except Exception as e:
+        print(f"Warning: Failed to load loopback devices: {e}")
+        return []
+
+
 def _get_default_config():
     """Get default configuration."""
     return {
@@ -159,6 +179,7 @@ def _get_default_config():
         "warmup_realtime_transcription": False,
         "tts_output_device_name": None,
         "audio_input_device_name": None,
+        "audio_loopback_device_name": None,
         "realtime_transcription": True,
         "show_audio_volume_bar": True,
         "transcription_pause_threshold": 1.0,
@@ -412,6 +433,11 @@ def parse_args():
         help="Name of the audio device for audio input",
     )
     parser.add_argument(
+        "--audio-loopback-device-name",
+        type=str,
+        help="Name of the audio device for system loopback capture",
+    )
+    parser.add_argument(
         "--disable-realtime-transcription",
         action="store_true",
         help="Disable real-time transcription during recording",
@@ -591,6 +617,9 @@ def _apply_audio_config(config, args):
 
     if args.audio_input_device_name is not None:
         config["audio_input_device_name"] = args.audio_input_device_name
+
+    if args.audio_loopback_device_name is not None:
+        config["audio_loopback_device_name"] = args.audio_loopback_device_name
 
 
 def _apply_transcription_config(config, args):

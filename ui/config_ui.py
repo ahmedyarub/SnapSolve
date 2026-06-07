@@ -118,6 +118,7 @@ class ConfigUI(QDialog):
         )
         self.tts_output_device_combo = QComboBox()
         self.audio_input_device_combo = QComboBox()
+        self.audio_loopback_device_combo = QComboBox()
         self.background_mode = QCheckBox("Run in system tray")
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
@@ -481,6 +482,26 @@ class ConfigUI(QDialog):
                 self.audio_input_device_combo.setCurrentIndex(idx)
 
         layout.addRow("Audio Input Device:", self.audio_input_device_combo)
+
+        # Audio Loopback Device
+        self.audio_loopback_device_combo.addItem("None (Disabled)", None)
+
+        try:
+            from config.settings import get_audio_loopback_devices  # noqa: PLC0415
+
+            loopback_audio_devices = get_audio_loopback_devices()
+            for device in loopback_audio_devices:
+                self.audio_loopback_device_combo.addItem(device["name"], device["name"])
+        except Exception as e:
+            print(f"Failed to load audio loopback devices: {e}")
+
+        current_loopback_device_name = self.config.get("audio_loopback_device_name", None)
+        if current_loopback_device_name is not None:
+            idx = self.audio_loopback_device_combo.findData(current_loopback_device_name)
+            if idx >= 0:
+                self.audio_loopback_device_combo.setCurrentIndex(idx)
+
+        layout.addRow("System Loopback Device:", self.audio_loopback_device_combo)
 
         # Transcription language
         current_trans_lang = self.config.get("transcription_language", "en")
@@ -874,6 +895,9 @@ class ConfigUI(QDialog):
         )
         self.config["audio_input_device_name"] = (
             self.audio_input_device_combo.currentData()
+        )
+        self.config["audio_loopback_device_name"] = (
+            self.audio_loopback_device_combo.currentData()
         )
 
         # API & Remote Control settings

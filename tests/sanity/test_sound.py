@@ -208,6 +208,7 @@ class SoundTestApp(QMainWindow):
         # UI components (initialized in init_ui)
         self.out_combo = QComboBox()
         self.in_combo = QComboBox()
+        self.loop_combo = QComboBox()
         self.speak_text = QTextEdit()
         self.heard_text = QTextEdit()
         self.volume_bar = QProgressBar()
@@ -235,6 +236,12 @@ class SoundTestApp(QMainWindow):
         in_layout.addWidget(QLabel("Input Device:"))
         in_layout.addWidget(self.in_combo)
         layout.addLayout(in_layout)
+        
+        # Loopback Device
+        loop_layout = QHBoxLayout()
+        loop_layout.addWidget(QLabel("Loopback Device:"))
+        loop_layout.addWidget(self.loop_combo)
+        layout.addLayout(loop_layout)
 
         self.populate_devices()
         self.load_settings()
@@ -266,6 +273,7 @@ class SoundTestApp(QMainWindow):
         layout.addWidget(QLabel("Microphone Volume:"))
         self.volume_bar.setRange(0, 100)
         self.volume_bar.setValue(0)
+        self.volume_bar.setTextVisible(False)
         self.volume_bar.setStyleSheet(
             """
             QProgressBar {
@@ -302,6 +310,11 @@ class SoundTestApp(QMainWindow):
         self.transcription_btn.clicked.connect(self.start_transcription_test)
         button_layout.addWidget(self.transcription_btn)
 
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.clicked.connect(self.cancel_operations)
+        button_layout.addWidget(self.cancel_btn)
+
         layout.addLayout(button_layout)
 
     def populate_devices(self):
@@ -323,44 +336,63 @@ class SoundTestApp(QMainWindow):
             except Exception as e:
                 logging.warning(f"Failed to load device index {i}: {e}")
 
+        # Input Devices are already populated by PyAudio loop above.
+        self.in_combo.insertItem(0, "Default System Input", None)
+        
+        # Populate Loopback Devices using soundcard directly
+        self.loop_combo.addItem("None (Disabled)", None)
+        try:
+            import soundcard as sc
+            devices = sc.all_speakers()
+            devices.sort(key=lambda x: x.name.lower())
+            for speaker in devices:
+                self.loop_combo.addItem(speaker.name, speaker.name)
+        except Exception as e:
+            self.log(f"Failed to load loopback devices: {e}")
+
     def load_settings(self):
         logging.debug("Attempting to load last selected devices...")
         if os.path.exists(self.settings_file):
             try:
+                import json
+
                 with open(self.settings_file, "r") as f:
-                    settings = json.load(f)
-                    last_out = settings.get("last_out_index")
-                    last_in = settings.get("last_in_index")
-                    last_lang = settings.get("language", "en")
+                    data = json.load(f)
 
-                    if last_out is not None:
-                        idx = self.out_combo.findData(last_out)
-                        if idx >= 0:
-                            self.out_combo.setCurrentIndex(idx)
+                if "out_idx" in data:
+                    idx = self.out_combo.findData(data["out_idx"])
+                    if idx >= 0:
+                        self.out_combo.setCurrentIndex(idx)
 
-                    if last_in is not None:
-                        idx = self.in_combo.findData(last_in)
-                        if idx >= 0:
-                            self.in_combo.setCurrentIndex(idx)
+                if "in_idx" in data:
+                    idx = self.in_combo.findData(data["in_idx"])
+                    if idx >= 0:
+                        self.in_combo.setCurrentIndex(idx)
+                        
+                if "loop_name" in data:
+                    idx = self.loop_combo.findData(data["loop_name"])
+                    if idx >= 0:
+                        self.loop_combo.setCurrentIndex(idx)
 
-                    lang_idx = self.lang_combo.findData(last_lang)
-                    if lang_idx >= 0:
-                        self.lang_combo.setCurrentIndex(lang_idx)
-
-                logging.debug("Settings loaded successfully.")
+                if "lang_code" in data:
+                    idx = self.lang_combo.findData(data["lang_code"])
+                    if idx >= 0:
+                        self.lang_combo.setCurrentIndex(idx)
             except Exception as e:
-                logging.error(f"Failed to load settings: {e}")
+                print(f"Failed to load settings: {e}")
 
-    def save_settings(self, out_idx, in_idx):
-        logging.debug("Saving last selected devices...")
+    def save_settings(self, out_idx, in_idx, loop_name=None):
         try:
-            lang_code = self.lang_combo.currentData() or "en"
+            import json
+
+            data = {
+                "out_idx": out_idx,
+                "in_idx": in_idx,
+                "loop_name": loop_name,
+                "lang_code": self.lang_combo.currentData(),
+            }
             with open(self.settings_file, "w") as f:
-                json.dump(
-                    {"last_out_index": out_idx, "last_in_index": in_idx, "language": lang_code},
-                    f,
-                )
-            logging.debug("Settings saved successfully.")
+                json.dump(data, f)
         except Exception as e:
             logging.error(f"Failed to save settings: {e}")
 
@@ -411,6 +443,12 @@ class SoundTestApp(QMainWindow):
         self.log("Transcription finished.")
         self._enable_buttons()
 
+    def cancel_operations(self):
+        self.playback_done = True
+        self.is_recording = False
+        self.is_transcribing = False
+        self.log("Operations cancelled by user.")
+
     def _enable_buttons(self):
         import PyQt6.QtCore as QtCore
 
@@ -432,11 +470,18 @@ class SoundTestApp(QMainWindow):
             QtCore.Qt.ConnectionType.QueuedConnection,
             QtCore.Q_ARG(bool, True),
         )
+        QtCore.QMetaObject.invokeMethod(
+            self.cancel_btn,
+            "setEnabled",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(bool, False),
+        )
 
     def start_playback_only(self):
         self.playback_only_btn.setEnabled(False)
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
         self.log_text.clear()
         self.volume_bar.setValue(0)
 
@@ -464,6 +509,7 @@ class SoundTestApp(QMainWindow):
         self.playback_only_btn.setEnabled(False)
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
         self.log_text.clear()
         self.heard_text.clear()
         self.volume_bar.setValue(0)
@@ -493,12 +539,14 @@ class SoundTestApp(QMainWindow):
         self.playback_only_btn.setEnabled(False)
         self.recording_btn.setEnabled(False)
         self.transcription_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
         self.log_text.clear()
         self.heard_text.clear()
         self.volume_bar.setValue(0)
 
         out_idx = self.out_combo.currentData()
         in_idx = self.in_combo.currentData()
+        loop_name = self.loop_combo.currentData()
         text = self.speak_text.toPlainText()
 
         if out_idx is None or in_idx is None:
@@ -506,7 +554,7 @@ class SoundTestApp(QMainWindow):
             self._enable_buttons()
             return
 
-        self.save_settings(out_idx, in_idx)
+        self.save_settings(out_idx, in_idx, loop_name)
 
         # Check if WhisperLive service is online
         self.log("Checking WhisperLive service status...")
@@ -779,34 +827,33 @@ class SoundTestApp(QMainWindow):
 
         return False
 
-    def _setup_audio_stream(self, device_index):
+    def _setup_audio_stream(self, source):
         """Setup audio stream and resampling."""
-        with sr.Microphone(device_index=device_index) as source:
-            stream = source.stream
-            source_sample_rate = source.SAMPLE_RATE
-            target_sample_rate = 16000
+        stream = source.stream
+        source_sample_rate = source.SAMPLE_RATE
+        target_sample_rate = 16000
 
+        self.signals.log_message.emit(
+            f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+        )
+
+        if source_sample_rate != target_sample_rate:
+            resampler = resampy.resample
             self.signals.log_message.emit(
-                f"Microphone sample rate: {source_sample_rate} Hz, Target: {target_sample_rate} Hz"
+                f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
             )
+        else:
+            resampler = None
 
-            if source_sample_rate != target_sample_rate:
-                resampler = resampy.resample
-                self.signals.log_message.emit(
-                    f"Resampling audio from {source_sample_rate} Hz to {target_sample_rate} Hz"
-                )
-            else:
-                resampler = None
-
-            return stream, source_sample_rate, target_sample_rate, resampler
+        return stream, source_sample_rate, target_sample_rate, resampler
 
     def _stream_audio_to_whisperlive(
-        self, stream, source_sample_rate, target_sample_rate, resampler, client
+        self, stream, source, source_sample_rate, target_sample_rate, resampler, client
     ):
         """Stream audio to WhisperLive."""
         while not self.playback_done:
             try:
-                data = stream.read(sr.CHUNK)
+                data = stream.read(source.CHUNK)
                 self.audio_frames.append(data)
                 self._update_volume_from_audio(data)
 
@@ -853,13 +900,13 @@ class SoundTestApp(QMainWindow):
 
             client = self.transcription_client.client
 
-            with sr.Microphone(device_index=device_index) as _:
+            with sr.Microphone(device_index=device_index) as source:
                 stream, source_sample_rate, target_sample_rate, resampler = (
-                    self._setup_audio_stream(device_index)
+                    self._setup_audio_stream(source)
                 )
 
                 self._stream_audio_to_whisperlive(
-                    stream, source_sample_rate, target_sample_rate, resampler, client
+                    stream, source, source_sample_rate, target_sample_rate, resampler, client
                 )
 
             self._send_end_of_audio_signal(client)
@@ -1033,8 +1080,10 @@ class SoundTestApp(QMainWindow):
         """Calculate and update volume from audio data."""
         audio_data = np.frombuffer(data, dtype=np.int16)
         if len(audio_data) > 0:
-            vol = np.abs(audio_data).mean()
-            scaled_vol = min(100, int((vol / 32768.0) * 500))
+            # Use max() instead of mean() for much better responsiveness
+            vol = np.abs(audio_data.astype(np.float32)).max()
+            # Max amplitude is 32768, scale logarithmically or with a smaller multiplier
+            scaled_vol = min(100, int((vol / 32768.0) * 200))
             self.signals.update_volume.emit(scaled_vol)
 
     def _process_google_recognition(self, recognizer, source):

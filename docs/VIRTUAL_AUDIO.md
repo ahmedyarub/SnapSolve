@@ -1,4 +1,48 @@
-# VB-Audio Virtual Audio Cable
+# Audio Routing & Dual-Channel Recording
+
+SnapSolve natively supports **Dual-Channel Audio Recording**, allowing you to record both your microphone and your computer's system audio simultaneously *without* needing complex third-party mixers like Voicemeeter.
+
+## 1. Native Dual-Channel Audio (System Loopback)
+
+The "System Loopback" feature automatically captures any audio playing from your speakers (e.g., YouTube, games, meetings) while simultaneously capturing your microphone. The transcriptions are automatically prefixed with speaker emojis (`🎤 ` and `💻 `) to distinguish them.
+
+### Step-by-Step Configuration
+
+#### Windows (Native Support)
+Windows natively supports loopback audio via WASAPI. No additional drivers are required.
+1. Open the SnapSolve Configuration UI (`Ctrl+Alt+Shift+C` -> Settings icon).
+2. Go to the **Audio & Speech** tab.
+3. Under **Audio Input Device**, select your physical microphone.
+4. Under **System Loopback Device**, select your default speakers/headphones.
+5. Save and start recording! Both sources will be captured and transcribed seamlessly.
+
+#### macOS
+macOS does not natively allow applications to record system audio directly. You must install a virtual audio driver to route the audio.
+1. Install [BlackHole (2ch)](https://existential.audio/blackhole/) or [Soundflower](https://github.com/mattingalls/Soundflower).
+2. Open macOS **Audio MIDI Setup** (in Applications/Utilities).
+3. Click the `+` button and create a **Multi-Output Device**. 
+4. Check both your physical headphones/speakers AND the BlackHole driver.
+5. Set this new Multi-Output Device as your system's default Output device in System Settings.
+6. In the SnapSolve Configuration UI, go to the **Audio & Speech** tab.
+7. Set **Audio Input Device** to your physical microphone.
+8. Set **System Loopback Device** to `BlackHole 2ch`.
+
+#### Linux
+Linux supports loopback natively via PulseAudio or PipeWire.
+1. Open the SnapSolve Configuration UI.
+2. Go to the **Audio & Speech** tab.
+3. Under **Audio Input Device**, select your physical microphone.
+4. Under **System Loopback Device**, select the "monitor" of your default output sink (e.g., `alsa_output.pci-0000_00_1f.3.analog-stereo.monitor`).
+
+---
+
+## 2. Advanced Audio Routing (VB-Audio / Voicemeeter)
+
+While the native loopback feature covers 99% of use cases, you may still want to use a virtual audio cable (like VB-Audio or Voicemeeter) if you need to:
+- **Test TTS output** silently (without hearing it through your speakers).
+- **Mix multiple microphones** or hardware inputs before they reach SnapSolve.
+
+### VB-Audio Virtual Audio Cable
 
 VB-Audio Virtual Audio Cable is a virtual audio device that allows you to route audio between applications. This is particularly useful for:
 

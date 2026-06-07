@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import functools
 import tempfile
 import threading
 import wave
@@ -113,18 +114,19 @@ class SoundSource(Source):
         self.recognizer = sr.Recognizer()
 
         # WhisperLive related
-        self.transcription_client: Optional[WhisperLiveTranscriptionClient] = None
+        self.transcription_client_mic: Optional[WhisperLiveTranscriptionClient] = None
+        self.transcription_client_loopback: Optional[WhisperLiveTranscriptionClient] = None
         self.whisperlive_process: Optional[subprocess.Popen] = None
         self._last_transcription_text = ""
-        self._current_utterance_text = ""
+        self._current_utterance_text = {"mic": "", "loopback": ""}
         self.realtime_transcription = True
-        self._last_segment_start = -1.0
+        self._last_segment_start = {"mic": -1.0, "loopback": -1.0}
 
         # Translation related
         self._translation_language: str = ""
         self._last_translated_text = ""
-        self._current_translated_utterance = ""
-        self._last_translated_segment_start = -1.0
+        self._current_translated_utterance = {"mic": "", "loopback": ""}
+        self._last_translated_segment_start = {"mic": -1.0, "loopback": -1.0}
 
     def warmup(self):
         if WhisperLiveTranscriptionClient is None:
@@ -168,11 +170,11 @@ class SoundSource(Source):
         self._stop_event.clear()
         self.audio_frames = []
         self._last_transcription_text = ""
-        self._current_utterance_text = ""
-        self._last_segment_start = -1.0
+        self._current_utterance_text = {"mic": "", "loopback": ""}
+        self._last_segment_start = {"mic": -1.0, "loopback": -1.0}
         self._last_translated_text = ""
-        self._current_translated_utterance = ""
-        self._last_translated_segment_start = -1.0
+        self._current_translated_utterance = {"mic": "", "loopback": ""}
+        self._last_translated_segment_start = {"mic": -1.0, "loopback": -1.0}
         self._translation_language = self.config.get("translation_language", "")
 
         # Override transcription setting if explicitly provided
@@ -221,36 +223,62 @@ class SoundSource(Source):
                     break
             p.terminate()
 
-        # Temporary file creation
-        fd, temp_wav_path = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
+        loopback_name = self.config.get("audio_loopback_device_name")
+        self.audio_frames_dict = {"mic": [], "loopback": []}
 
-        try:
-            with sr.Microphone(device_index=device_index) as source:
-                self._sample_rate = source.SAMPLE_RATE
-                self._sample_width = source.SAMPLE_WIDTH
-                stream = source.stream
-                logger.info(
-                    f"Microphone {device_name} opened for simple recording. Sample rate: {self._sample_rate}Hz."
-                )
+        def record_mic():
+            fd, temp_wav_path = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            try:
+                with sr.Microphone(device_index=device_index) as source:
+                    self._sample_rate = source.SAMPLE_RATE
+                    self._sample_width = source.SAMPLE_WIDTH
+                    stream = source.stream
+                    logger.info(f"Microphone {device_name} opened for simple recording.")
+                    with wave.open(temp_wav_path, "wb") as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(self._sample_width)
+                        wf.setframerate(self._sample_rate)
+                        while not self._stop_event.is_set():
+                            data = stream.read(source.CHUNK)
+                            self.audio_frames_dict["mic"].append(data)
+                            self._update_volume(data)
+                            wf.writeframes(data)
+            except Exception as e:
+                logger.error(f"Mic Recording error: {e}")
 
-                with wave.open(temp_wav_path, "wb") as wf:
-                    wf.setnchannels(1)  # Assuming mono recording
-                    wf.setsampwidth(self._sample_width)
-                    wf.setframerate(self._sample_rate)
-
+        def record_loopback():
+            import soundcard as sc
+            import numpy as np
+            try:
+                loopback_device = next((s for s in sc.all_speakers() if s.name == loopback_name), sc.default_speaker())
+                # Fallback if sample rate wasn't set yet
+                sample_rate = getattr(self, "_sample_rate", 16000)
+                logger.info(f"Loopback {loopback_name} opened for simple recording.")
+                with loopback_device.recorder(samplerate=sample_rate, channels=1) as mic:
                     while not self._stop_event.is_set():
-                        data = stream.read(source.CHUNK)
-                        self.audio_frames.append(data)
-                        self._update_volume(data)
-                        wf.writeframes(data)
+                        data = mic.record(numframes=1024)
+                        audio_array = data.flatten()
+                        int16_data = (audio_array * 32767).astype(np.int16).tobytes()
+                        self.audio_frames_dict["loopback"].append(int16_data)
+            except Exception as e:
+                logger.error(f"Loopback Recording error: {e}")
 
-            logger.info(f"Audio recorded and saved to temporary file: {temp_wav_path}")
-        except Exception as e:
-            logger.error(f"Recording error: {e}")
-        finally:
-            logger.info("Simple recording loop stopped.")
-            self.is_recording = False
+        threads = []
+        t1 = threading.Thread(target=record_mic)
+        threads.append(t1)
+        t1.start()
+        
+        if loopback_name:
+            t2 = threading.Thread(target=record_loopback)
+            threads.append(t2)
+            t2.start()
+            
+        for t in threads:
+            t.join()
+
+        logger.info("Simple recording loops stopped.")
+        self.is_recording = False
 
     def _ensure_whisperlive_service(self):
         """Ensure WhisperLive service is running."""
@@ -265,37 +293,50 @@ class SoundSource(Source):
                 return False
         return True
 
-    def _initialize_transcription_client(self):
-        """Initialize transcription client."""
+    def _initialize_transcription_clients(self):
+        """Initialize transcription clients."""
         try:
             transcription_lang = self.config.get("transcription_language", "en") or None
             translation_lang = self._translation_language
 
-            # Skip translation if target matches transcription language (no-op)
             if translation_lang and translation_lang == transcription_lang:
-                logger.info(
-                    "Translation target '%s' matches transcription language — skipping translation",
-                    translation_lang,
-                )
                 translation_lang = ""
 
-            # Build translation kwargs
             translate_kwargs: dict = {}
             if translation_lang:
                 translate_kwargs["enable_translation"] = True
                 translate_kwargs["target_language"] = translation_lang
-                translate_kwargs["translation_callback"] = self._on_translation_result
                 logger.info("Translation enabled — target language: %s", translation_lang)
 
-            self.transcription_client = WhisperLiveTranscriptionClient(
+            # Mic Client
+            mic_kwargs = translate_kwargs.copy()
+            if translation_lang:
+                mic_kwargs["translation_callback"] = lambda _, segs: self._on_translation_result(_, segs, source="mic")
+            self.transcription_client_mic = WhisperLiveTranscriptionClient(
                 host="localhost",
                 port=9090,
                 lang=transcription_lang,
                 use_vad=True,
-                transcription_callback=self._on_transcription_result,
+                transcription_callback=lambda _, segs: self._on_transcription_result(_, segs, source="mic"),
                 no_speech_thresh=0.4,
-                **translate_kwargs,
+                **mic_kwargs,
             )
+
+            # Loopback Client
+            loopback_device = self.config.get("audio_loopback_device_name")
+            if loopback_device:
+                loop_kwargs = translate_kwargs.copy()
+                if translation_lang:
+                    loop_kwargs["translation_callback"] = lambda _, segs: self._on_translation_result(_, segs, source="loopback")
+                self.transcription_client_loopback = WhisperLiveTranscriptionClient(
+                    host="localhost",
+                    port=9090,
+                    lang=transcription_lang,
+                    use_vad=True,
+                    transcription_callback=lambda _, segs: self._on_transcription_result(_, segs, source="loopback"),
+                    no_speech_thresh=0.4,
+                    **loop_kwargs,
+                )
             return True
         except Exception as e:
             logger.error(f"Failed to initialize WhisperLive client: {e}")
@@ -354,6 +395,23 @@ class SoundSource(Source):
             p.terminate()
         return device_index
 
+    def _stream_loopback_to_whisperlive(self, device_name):
+        """Stream loopback audio to WhisperLive."""
+        if not self.transcription_client_loopback:
+            return
+        try:
+            import soundcard as sc
+            loopback_device = next((s for s in sc.all_speakers() if s.name == device_name), sc.default_speaker())
+            target_sample_rate = 16000
+            logger.info(f"Loopback device {device_name} opened.")
+            with loopback_device.recorder(samplerate=target_sample_rate, channels=1) as mic:
+                while not self._stop_event.is_set():
+                    data = mic.record(numframes=4096)
+                    audio_array = data.flatten().astype(np.float32)
+                    self.transcription_client_loopback.client.send_packet_to_server(audio_array.tobytes())
+        except Exception as e:
+            logger.error(f"Audio streaming loopback error: {e}")
+
     def _stream_audio_to_whisperlive(self, device_index, device_name):
         """Stream audio to WhisperLive."""
         try:
@@ -376,86 +434,108 @@ class SoundSource(Source):
                             audio_array, source_sample_rate, target_sample_rate
                         )
 
-                    self.transcription_client.client.send_packet_to_server(
+                    self.transcription_client_mic.client.send_packet_to_server(
                         audio_array.tobytes()
                     )
         except Exception as e:
             logger.error(f"Audio streaming error: {e}")
 
-    def _cleanup_transcription_client(self):
-        """Cleanup transcription client."""
-        if self.transcription_client:
-            try:
-                self.transcription_client.client.send_packet_to_server(
-                    "END_OF_AUDIO".encode("utf-8")
-                )
-                logger.info("END_OF_AUDIO signal sent.")
-                time.sleep(1)
-                self.transcription_client.client.close_websocket()
-                logger.info("WhisperLive client closed.")
-            except Exception as e:
-                logger.error(f"Error closing WhisperLive client: {e}")
-            self.transcription_client = None
+    def _cleanup_transcription_clients(self):
+        """Cleanup transcription clients."""
+        for client_attr in ['transcription_client_mic', 'transcription_client_loopback']:
+            client = getattr(self, client_attr, None)
+            if client:
+                try:
+                    client.client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+                    time.sleep(1)
+                    client.client.close_websocket()
+                except Exception as e:
+                    logger.error(f"Error closing WhisperLive client: {e}")
+                setattr(self, client_attr, None)
+
+    def _wait_for_clients_ready(self, timeout=15, status_callback=None):
+        ready = True
+        if self.transcription_client_mic:
+            ready = ready and self._wait_for_client_ready(self.transcription_client_mic.client, timeout, status_callback)
+        if self.transcription_client_loopback:
+            ready = ready and self._wait_for_client_ready(self.transcription_client_loopback.client, timeout, status_callback)
+        return ready
 
     def _record_and_transcribe_worker(self, status_callback=None):
         """Streams audio to WhisperLive."""
         if not self._ensure_whisperlive_service():
             return
 
-        if not self._initialize_transcription_client():
+        if not self._initialize_transcription_clients():
             return
 
-        client = self.transcription_client.client
-        # Allow more time when translation is enabled (server loads/downloads M2M100 model)
         timeout = 600 if self._translation_language else 15
-        if not self._wait_for_client_ready(client, timeout=timeout, status_callback=status_callback):
+        if not self._wait_for_clients_ready(timeout=timeout, status_callback=status_callback):
             self.is_recording = False
             return
 
-        logger.info("WhisperLive client initialized and recording.")
+        logger.info("WhisperLive clients initialized and recording.")
         self._write_transcription_separator()
 
         device_name = self.config.get("audio_input_device_name")
         device_index = self._find_audio_device_index(device_name)
+        
+        loopback_name = self.config.get("audio_loopback_device_name")
 
+        threads = []
         try:
-            self._stream_audio_to_whisperlive(device_index, device_name)
+            if self.transcription_client_mic:
+                t1 = threading.Thread(target=self._stream_audio_to_whisperlive, args=(device_index, device_name))
+                threads.append(t1)
+                t1.start()
+            if self.transcription_client_loopback and loopback_name:
+                t2 = threading.Thread(target=self._stream_loopback_to_whisperlive, args=(loopback_name,))
+                threads.append(t2)
+                t2.start()
+
+            for t in threads:
+                t.join()
         finally:
-            logger.info("Recording loop stopped.")
-            self._cleanup_transcription_client()
+            logger.info("Recording loops stopped.")
+            self._cleanup_transcription_clients()
             self.is_recording = False
 
-    def _finalize_current_utterance(self):
+    def _finalize_current_utterance(self, source="mic"):
         """Finalize current utterance."""
-        if self._current_utterance_text:
-            self._last_transcription_text += self._current_utterance_text + " "
+        if self._current_utterance_text[source]:
+            prefix = "🎤 " if source == "mic" else "💻 "
+            self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
             if self.session_manager:
                 speaker = getattr(self.session_manager, "speaker_name", "interviewer")
+                if source == "loopback":
+                    speaker = "system"
                 self.session_manager.append_transcription_segment(
-                    self._current_utterance_text, speaker_name=speaker
+                    self._current_utterance_text[source], speaker_name=speaker
                 )
-            self._current_utterance_text = ""
+            self._current_utterance_text[source] = ""
 
-    def _process_new_segment(self, text, start):
+    def _process_new_segment(self, text, start, source="mic"):
         """Process new segment."""
-        self._finalize_current_utterance()
+        self._finalize_current_utterance(source)
         if not self._translation_language:
-            show_subtitle(text)
-        self._last_segment_start = start
-        self._current_utterance_text = text
+            prefix = "🎤 " if source == "mic" else "💻 "
+            show_subtitle(f"{prefix}{text}")
+        self._last_segment_start[source] = start
+        self._current_utterance_text[source] = text
 
-    def _process_segment_update(self, text):
+    def _process_segment_update(self, text, source="mic"):
         """Process segment update."""
-        if text != self._current_utterance_text:
+        if text != self._current_utterance_text[source]:
             if not self._translation_language:
-                update_subtitle(text, append=False)
-            self._current_utterance_text = text
+                prefix = "🎤 " if source == "mic" else "💻 "
+                update_subtitle(f"{prefix}{text}", append=False)
+            self._current_utterance_text[source] = text
 
-    def _on_transcription_result(self, _, segments):
+    def _on_transcription_result(self, _, segments, source="mic"):
         """Callback from WhisperLive client with transcription segments."""
-        logger.debug(f"Received segments: {segments}")
+        logger.debug(f"Received segments from {source}: {segments}")
         if not segments:
-            self._finalize_current_utterance()
+            self._finalize_current_utterance(source)
             return
 
         for segment in segments:
@@ -465,14 +545,14 @@ class SoundSource(Source):
             if not text:
                 continue
 
-            if start > self._last_segment_start:
-                self._process_new_segment(text, start)
-            elif start == self._last_segment_start:
-                self._process_segment_update(text)
+            if start > self._last_segment_start[source]:
+                self._process_new_segment(text, start, source)
+            elif start == self._last_segment_start[source]:
+                self._process_segment_update(text, source)
 
-    def _on_translation_result(self, _, segments):
+    def _on_translation_result(self, _, segments, source="mic"):
         """Callback from WhisperLive client with translated segments."""
-        logger.debug(f"Received translated segments: {segments}")
+        logger.debug(f"Received translated segments from {source}: {segments}")
         if not segments:
             return
 
@@ -483,18 +563,19 @@ class SoundSource(Source):
             if not text:
                 continue
 
-            if start > self._last_translated_segment_start:
-                # New translated segment — finalize previous
-                if self._current_translated_utterance:
-                    self._last_translated_text += self._current_translated_utterance + " "
-                show_subtitle(text)
-                self._last_translated_segment_start = start
-                self._current_translated_utterance = text
-            elif start == self._last_translated_segment_start:
-                # Update of current translated segment
-                if text != self._current_translated_utterance:
-                    update_subtitle(text, append=False)
-                    self._current_translated_utterance = text
+            if start > self._last_translated_segment_start[source]:
+                if self._current_translated_utterance[source]:
+                    prefix = "🎤 " if source == "mic" else "💻 "
+                    self._last_translated_text += f"{prefix}{self._current_translated_utterance[source]} "
+                prefix = "🎤 " if source == "mic" else "💻 "
+                show_subtitle(f"{prefix}{text}")
+                self._last_translated_segment_start[source] = start
+                self._current_translated_utterance[source] = text
+            elif start == self._last_translated_segment_start[source]:
+                if text != self._current_translated_utterance[source]:
+                    prefix = "🎤 " if source == "mic" else "💻 "
+                    update_subtitle(f"{prefix}{text}", append=False)
+                    self._current_translated_utterance[source] = text
 
     def _stop_recording_thread(self):
         """Stop recording thread."""
@@ -506,23 +587,29 @@ class SoundSource(Source):
 
     def _finalize_last_utterance(self):
         """Finalize last utterance."""
-        if self._current_utterance_text:
-            self._last_transcription_text += self._current_utterance_text
-            if self.session_manager:
-                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
-                self.session_manager.append_transcription_segment(
-                    self._current_utterance_text, speaker_name=speaker
-                )
+        for source in ["mic", "loopback"]:
+            if self._current_utterance_text[source]:
+                prefix = "🎤 " if source == "mic" else "💻 "
+                self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
+                if self.session_manager:
+                    speaker = getattr(self.session_manager, "speaker_name", "interviewer")
+                    if source == "loopback":
+                        speaker = "system"
+                    self.session_manager.append_transcription_segment(
+                        self._current_utterance_text[source], speaker_name=speaker
+                    )
 
     def _process_realtime_transcription(self):
         """Process realtime transcription."""
         self._finalize_last_utterance()
 
         # Finalize any remaining translated utterance
-        if self._current_translated_utterance:
-            self._last_translated_text += self._current_translated_utterance
+        for source in ["mic", "loopback"]:
+            if self._current_translated_utterance[source]:
+                prefix = "🎤 " if source == "mic" else "💻 "
+                self._last_translated_text += f"{prefix}{self._current_translated_utterance[source]} "
 
-        has_content = self._current_utterance_text or self._current_translated_utterance
+        has_content = any(self._current_utterance_text.values()) or any(self._current_translated_utterance.values())
         if not has_content:
             threading.Timer(5.0, clear_subtitles).start()
 
