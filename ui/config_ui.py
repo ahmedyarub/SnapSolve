@@ -3,6 +3,12 @@ import os
 import sys
 from pathlib import Path
 
+# FORCE PyQt6 initialization at the VERY FIRST entry point
+try:
+    import PyQt6.QtWebEngineWidgets
+except Exception:
+    pass
+
 # Add parent directory to path so imports work when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -189,6 +195,10 @@ class ConfigUI(QDialog):
         self.track_active_window = QCheckBox(
             "Track Active Window with Screenshots"
         )
+        
+        self.embedding_engine_combo = QComboBox()
+        self.embedding_engine_combo.addItem("Local (sentence-transformers)", "local")
+        self.embedding_engine_combo.addItem("Remote (Gemini)", "remote")
 
         self.setWindowTitle("Application Configuration")
         icon_path = os.path.join(
@@ -386,6 +396,18 @@ class ConfigUI(QDialog):
             "on the Session Timeline as coloured app spans."
         )
         layout.addRow("Window Tracking:", self.track_active_window)
+
+        # Semantic Search
+        layout.addRow(QLabel("<b>Semantic Search</b>"))
+        current_engine = self.config.get("embedding_engine", "local")
+        idx = self.embedding_engine_combo.findData(current_engine)
+        if idx >= 0:
+            self.embedding_engine_combo.setCurrentIndex(idx)
+        layout.addRow("Embedding Engine:", self.embedding_engine_combo)
+        
+        self.reindex_btn = QPushButton("Re-index All Sessions")
+        self.reindex_btn.clicked.connect(self.reindex_all_sessions)
+        layout.addRow("Index:", self.reindex_btn)
 
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
@@ -888,6 +910,7 @@ class ConfigUI(QDialog):
             self.config["periodic_screenshots_activity_min_delay"] = 5
 
         self.config["track_active_window"] = self.track_active_window.isChecked()
+        self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
 
         # Save Profile Settings
         self.save_current_profile()
@@ -912,6 +935,42 @@ class ConfigUI(QDialog):
             "Configuration saved successfully!\nPlease restart the application for some changes to take effect.",
         )
         self.accept()
+
+    def reindex_all_sessions(self):
+        reply = QMessageBox.question(
+            self, "Re-index All Sessions",
+            "This will re-embed all sessions. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            # Temporarily save engine choice
+            self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
+            self.config["gemini_api_key"] = self.gemini_api_key.text()
+            
+            from core.session_manager import SessionManager
+            from PyQt6.QtWidgets import QProgressDialog
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtWidgets import QApplication
+            
+            manager = SessionManager(self.config)
+            sessions = manager.list_all_sessions()
+            total = len(sessions)
+            
+            progress = QProgressDialog("Re-indexing sessions...", "Cancel", 0, total, self)
+            progress.setWindowTitle("Indexing")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.show()
+            
+            for i, s in enumerate(sessions):
+                if progress.wasCanceled():
+                    break
+                progress.setValue(i)
+                progress.setLabelText(f"Indexing session {i+1} of {total}...")
+                QApplication.processEvents()
+                manager.index_session_sync(s["id"])
+                
+            progress.setValue(total)
+            QMessageBox.information(self, "Indexing Complete", "Re-indexing has finished.")
 
 
 def open_config_ui(config_path, models_path, profiles_path, prompts_path):

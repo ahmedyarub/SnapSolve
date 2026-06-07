@@ -1,3 +1,13 @@
+# Force PyQt6 WebEngine and GL sharing to initialize before anything else
+try:
+    import PyQt6.QtWebEngineWidgets
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    if not QApplication.instance():
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+except ImportError:
+    pass
+
 import json
 import os
 import shutil
@@ -549,6 +559,8 @@ class SessionManager:
 
     def cleanup(self):
         """Perform any necessary cleanup."""
+        if self.current_session_id:
+            self.index_session(self.current_session_id)
         self._close_transcription_file()
 
     @staticmethod
@@ -923,3 +935,113 @@ class SessionManager:
         # Sort by timestamp
         events.sort(key=lambda e: e["timestamp"])
         return events
+
+    def index_session_sync(self, session_id: str):
+        """Generates and saves embeddings for the session synchronously."""
+        try:
+            from core.llm.embeddings import get_embedding_engine
+            engine = get_embedding_engine(self.config)
+            
+            data = self.load_session_data(session_id)
+            if not data:
+                return
+                
+            chunks = []
+            history = data.get("history", [])
+            
+            # Extract prompts and responses
+            for i, interaction in enumerate(history):
+                prompt = interaction.get("prompt", "").strip()
+                if prompt:
+                    chunks.append({"type": "prompt", "index": i, "text": prompt})
+                    
+                response = interaction.get("response", "").strip()
+                if response:
+                    chunks.append({"type": "response", "index": i, "text": response})
+            
+            # Extract transcription lines
+            trans_path = _session_transcription_path(session_id)
+            if os.path.exists(trans_path):
+                try:
+                    with open(trans_path, "r", encoding="utf-8") as f:
+                        for idx, line in enumerate(f):
+                            line = line.strip()
+                            # Skip separator lines
+                            if line.startswith("---") or not line:
+                                continue
+                            chunks.append({"type": "transcription", "index": idx, "text": line})
+                except Exception:
+                    pass
+            
+            # Extract app names from screenshots
+            screenshots_dir = _session_screenshots_dir(session_id)
+            if os.path.isdir(screenshots_dir):
+                for fname in os.listdir(screenshots_dir):
+                    if not fname.endswith(".json"):
+                        continue
+                    sidecar_path = os.path.join(screenshots_dir, fname)
+                    try:
+                        with open(sidecar_path, "r", encoding="utf-8") as sf:
+                            sidecar = json.load(sf)
+                        app_name = sidecar.get("app_name", "").strip()
+                        window_title = sidecar.get("window_title", "").strip()
+                        text = ""
+                        if app_name: text += app_name
+                        if window_title: text += " " + window_title
+                        if text:
+                            chunks.append({"type": "app_name", "index": 0, "text": text.strip()})
+                    except Exception:
+                        pass
+            
+            # Extract tags and summaries
+            tags = data.get("tags", [])
+            if tags:
+                chunks.append({"type": "tag", "index": 0, "text": " ".join(tags)})
+                
+            summary = data.get("summary", "").strip()
+            if summary:
+                chunks.append({"type": "summary", "index": 0, "text": summary})
+            
+            if not chunks:
+                return
+                
+            texts = [c["text"] for c in chunks]
+            embeddings = engine.embed_texts(texts)
+            
+            for i, chunk in enumerate(chunks):
+                chunk["embedding"] = embeddings[i].tolist()
+                
+            emb_path = os.path.join(_session_dir(session_id), "embeddings.json")
+            _atomic_json_write(emb_path, chunks)
+            logger.info(f"[SessionManager] Indexed {len(chunks)} chunks for session {session_id}")
+            
+        except Exception as e:
+            logger.error(f"[SessionManager] Failed to index session {session_id}: {e}")
+
+    def index_session(self, session_id: str):
+        """Generates and saves embeddings for the session in a background thread."""
+        import threading
+        thread = threading.Thread(target=self.index_session_sync, args=(session_id,), daemon=True)
+        thread.start()
+
+    @staticmethod
+    def get_all_embeddings() -> List[Dict[str, Any]]:
+        """Loads all embeddings.json files into memory. Used for semantic search."""
+        all_chunks = []
+        if not os.path.exists(SESSIONS_DIR):
+            return all_chunks
+            
+        for entry in os.listdir(SESSIONS_DIR):
+            session_dir = os.path.join(SESSIONS_DIR, entry)
+            emb_path = os.path.join(session_dir, "embeddings.json")
+            if os.path.isdir(session_dir) and os.path.exists(emb_path):
+                try:
+                    with open(emb_path, "r", encoding="utf-8") as f:
+                        chunks = json.load(f)
+                    for c in chunks:
+                        c["session_id"] = entry
+                    all_chunks.extend(chunks)
+                except Exception:
+                    pass
+                    
+        return all_chunks

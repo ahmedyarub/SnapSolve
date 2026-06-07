@@ -182,7 +182,7 @@ class SessionBrowserDialog(QDialog):
         self._loaded_sessions: dict[str, dict] = {}
         self._current_session_id: Optional[str] = None
         self._response_loaded = False
-        self._pending_response_js: list[str] = []
+        self._pending_response_js: list = []
         self._response_page: _PopupWebPage | None = None
         self.selected_session_id: Optional[str] = None
         self._empty_count: int = 0
@@ -192,6 +192,16 @@ class SessionBrowserDialog(QDialog):
         self.screenshot_pane: _CollapsiblePane | None = None
         self.prompt_pane: _CollapsiblePane | None = None
         self.response_pane: _CollapsiblePane | None = None
+        self._search_matches: list[dict] = []
+        self._current_match_idx: int = -1
+        self.search_types = {
+            "prompt": True, 
+            "response": True, 
+            "transcription": True, 
+            "app_name": True, 
+            "summary": True,
+            "tag": True
+        }
 
         # Build UI
         self._build_ui()
@@ -218,6 +228,22 @@ class SessionBrowserDialog(QDialog):
         self.filter_input.textChanged.connect(self._apply_filter)
         filter_bar.addWidget(filter_icon)
         filter_bar.addWidget(self.filter_input)
+        
+        self.btn_prev_search = QPushButton("<")
+        self.btn_next_search = QPushButton(">")
+        self.btn_prev_search.setToolTip("Previous match")
+        self.btn_next_search.setToolTip("Next match")
+        self.btn_prev_search.setEnabled(False)
+        self.btn_next_search.setEnabled(False)
+        self.btn_prev_search.clicked.connect(self._search_prev)
+        self.btn_next_search.clicked.connect(self._search_next)
+        self.btn_search_settings = QPushButton("⚙️")
+        self.btn_search_settings.setToolTip("Search Configuration")
+        self.btn_search_settings.clicked.connect(self._open_search_settings)
+        
+        filter_bar.addWidget(self.btn_prev_search)
+        filter_bar.addWidget(self.btn_next_search)
+        filter_bar.addWidget(self.btn_search_settings)
 
         # "Delete Empty Sessions" button
         self.btn_delete_empty = QPushButton("🗑️ Delete Empty")
@@ -359,6 +385,33 @@ class SessionBrowserDialog(QDialog):
         popup_html = assets_dir / "popup.html"
         self.response_view.setUrl(QUrl.fromLocalFile(str(popup_html)))
 
+    def _open_search_settings(self):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: #21252b; color: #abb2bf; border: 1px solid #333840; }
+            QMenu::item { padding: 4px 20px 4px 24px; }
+            QMenu::indicator { width: 13px; height: 13px; }
+        """)
+        
+        for key, display in [
+            ("prompt", "Search Prompts"),
+            ("response", "Search Responses"),
+            ("transcription", "Search Transcriptions"),
+            ("app_name", "Search App Names"),
+            ("summary", "Search Summaries"),
+            ("tag", "Search Tags")
+        ]:
+            action = menu.addAction(display)
+            action.setCheckable(True)
+            action.setChecked(self.search_types.get(key, True))
+            action.triggered.connect(lambda checked, k=key: self._toggle_search_type(k, checked))
+            
+        menu.exec(self.btn_search_settings.mapToGlobal(self.btn_search_settings.rect().bottomLeft()))
+
+    def _toggle_search_type(self, key: str, checked: bool):
+        self.search_types[key] = checked
+        self._apply_filter(self.filter_input.text())
+
     # ------------------------------------------------------------------ #
     #  Dark theme
     # ------------------------------------------------------------------ #
@@ -460,8 +513,27 @@ class SessionBrowserDialog(QDialog):
 
         total_prompts = 0
         visible_sessions = 0
+        
+        self._search_matches = []
+        self._current_match_idx = -1
+        matching_session_ids = set()
+        
+        if filter_lower:
+            import app.state as state
+            manager = state.session_manager
+            if manager:
+                allowed_types = {k for k, v in self.search_types.items() if v}
+                chunks = manager.get_all_embeddings()
+                for c in chunks:
+                    if c.get("type") in allowed_types:
+                        if filter_lower in c.get("text", "").lower():
+                            s_id = c.get("session_id")
+                            if s_id:
+                                matching_session_ids.add(s_id)
+                                self._search_matches.append(c)
 
         for idx, meta in enumerate(self._sessions_meta):
+            s_id = meta.get("id")
             # Filter logic: match on name, title, or tags
             if filter_lower:
                 searchable = " ".join([
@@ -469,8 +541,15 @@ class SessionBrowserDialog(QDialog):
                     meta.get("title") or "",
                     " ".join(meta.get("tags", [])),
                 ]).lower()
-                if filter_lower not in searchable:
+                
+                match_meta = filter_lower in searchable
+                match_chunks = s_id in matching_session_ids
+                
+                if not match_meta and not match_chunks:
                     continue
+                
+                if match_meta and not match_chunks:
+                    self._search_matches.append({"session_id": s_id, "type": "meta"})
 
             visible_sessions += 1
 
@@ -526,6 +605,47 @@ class SessionBrowserDialog(QDialog):
         )
         if self.btn_delete_empty is not None:
             self.btn_delete_empty.setEnabled(self._empty_count > 0)
+            
+        if self._search_matches:
+            self._current_match_idx = 0
+            
+        self._update_search_navigation()
+
+    def _update_search_navigation(self):
+        has_matches = len(self._search_matches) > 0
+        self.btn_prev_search.setEnabled(has_matches and self._current_match_idx > 0)
+        self.btn_next_search.setEnabled(has_matches and self._current_match_idx < len(self._search_matches) - 1)
+        if has_matches:
+            self.filter_input.setToolTip(f"Match {self._current_match_idx + 1} of {len(self._search_matches)}")
+        else:
+            self.filter_input.setToolTip("")
+
+    def _search_prev(self):
+        if self._current_match_idx > 0:
+            self._current_match_idx -= 1
+            self._jump_to_current_match()
+
+    def _search_next(self):
+        if self._current_match_idx < len(self._search_matches) - 1:
+            self._current_match_idx += 1
+            self._jump_to_current_match()
+
+    def _jump_to_current_match(self):
+        if 0 <= self._current_match_idx < len(self._search_matches):
+            match_data = self._search_matches[self._current_match_idx]
+            session_id = match_data.get("session_id")
+            
+            for i in range(self.tree.topLevelItemCount()):
+                item = self.tree.topLevelItem(i)
+                if item.data(0, Qt.ItemDataRole.UserRole) == session_id:
+                    self.tree.setCurrentItem(item)
+                    
+                    idx = match_data.get("index")
+                    mtype = match_data.get("type")
+                    if idx is not None and mtype in ("prompt", "response") and self.timeline:
+                        self.timeline.navigate_to_interaction(idx)
+                    break
+        self._update_search_navigation()
 
     def _populate_session_children(self, root_item: QTreeWidgetItem, session_id: str):
         """Add prompt excerpt children to a session root item."""
@@ -598,6 +718,34 @@ class SessionBrowserDialog(QDialog):
             if session_id and self.timeline:
                 self._current_session_id = session_id
                 self.timeline.load_session(session_id)
+                
+            # Show transcription if it exists for the root session
+            data = self._get_session_data(session_id)
+            if data:
+                transcription_file = data.get("transcription_file")
+                if transcription_file:
+                    import os, html
+                    from core.session_manager import _session_dir
+                    abs_trans_path = os.path.abspath(os.path.join(_session_dir(session_id), transcription_file))
+                    if os.path.exists(abs_trans_path):
+                        try:
+                            with open(abs_trans_path, 'r', encoding='utf-8') as tf:
+                                trans_text = tf.read()
+                            if trans_text:
+                                trans_html = html.escape(trans_text).replace("\n", "<br>")
+                                full_prompt = f'''
+                                <div style="margin-top: 16px; border-top: 1px dashed #555; padding-top: 8px;">
+                                    <b style="color: #98c379;">Transcription Context:</b><br><br>
+                                    {trans_html}
+                                </div>
+                                '''
+                                self.prompt_view.setHtml(full_prompt)
+                                self._highlight_prompt_search()
+                                self._render_response("")
+                                return
+                        except Exception:
+                            pass
+                            
             self.prompt_view.clear()
             self._render_response("")
             return
@@ -643,11 +791,17 @@ class SessionBrowserDialog(QDialog):
             display_parts.append(f"📎 <a href='{file_url}' style='color: #61afef;'>{html.escape(img)}</a>")
 
         transcription_file = data.get("transcription_file")
+        transcription_text = ""
         if transcription_file:
             abs_trans_path = os.path.abspath(os.path.join(_session_dir(session_id), transcription_file))
             if os.path.exists(abs_trans_path):
                 trans_url = f"file:///{abs_trans_path.replace(os.sep, '/')}"
                 display_parts.append(f"📝 <a href='{trans_url}' style='color: #98c379;'>{html.escape(transcription_file)}</a>")
+                try:
+                    with open(abs_trans_path, 'r', encoding='utf-8') as tf:
+                        transcription_text = tf.read()
+                except Exception:
+                    pass
 
         header = "  ".join(display_parts)
         prompt_html = html.escape(prompt_text).replace("\n", "<br>")
@@ -675,8 +829,18 @@ class SessionBrowserDialog(QDialog):
             display_width = min(img_w, 750) 
             
             full_prompt += f"<br><br><img src='{abs_image_path_fwd}' width='{display_width}'>"
+            
+        if transcription_text:
+            trans_html = html.escape(transcription_text).replace("\n", "<br>")
+            full_prompt += f'''
+            <div style="margin-top: 16px; border-top: 1px dashed #555; padding-top: 8px;">
+                <b style="color: #98c379;">Transcription Context:</b><br><br>
+                {trans_html}
+            </div>
+            '''
 
         self.prompt_view.setHtml(full_prompt)
+        self._highlight_prompt_search()
         self._render_response(interaction.get("response", ""))
 
         # Navigate the timeline to this interaction's timestamp
@@ -688,6 +852,37 @@ class SessionBrowserDialog(QDialog):
 
         if self.selection_mode:
             self.btn_select.setEnabled(True)
+
+    def _highlight_prompt_search(self):
+        # Highlight search term if active
+        search_term = self.filter_input.text().strip()
+        
+        if self.timeline:
+            self.timeline.highlight_search_term(search_term)
+            
+        if search_term:
+            from PyQt6.QtGui import QTextCharFormat, QColor, QTextDocument
+            fmt = QTextCharFormat()
+            fmt.setBackground(QColor("#e5c07b"))
+            fmt.setForeground(QColor("#282c34"))
+            
+            doc = self.prompt_view.document()
+            
+            # Pass a default flag to ensure case-insensitive matching in PyQt6 if default changed
+            # But wait, Qt.MatchContains etc is for models. For QTextDocument it's QTextDocument.FindFlag
+            # No flags means case-insensitive by default in Qt 5/6.
+            cursor = doc.find(search_term)
+            first_cursor = None
+            while not cursor.isNull():
+                if not first_cursor:
+                    first_cursor = cursor
+                cursor.mergeCharFormat(fmt)
+                cursor = doc.find(search_term, cursor)
+            
+            # Scroll to first match
+            if first_cursor:
+                self.prompt_view.setTextCursor(first_cursor)
+                self.prompt_view.ensureCursorVisible()
 
     def _on_tree_double_click(self, item: QTreeWidgetItem, column: int):
         if not self.selection_mode:
@@ -711,16 +906,27 @@ class SessionBrowserDialog(QDialog):
         js_text = json.dumps(markdown_text)
         js_code = f"updateContent({js_text});"
 
+        def _highlight_after_render(_res=None):
+            search_term = self.filter_input.text().strip()
+            if search_term:
+                self.response_view.findText(search_term)
+            else:
+                self.response_view.findText("")
+
         if self._response_loaded:
-            self.response_view.page().runJavaScript(js_code)
+            self.response_view.page().runJavaScript(js_code, _highlight_after_render)
         else:
             self._pending_response_js.clear()
-            self._pending_response_js.append(js_code)
+            self._pending_response_js.append((js_code, _highlight_after_render))
 
     def _on_response_loaded(self, ok: bool):
         self._response_loaded = True
-        for js in self._pending_response_js:
-            self.response_view.page().runJavaScript(js)
+        for item in self._pending_response_js:
+            if isinstance(item, tuple):
+                js_code, callback = item
+                self.response_view.page().runJavaScript(js_code, callback)
+            else:
+                self.response_view.page().runJavaScript(item)
         self._pending_response_js.clear()
 
     # ------------------------------------------------------------------ #
@@ -980,6 +1186,7 @@ class SessionBrowserDialog(QDialog):
         if text.strip():
             for i in range(self.tree.topLevelItemCount()):
                 self.tree.topLevelItem(i).setExpanded(True)
+        self._update_search_navigation()
 
     # ------------------------------------------------------------------ #
     #  Show maximized

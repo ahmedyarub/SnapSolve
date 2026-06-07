@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QToolTip,
     QVBoxLayout,
     QWidget,
+    QTextBrowser,
 )
 
 logger = logging.getLogger(__name__)
@@ -951,69 +952,92 @@ class _TranscriptionPanel(QFrame):
         
         layout.addWidget(header)
 
-        self._list = QListWidget()
-        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._list.setStyleSheet(f"""
-            QListWidget {{
+        self._text_browser = QTextBrowser()
+        self._text_browser.setOpenLinks(False)
+        self._text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._text_browser.setStyleSheet(f"""
+            QTextBrowser {{
                 background-color: {_BG_DARK};
                 color: {_TEXT_BRIGHT};
                 border: 1px solid {_BORDER};
                 border-radius: 4px;
                 font-family: 'Consolas', 'Fira Code', monospace;
                 font-size: 11px;
-                padding: 2px;
+                padding: 4px;
                 outline: none;
             }}
-            QListWidget::item {{
-                padding: 2px 4px;
-                border-radius: 3px;
-            }}
-            QListWidget::item:hover {{
-                background-color: #2c313a;
-                color: {_ACCENT_GREEN};
-            }}
-            QListWidget::item:selected {{
-                background-color: #2c313a;
-                color: {_ACCENT_GREEN};
-            }}
         """)
-        self._list.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._list.itemClicked.connect(self._on_item_clicked)
-        layout.addWidget(self._list)
+        self._text_browser.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._text_browser.anchorClicked.connect(self._on_anchor_clicked)
+        layout.addWidget(self._text_browser)
+
+        self._search_term = ""
+
+    def highlight_search_term(self, term: str) -> None:
+        self._search_term = term
+        self._apply_search_highlight()
+
+    def _apply_search_highlight(self) -> None:
+        doc = self._text_browser.document()
+        # Reset previous formats (simplest way is to just let the HTML re-render, but we only have text)
+        # Actually, to clear previous highlights, we can just re-set the HTML!
+        self._render_html()
+        
+        if not self._search_term:
+            return
+            
+        from PyQt6.QtGui import QTextCharFormat, QColor
+        fmt = QTextCharFormat()
+        fmt.setBackground(QColor("#e5c07b"))
+        fmt.setForeground(QColor("#282c34"))
+        
+        cursor = doc.find(self._search_term)
+        while not cursor.isNull():
+            cursor.mergeCharFormat(fmt)
+            cursor = doc.find(self._search_term, cursor)
 
     def _toggle_collapse(self) -> None:
         self._collapsed = not self._collapsed
         if self._collapsed:
-            self._list.hide()
+            self._text_browser.hide()
             self.setMaximumHeight(30)
             self._toggle_btn.setText("▶")
         else:
-            self._list.show()
+            self._text_browser.show()
             self.setMaximumHeight(16777215)
             self._toggle_btn.setText("▼")
 
-    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+    def _on_anchor_clicked(self, url) -> None:
         """Emit the timestamp of the clicked transcription line."""
-        ts = item.data(Qt.ItemDataRole.UserRole)
-        if ts is not None:
+        try:
+            ts = float(url.toString())
             self.lineClicked.emit(ts)
+        except ValueError:
+            pass
+
+    def _render_html(self) -> None:
+        import html
+        if not self._transcription_lines:
+            self._text_browser.setHtml("No transcription data available.")
+            return
+
+        lines_html = []
+        for ts, text in self._transcription_lines:
+            time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+            escaped_text = html.escape(text)
+            # Use anchor for navigation
+            lines_html.append(f'<a name="{ts}"></a><a href="{ts}" style="text-decoration:none; color:{_TEXT_BRIGHT};">[{time_str}]  {escaped_text}</a><br>')
+        
+        self._text_browser.setHtml("".join(lines_html))
 
     def set_transcription_lines_with_timestamps(
         self, lines: list[tuple[float, str]]
     ) -> None:
         """Directly set timestamped transcription lines."""
         self._transcription_lines = lines
-        self._list.clear()
-
-        if not lines:
-            self._list.addItem("No transcription data available.")
-        else:
-            for ts, text in lines:
-                time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-                item = QListWidgetItem(f"[{time_str}]  {text}")
-                item.setToolTip(f"Click to jump to {time_str}")
-                item.setData(Qt.ItemDataRole.UserRole, ts)
-                self._list.addItem(item)
+        self._render_html()
+        if self._search_term:
+            self._apply_search_highlight()
 
     def navigate_to_time(self, timestamp: float) -> None:
         """Highlight and scroll to the closest previous transcription segment."""
@@ -1023,16 +1047,29 @@ class _TranscriptionPanel(QFrame):
 
         # Find closest previous sentence
         best_idx = 0
+        best_ts = self._transcription_lines[0][0]
         for i, (ts, text) in enumerate(self._transcription_lines):
             if ts <= timestamp:
                 best_idx = i
+                best_ts = ts
             else:
                 break
         
-        item = self._list.item(best_idx)
-        if item:
-            self._list.setCurrentItem(item)
-            self._list.scrollToItem(item, QListWidget.ScrollHint.PositionAtCenter)
+        from PyQt6.QtWidgets import QTextEdit
+        from PyQt6.QtGui import QTextCursor, QColor, QTextFormat
+        
+        doc = self._text_browser.document()
+        block = doc.findBlockByNumber(best_idx)
+        if block.isValid():
+            cursor = QTextCursor(block)
+            selection = QTextEdit.ExtraSelection()
+            selection.format.setBackground(QColor("#2c313a"))
+            selection.format.setForeground(QColor(_ACCENT_GREEN))
+            selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+            selection.cursor = cursor
+            
+            self._text_browser.setExtraSelections([selection])
+            self._text_browser.scrollToAnchor(str(best_ts))
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1409,6 +1446,11 @@ class SessionTimelineWidget(QWidget):
         self._playhead.set_playhead_time(timestamp)
         self._on_playhead_moved(timestamp)
         self._scroll_to_nearest_screenshot(timestamp)
+
+    def highlight_search_term(self, term: str) -> None:
+        """Pass a search term down to the transcription panel to highlight."""
+        if hasattr(self, "_transcription_panel"):
+            self._transcription_panel.highlight_search_term(term)
 
     def clear(self) -> None:
         """Reset the timeline to empty state."""

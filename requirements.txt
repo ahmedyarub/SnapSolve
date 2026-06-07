@@ -21,3 +21,4 @@ resampy
 pydantic
 websockets>=13
 uvicorn
+sentence-transformers

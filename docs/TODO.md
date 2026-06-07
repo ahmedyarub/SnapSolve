@@ -77,7 +77,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 - [ ] **Encryption at Rest** `[Screenpipe]`: Optionally encrypt session data (JSON files, images, transcriptions) stored on disk using a user-provided key or OS credential store.
 
 ### Search & Review
-- [ ] **Natural Language Session Search** `[Screenpipe]`: Enable semantic search across all session history using embeddings (e.g., Gemini `text-embedding-004`). Allow queries like "What did the interviewer ask about microservices?" across weeks of sessions.
+- [x] **Natural Language Session Search** `[Screenpipe]`: Enable semantic search across all session history using embeddings (e.g., Gemini `text-embedding-004`). Allow queries like "What did the interviewer ask about microservices?" across weeks of sessions.
 - [x] **Session Timeline View** `[Screenpipe]`: Add a visual timeline for each session showing timestamped events (recording start, screenshots, OCR captures, LLM queries, responses) rendered in the Session Browser.
 - [ ] **Auto-Summary on Session End** `[Screenpipe]`: Automatically generate a structured summary (key topics, questions asked, answers given, action items) when a session ends. Store as `session_summary.md` in the session folder.
 

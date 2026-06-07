@@ -209,34 +209,120 @@ async def set_transcription_language(req: SetTranscriptionLanguageRequest):
 
 # Screenpipe-like endpoints
 @app.get("/search", dependencies=[Depends(verify_api_key)])
-async def search_sessions(q: Optional[str] = None, limit: int = 20, offset: int = 0):
+async def search_sessions(
+    q: Optional[str] = None, 
+    limit: int = 20, 
+    offset: int = 0,
+    semantic: bool = False,
+    types: Optional[str] = None
+):
     import app.state as state
     manager = state.session_manager
     if not manager:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
 
-    sessions = manager.list_all_sessions()
-    results = []
-    for s in sessions:
-        if q:
-            match = False
-            s_name = s.get("name") or s.get("title") or ""
-            if q.lower() in s_name.lower():
-                match = True
-            for tag in s.get("tags", []):
-                if q.lower() in tag.lower():
-                    match = True
-            if not match:
-                continue
-        results.append({
-            "id": s.get("id"),
-            "name": s.get("name") or s.get("title") or "",
-            "timestamp": s.get("updated_at"),
-            "tags": s.get("tags", [])
-        })
+    allowed_types = set(types.split(",")) if types else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
+    
+    if not semantic or not q:
+        # Standard text search across chunks
+        all_chunks = manager.get_all_embeddings()
+        
+        results_map = {}
+        q_lower = q.lower() if q else ""
+        
+        for c in all_chunks:
+            if c.get("type") in allowed_types:
+                if q_lower and q_lower not in c.get("text", "").lower():
+                    continue
+                    
+                s_id = c.get("session_id")
+                if s_id not in results_map:
+                    results_map[s_id] = {
+                        "id": s_id,
+                        "timestamp": 0,
+                        "tags": []
+                    }
+        
+        # Populate session metadata
+        sessions = manager.list_all_sessions()
+        final_results = []
+        for s in sessions:
+            s_id = s.get("id")
+            if not q_lower:
+                # If no query, return all sessions
+                final_results.append({
+                    "id": s_id,
+                    "name": s.get("name") or s.get("title") or s_id,
+                    "timestamp": s.get("updated_at", 0),
+                    "tags": s.get("tags", [])
+                })
+            elif s_id in results_map:
+                res = results_map[s_id]
+                res["name"] = s.get("name") or s.get("title") or s_id
+                res["timestamp"] = s.get("updated_at", 0)
+                res["tags"] = s.get("tags", [])
+                final_results.append(res)
+                
+        final_results.sort(key=lambda x: x["timestamp"], reverse=True)
+        return {"data": final_results[offset:offset + limit], "total": len(final_results)}
 
-    results.sort(key=lambda x: x["timestamp"], reverse=True)
-    return {"data": results[offset:offset + limit], "total": len(results)}
+    # Semantic search logic
+    try:
+        from core.llm.embeddings import get_embedding_engine
+        import numpy as np
+        engine = get_embedding_engine(_app_config)
+        query_embedding = engine.embed_texts([q])[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
+        
+    all_chunks = manager.get_all_embeddings()
+    if not all_chunks:
+        return {"data": [], "total": 0}
+        
+    allowed_types = set(types.split(",")) if types else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
+    
+    filtered_chunks = []
+    chunk_embeddings = []
+    
+    for c in all_chunks:
+        if c.get("type") in allowed_types:
+            emb = c.get("embedding")
+            if emb:
+                filtered_chunks.append(c)
+                chunk_embeddings.append(emb)
+                
+    if not filtered_chunks:
+        return {"data": [], "total": 0}
+        
+    chunk_embeddings_np = np.array(chunk_embeddings, dtype=np.float32)
+    norms = np.linalg.norm(chunk_embeddings_np, axis=1)
+    q_norm = np.linalg.norm(query_embedding)
+    
+    norms[norms == 0] = 1.0
+    if q_norm == 0:
+        q_norm = 1.0
+        
+    similarities = np.dot(chunk_embeddings_np, query_embedding) / (norms * q_norm)
+    top_indices = np.argsort(similarities)[::-1]
+    
+    results = []
+    for idx in top_indices:
+        sim = float(similarities[idx])
+        if sim < 0.15:  # lower threshold to allow more results
+            continue
+            
+        c = filtered_chunks[idx]
+        results.append({
+            "session_id": c["session_id"],
+            "type": c["type"],
+            "index": c["index"],
+            "text": c["text"],
+            "score": sim
+        })
+        
+    sliced_results = results[offset:offset + limit]
+    return {"data": sliced_results, "total": len(results)}
+
 
 
 @app.get("/tags", dependencies=[Depends(verify_api_key)])

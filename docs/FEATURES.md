@@ -51,6 +51,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Session Browser:** Browse all past sessions in a tree view with source-type icons (🎤 audio, 🖼️ image, 💬 text). Click any prompt to view its full text with speaker attribution, source type, and attached image indicators, plus the formatted response rendered with Markdown, KaTeX, Shiki syntax highlighting, and Mermaid diagrams.
 *   **Session Renaming:** Right-click a session to rename it for easier identification.
 *   **Session Tagging:** Add comma-separated tags to sessions for categorization and future filtering.
+*   **Natural Language Semantic Search:** Search across all sessions using local (sentence-transformers) or remote (Gemini) embeddings. Filter by prompt, response, transcription, app name, and summary. Navigates between results using next/previous buttons.
 *   **Tag Filtering:** Use the filter bar to search sessions by name, title, or tags.
 *   **Session Deletion:** Delete one or multiple sessions (with multi-select) via right-click menu or the Delete key. The entire session folder is removed.
 *   **Empty Session Filtering:** Empty sessions (with no interactions) are automatically excluded from the browser.

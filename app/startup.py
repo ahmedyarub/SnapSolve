@@ -10,8 +10,19 @@ import platform
 import sys
 import threading
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+# ---------------------------------------------------------------------------
+# CRITICAL: Initialize Qt flags BEFORE any other imports!
+# PyTorch DataLoader may spawn child processes on Windows which import this module.
+# If external libraries (like matplotlib) instantiate QApplication before this flag
+# is set, QtWebEngineWidgets will cause a fatal crash.
+# ---------------------------------------------------------------------------
+try:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    if not QApplication.instance():
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+except Exception:
+    pass
 
 from app import state
 from app.config_validation import validate_config
@@ -84,6 +95,7 @@ if platform.system() == "Windows":
 # ---------------------------------------------------------------------------
 def _initialize_qt_app():
     """Initialize PyQt application."""
+    import PyQt6.QtWebEngineWidgets  # Force early import to prevent crash
     app = QApplication.instance()
     if not app:
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
