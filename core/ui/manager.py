@@ -168,6 +168,9 @@ class UIManager(QObject):
             self.panel.update_translation_label(
                 cfg.get("translation_language", "")
             )
+            self.panel.set_audio_volume_bar_setting(
+                cfg.get("show_audio_volume_bar", True)
+            )
 
         if source_name == "text":
             self.text_input._apply_opacity(opacity)

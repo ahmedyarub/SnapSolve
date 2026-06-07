@@ -242,6 +242,7 @@ class SoundSource(Source):
                     while not self._stop_event.is_set():
                         data = stream.read(source.CHUNK)
                         self.audio_frames.append(data)
+                        self._update_volume(data)
                         wf.writeframes(data)
 
             logger.info(f"Audio recorded and saved to temporary file: {temp_wav_path}")
@@ -366,6 +367,7 @@ class SoundSource(Source):
 
                 while not self._stop_event.is_set():
                     data = stream.read(source.CHUNK)
+                    self._update_volume(data)
                     audio_array = (
                         np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
                     )
@@ -556,6 +558,15 @@ class SoundSource(Source):
             logger.error(f"Error during audio processing: {e}")
             return ""
 
+    def _update_volume(self, data: bytes):
+        """Calculate and broadcast audio volume for UI."""
+        from core.ui.signals import ui_signals
+        audio_data = np.frombuffer(data, dtype=np.int16)
+        if len(audio_data) > 0:
+            vol = np.abs(audio_data).mean()
+            scaled_vol = min(100, int((vol / 32768.0) * 500))
+            ui_signals.update_volume.emit(scaled_vol)
+
     def stop_recording(self) -> str:
         if not self.is_recording:
             return ""
@@ -564,6 +575,9 @@ class SoundSource(Source):
 
         self.is_recording = False
         logger.info("Recording stopped.")
+
+        from core.ui.signals import ui_signals
+        ui_signals.update_volume.emit(0)
 
         if self.realtime_transcription:
             return self._process_realtime_transcription()

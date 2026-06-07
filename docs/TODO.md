@@ -12,6 +12,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
 - [x] **App & Window Name Tracking**: Records the active foreground application name, process name, and window title alongside each periodic screenshot as a JSON sidecar file. Displayed on the Session Timeline as coloured app spans with hover tooltips. Configurable via `track_active_window`.
 - [x] **MCP Server**: Implemented a Model Context Protocol (MCP) server using FastMCP to expose SnapSolve session history, OCR texts, and transcriptions to external IDEs (Claude Desktop, Cursor).
+- [x] **Audio Level Visualization**: Added a real-time audio volume progress bar to the control panel during audio recording. Configurable via Settings UI.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -38,7 +39,6 @@ This document tracks planned features, enhancements, and known issues that need 
 
 ## Audio & Speech Features
 - [ ] **Speech Recognition Enhancements**: Improve speech recognition accuracy with better noise cancellation and language detection.
-- [ ] **Audio Level Visualization**: Add real-time audio level visualization during recording.
 - [ ] **Fix Recording from Meetup Calls**: Investigate and fix issues with recording audio from Meetup/virtual meeting applications.
 - [ ] **Dual Audio Channel Recording** `[Screenpipe]`: Listen to both microphone and speaker simultaneously and record them as separate sentences, enabling speaker-attributed transcription.
 

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QLabel,
+    QProgressBar,
 )
 
 from core.ui.mixins import DraggableWidgetMixin, _DragHandleBar
@@ -148,6 +149,30 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.layout.addWidget(self.translation_label)
         self.translation_label.hide()
 
+        # Volume Progress Bar
+        self.volume_bar = QProgressBar()
+        self.volume_bar.setTextVisible(False)
+        self.volume_bar.setRange(0, 100)
+        self.volume_bar.setValue(0)
+        self.volume_bar.setStyleSheet(
+            """
+            QProgressBar {
+                min-height: 6px;
+                max-height: 6px;
+                border-radius: 3px;
+                background-color: rgba(45, 45, 45, 180);
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                border-radius: 3px;
+            }
+            """
+        )
+        self.layout.addWidget(self.volume_bar)
+        self.volume_bar.hide()
+        self.show_audio_volume_bar_setting = True
+        ui_signals.update_volume.connect(self.volume_bar.setValue)
+
         self.btn_end_multi.hide()
         self.btn_cancel.hide()
 
@@ -199,6 +224,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.btn_record.setVisible(is_audio)
         self.lang_combo.setVisible(is_audio)
         self.translation_label.setVisible(is_audio)
+        self.volume_bar.setVisible(is_audio and self.show_audio_volume_bar_setting)
         self.adjustSize()
         self.update_position()
         self._broadcast_state()
@@ -215,6 +241,14 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             self.lang_combo.blockSignals(True)
             self.lang_combo.setCurrentIndex(idx)
             self.lang_combo.blockSignals(False)
+
+    def set_audio_volume_bar_setting(self, show: bool):
+        self.show_audio_volume_bar_setting = show
+        if self.btn_record.isVisible():
+            self.volume_bar.setVisible(show)
+            self.adjustSize()
+            self.update_position()
+            self._broadcast_state()
 
     def update_translation_label(self, lang_code: str):
         """Update the translation status label to reflect the current setting."""
@@ -310,3 +344,18 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
                     )
             else:
                 btn.setStyleSheet(btn_style)
+
+        self.volume_bar.setStyleSheet(
+            f"""
+            QProgressBar {{
+                min-height: 6px;
+                max-height: 6px;
+                border-radius: 3px;
+                background-color: rgba(45, 45, 45, {alpha_int});
+            }}
+            QProgressBar::chunk {{
+                background-color: rgba(76, 175, 80, {alpha_int});
+                border-radius: 3px;
+            }}
+            """
+        )
