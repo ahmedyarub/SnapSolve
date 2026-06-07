@@ -484,7 +484,7 @@ class ConfigUI(QDialog):
         layout.addRow("Audio Input Device:", self.audio_input_device_combo)
 
         # Audio Loopback Device
-        self.audio_loopback_device_combo.addItem("None (Disabled)", None)
+        self.audio_loopback_device_combo.addItem("(Use input device instead)", None)
 
         try:
             from config.settings import get_audio_loopback_devices  # noqa: PLC0415

@@ -15,7 +15,7 @@ POPUP_X, POPUP_Y = 3500, 1800
 BASIC_QUESTION = "What is the fifth largest country in the world?"
 PROGRAMMING_QUESTION1 = "Write a Python hello world."
 PROGRAMMING_QUESTION2 = "Use classes"
-TTS_INPUT_DEVICE_NAME = "CABLE Output (VB-Audio Virtual "
+TTS_LOOPBACK_DEVICE_NAME = "CABLE Input (VB-Audio Virtual Cable)"
 TTS_OUTPUT_DEVICE_NAME = "CABLE Input (VB-Audio Virtual C"
 
 # --- Subprocess Configuration ---
@@ -24,7 +24,7 @@ MAIN_SCRIPT_ARGS = [
     "--active-profile=quick",
     "--popup-opacity=1.0",
     f"--tts-output-device-name={TTS_OUTPUT_DEVICE_NAME}",
-    f"--audio-input-device-name={TTS_INPUT_DEVICE_NAME}",
+    f"--audio-loopback-device-name={TTS_LOOPBACK_DEVICE_NAME}",
     "--default-source=text",
     "--output-mode=both",
     "--transcription-language=en",

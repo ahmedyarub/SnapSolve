@@ -194,8 +194,12 @@ class SoundSource(Source):
             return
 
         device_name = self.config.get("audio_input_device_name", "Default Device")
+        loopback_name = self.config.get("audio_loopback_device_name")
         if status_callback:
-            status_callback(f"Starting recording on {device_name}...")
+            if loopback_name:
+                status_callback(f"Starting recording on {device_name} & {loopback_name}...")
+            else:
+                status_callback(f"Starting recording on {device_name}...")
 
         if self.realtime_transcription:
             self._record_thread = threading.Thread(
@@ -251,9 +255,13 @@ class SoundSource(Source):
             import soundcard as sc
             import numpy as np
             try:
-                loopback_device = next((s for s in sc.all_speakers() if s.name == loopback_name), sc.default_speaker())
+                speaker_name = loopback_name if loopback_name else sc.default_speaker().name
+                loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == speaker_name and m.isloopback), None)
+                if loopback_device is None: raise ValueError(f"Loopback device {speaker_name} not found")
                 # Fallback if sample rate wasn't set yet
                 sample_rate = getattr(self, "_sample_rate", 16000)
+                if not sample_rate:
+                    sample_rate = 16000
                 logger.info(f"Loopback {loopback_name} opened for simple recording.")
                 with loopback_device.recorder(samplerate=sample_rate, channels=1) as mic:
                     while not self._stop_event.is_set():
@@ -401,7 +409,8 @@ class SoundSource(Source):
             return
         try:
             import soundcard as sc
-            loopback_device = next((s for s in sc.all_speakers() if s.name == device_name), sc.default_speaker())
+            loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == device_name and m.isloopback), None)
+            if loopback_device is None: raise ValueError(f"Loopback device {device_name} not found")
             target_sample_rate = 16000
             logger.info(f"Loopback device {device_name} opened.")
             with loopback_device.recorder(samplerate=target_sample_rate, channels=1) as mic:
@@ -620,38 +629,54 @@ class SoundSource(Source):
 
     def _process_simple_recording(self):
         """Process simple recording."""
-        if not self.audio_frames:
+        if not hasattr(self, "audio_frames_dict"):
             return ""
 
-        try:
-            if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
-                return ""
-            audio_data = sr.AudioData(
-                b"".join(self.audio_frames), self._sample_rate, self._sample_width
-            )
-            transcription_lang = self.config.get("transcription_language", "en")
-            google_lang = _GOOGLE_LANGUAGE_MAP.get(transcription_lang, transcription_lang)
-            text = self.recognizer.recognize_google(audio_data, language=google_lang)  # type: ignore[attr-defined]
-            return text
-        except sr.UnknownValueError:
-            logger.info("Speech Recognition could not understand audio")
-            return ""
-        except sr.RequestError as e:
-            logger.error(
-                f"Could not request results from Speech Recognition service; {e}"
-            )
-            return ""
-        except Exception as e:
-            logger.error(f"Error during audio processing: {e}")
-            return ""
+        results = []
+        transcription_lang = self.config.get("transcription_language", "en")
+        google_lang = _GOOGLE_LANGUAGE_MAP.get(transcription_lang, transcription_lang)
+
+        for source, frames in self.audio_frames_dict.items():
+            if not frames:
+                continue
+            try:
+                if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                    continue
+                audio_data = sr.AudioData(
+                    b"".join(frames), self._sample_rate, self._sample_width
+                )
+                text = self.recognizer.recognize_google(audio_data, language=google_lang)  # type: ignore[attr-defined]
+                if text:
+                    prefix = "🎤 " if source == "mic" else "💻 "
+                    results.append(f"{prefix}{text}")
+            except sr.UnknownValueError:
+                logger.info(f"Speech Recognition could not understand audio from {source}")
+            except sr.RequestError as e:
+                logger.error(f"Could not request results from Speech Recognition service for {source}; {e}")
+            except Exception as e:
+                logger.error(f"Error during audio processing for {source}: {e}")
+
+        return " ".join(results).strip()
 
     def _update_volume(self, data: bytes):
         """Calculate and broadcast audio volume for UI."""
         from core.ui.signals import ui_signals
         audio_data = np.frombuffer(data, dtype=np.int16)
         if len(audio_data) > 0:
-            vol = np.abs(audio_data).mean()
-            scaled_vol = min(100, int((vol / 32768.0) * 500))
+            vol = np.abs(audio_data.astype(np.float32)).max()
+            
+            # Keep a running max of the volume to auto-normalize 
+            # against whatever the current OS mixer volume is.
+            self._max_observed_vol = max(getattr(self, '_max_observed_vol', 500.0), vol)
+            
+            # Slowly decay the max volume so it can adapt if the user turns their system volume down
+            # Floor at 500.0 so that a totally silent room doesn't decay to the noise floor and show 100%
+            self._max_observed_vol = max(500.0, self._max_observed_vol * 0.995)
+            
+            # Scale the current volume relative to the maximum observed volume
+            scaled_vol = int((vol / self._max_observed_vol) * 100)
+            scaled_vol = min(100, max(0, scaled_vol))
+            
             ui_signals.update_volume.emit(scaled_vol)
 
     def stop_recording(self) -> str:

@@ -10,11 +10,15 @@ The "System Loopback" feature automatically captures any audio playing from your
 
 #### Windows (Native Support)
 Windows natively supports loopback audio via WASAPI. No additional drivers are required.
+
+When configuring your audio routing in SnapSolve, you have two options on Windows:
+1. **Standard Loopback:** Set your Audio Output Device to any MME device (like your physical speakers), and set the System Loopback Device to the loopback version of that exact same device.
+2. **Virtual Cable (Silent Testing):** Set your Audio Output Device to the MME input device of VB-Audio (`CABLE Input`), set the Audio Input Device to the MME output device of VB-Audio (`CABLE Output`), and set the System Loopback Device to `(Use input device instead)`.
+
 1. Open the SnapSolve Configuration UI (`Ctrl+Alt+Shift+C` -> Settings icon).
 2. Go to the **Audio & Speech** tab.
-3. Under **Audio Input Device**, select your physical microphone.
-4. Under **System Loopback Device**, select your default speakers/headphones.
-5. Save and start recording! Both sources will be captured and transcribed seamlessly.
+3. Follow one of the two options above to configure your Input, Output, and Loopback dropdowns.
+4. Save and start recording! Both sources will be captured and transcribed seamlessly.
 
 #### macOS
 macOS does not natively allow applications to record system audio directly. You must install a virtual audio driver to route the audio.
