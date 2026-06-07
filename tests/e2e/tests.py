@@ -148,8 +148,8 @@ def run_tests():
     poll_button(CYCLE_SOURCE)
 
     try:
-        # test_text_source()
-        # test_image_source()
+        test_text_source()
+        test_image_source()
         test_audio_record()
     finally:
         show_test_summary()

@@ -381,7 +381,7 @@ class SoundSource(Source):
             and getattr(self.session_manager, "transcription_file", None)
         ):
             try:
-                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
+                speaker = "🎤/💻"
                 with open(
                     self.session_manager.transcription_file, "a", encoding="utf-8"
                 ) as f:
@@ -515,9 +515,7 @@ class SoundSource(Source):
             prefix = "🎤 " if source == "mic" else "💻 "
             self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
             if self.session_manager:
-                speaker = getattr(self.session_manager, "speaker_name", "interviewer")
-                if source == "loopback":
-                    speaker = "system"
+                speaker = "🎤" if source == "mic" else "💻"
                 self.session_manager.append_transcription_segment(
                     self._current_utterance_text[source], speaker_name=speaker
                 )
@@ -601,9 +599,7 @@ class SoundSource(Source):
                 prefix = "🎤 " if source == "mic" else "💻 "
                 self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
                 if self.session_manager:
-                    speaker = getattr(self.session_manager, "speaker_name", "interviewer")
-                    if source == "loopback":
-                        speaker = "system"
+                    speaker = "🎤" if source == "mic" else "💻"
                     self.session_manager.append_transcription_segment(
                         self._current_utterance_text[source], speaker_name=speaker
                     )
