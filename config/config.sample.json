@@ -41,6 +41,7 @@
   "summarize_transcription_prompt": "Summarize the following transcribed conversation:\n",
   "speaker_name": "interviewer",
   "realtime_transcription": true,
+  "show_audio_volume_bar": true,
   "transcription_language": "en",
   "tts_language": "en",
   "translation_language": "",

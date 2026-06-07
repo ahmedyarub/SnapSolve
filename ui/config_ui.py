@@ -121,6 +121,7 @@ class ConfigUI(QDialog):
         self.background_mode = QCheckBox("Run in system tray")
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
+        self.show_audio_volume_bar = QCheckBox("Show Audio Volume Bar")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.auto_summarize_transcription = QCheckBox("Auto-summarize transcription on stop")
         self.summarize_transcription_prompt = QLineEdit(
@@ -491,6 +492,11 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Real-time Transcription:", self.realtime_transcription)
 
+        self.show_audio_volume_bar.setChecked(
+            self.config.get("show_audio_volume_bar", True)
+        )
+        layout.addRow("Volume Bar:", self.show_audio_volume_bar)
+
         # --- Translation ---
         layout.addRow(QLabel(""))  # spacer
         layout.addRow(QLabel("<b>Translation</b>"))
@@ -804,6 +810,7 @@ class ConfigUI(QDialog):
         self.config["show_control_panel"] = self.show_control_panel.isChecked()
         self.config["hide_from_capture"] = self.hide_from_capture.isChecked()
         self.config["realtime_transcription"] = self.realtime_transcription.isChecked()
+        self.config["show_audio_volume_bar"] = self.show_audio_volume_bar.isChecked()
         self.config["transcription_language"] = (
             self.transcription_language.currentData() or "en"
         )

@@ -160,6 +160,7 @@ def _get_default_config():
         "tts_output_device_name": None,
         "audio_input_device_name": None,
         "realtime_transcription": True,
+        "show_audio_volume_bar": True,
         "transcription_pause_threshold": 1.0,
         "transcription_language": "en",
         "tts_language": "en",
