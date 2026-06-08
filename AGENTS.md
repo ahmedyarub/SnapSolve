@@ -221,6 +221,8 @@ This application relies on a strictly decoupled architecture:
     *   When implementing a new feature, **always** update `docs/FEATURES.md` to document it.
     *   Keep only the **10 most recent** completed tasks in the "Recently Completed Features" section of `docs/TODO.md`.
       Older completed items should be removed to keep the list concise. New completions go at the bottom of the list.
+* **Security & Feature Limitations:**
+    *   **NEVER** suggest or implement an "Accessibility Tree Capture" feature (like the one found in Screenpipe). This is strictly prohibited for security reasons.
 
 ## Testing Guidelines
 
