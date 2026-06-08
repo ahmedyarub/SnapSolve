@@ -3,7 +3,6 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Elaborate Session Structure**: Per-session folder hierarchy (`sessions/<uuid>/`) with `session.json`, `images/`, and `transcription.txt`. Speaker name attribution in transcription segments. Source-type icons in session browser. Transparent migration of legacy flat-file sessions.
 - [x] **Transcription & TTS Language Selection**: Configurable transcription language (27 languages + auto-detect) in config UI, control panel, Android app, and CLI. Separate TTS language setting in config UI, CLI, and test_sound. Both languages passed to WhisperLive, Google Speech Recognition, and Piper TTS.
 - [x] **Optional Translation Language**: Configurable real-time translation of transcribed audio via WhisperLive. Target language selectable in config UI, control panel (audio mode), and CLI (`--translation-language`). Translated text displayed in subtitles; original transcription saved to session files.
 - [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
@@ -13,6 +12,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Webhook / Post-Session Actions**: After a session ends or a summary is generated, trigger configurable HTTP webhook actions (e.g., send summary to Slack, create Jira ticket). Also triggerable manually from the Session Browser.
 - [x] **Audio Level Visualization**: Added a real-time audio volume progress bar to the control panel during audio recording. Configurable via Settings UI.
 - [x] **Dual Audio Channel Recording** `[Screenpipe]`: Listen to both microphone and speaker simultaneously and record them as separate sentences, enabling speaker-attributed transcription.
+- [x] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 
 ## Core & Architecture Improvements
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
@@ -69,7 +69,6 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 - [x] **App & Window Name Tracking** `[Screenpipe]`: Record the active application name and window title alongside each capture. Useful for session review, filtering, and analytics.
 - [ ] **Browser URL Tracking** `[Screenpipe]`: Capture the current browser URL when performing screen capture from a browser window. Enables linking captures back to source pages.
 - [x] **Session-Scoped Periodic Screenshots** `[Screenpipe]`: During active sessions, capture periodic full-screen screenshots (configurable interval, e.g., every 10–30 seconds) with optional keyboard/mouse activity triggers. Store in a `screenshots/` subfolder within the active session folder (`sessions/<uuid>/screenshots/`) with filenames including the date and time (e.g., `2026-06-06_10-30-15.png`). Configurable via config UI, CLI, control panel, and Android app.
-- [ ] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 
 ### Privacy & Security
 - [ ] **PII Filtering** `[Screenpipe]`: Add AI-based PII redaction (names, emails, phone numbers, SSNs) to OCR text and transcriptions before sending to cloud LLM APIs. Critical for SaaS trust and enterprise adoption.

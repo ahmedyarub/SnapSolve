@@ -767,7 +767,10 @@ class SessionBrowserDialog(QDialog):
                             with open(abs_trans_path, 'r', encoding='utf-8') as tf:
                                 trans_text = tf.read()
                             if trans_text:
-                                trans_html = html.escape(trans_text).replace("\n", "<br>")
+                                import re
+                                # Highlight speakers: lines starting with [Speaker]
+                                trans_text = re.sub(r"^\[(.*?)\]", r'<span style="color:#98c379;font-weight:bold;">[\1]</span>', html.escape(trans_text), flags=re.MULTILINE)
+                                trans_html = trans_text.replace("\n", "<br>")
                                 full_prompt = f'''
                                 <div style="margin-top: 16px; border-top: 1px dashed #555; padding-top: 8px;">
                                     <b style="color: #98c379;">Transcription Context:</b><br><br>

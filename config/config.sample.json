@@ -65,5 +65,7 @@
   "periodic_screenshots_activity_min_delay": 5,
   "track_active_window": true,
   "webhook_url": "",
-  "webhook_trigger_on_summary": false
+  "webhook_trigger_on_summary": false,
+  "post_recording_diarization": false,
+  "delete_wav_after_diarization": true
 }

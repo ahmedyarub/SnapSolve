@@ -208,6 +208,8 @@ def _get_default_config():
         "track_active_window": True,
         "webhook_url": "",
         "webhook_trigger_on_summary": False,
+        "post_recording_diarization": False,
+        "delete_wav_after_diarization": True,
     }
 
 
@@ -507,6 +509,26 @@ def parse_args():
         type=int,
         help="Minimum seconds between activity-triggered screenshots (default: 5)",
     )
+    parser.add_argument(
+        "--enable-post-recording-diarization",
+        action="store_true",
+        help="Enable post-recording speaker diarization using WhisperX",
+    )
+    parser.add_argument(
+        "--disable-post-recording-diarization",
+        action="store_true",
+        help="Disable post-recording speaker diarization",
+    )
+    parser.add_argument(
+        "--enable-delete-wav-after-diarization",
+        action="store_true",
+        help="Enable automatically deleting .wav files after diarization",
+    )
+    parser.add_argument(
+        "--disable-delete-wav-after-diarization",
+        action="store_true",
+        help="Disable automatically deleting .wav files after diarization",
+    )
 
     return parser.parse_args()
 
@@ -641,6 +663,16 @@ def _apply_transcription_config(config, args):
 
     if args.translation_language is not None:
         config["translation_language"] = args.translation_language
+
+    if args.enable_post_recording_diarization:
+        config["post_recording_diarization"] = True
+    elif args.disable_post_recording_diarization:
+        config["post_recording_diarization"] = False
+
+    if args.enable_delete_wav_after_diarization:
+        config["delete_wav_after_diarization"] = True
+    elif args.disable_delete_wav_after_diarization:
+        config["delete_wav_after_diarization"] = False
 
 
 def _apply_periodic_screenshots_config(config, args):

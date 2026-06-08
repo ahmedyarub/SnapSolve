@@ -1017,16 +1017,26 @@ class _TranscriptionPanel(QFrame):
 
     def _render_html(self) -> None:
         import html
+        import re
         if not self._transcription_lines:
             self._text_browser.setHtml("No transcription data available.")
             return
 
         lines_html = []
+        speaker_re = re.compile(r"^\[(.*?)\]\s*(.*)$")
         for ts, text in self._transcription_lines:
             time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-            escaped_text = html.escape(text)
+            
+            match = speaker_re.match(text)
+            if match:
+                speaker = html.escape(match.group(1))
+                rest = html.escape(match.group(2))
+                content_html = f'<span style="color:{_ACCENT_GREEN};font-weight:bold;">[{speaker}]</span> {rest}'
+            else:
+                content_html = html.escape(text)
+                
             # Use anchor for navigation
-            lines_html.append(f'<a name="{ts}"></a><a href="{ts}" style="text-decoration:none; color:{_TEXT_BRIGHT};">[{time_str}]  {escaped_text}</a><br>')
+            lines_html.append(f'<a name="{ts}"></a><a href="{ts}" style="text-decoration:none; color:{_TEXT_BRIGHT};">[{time_str}]  {content_html}</a><br>')
         
         self._text_browser.setHtml("".join(lines_html))
 
