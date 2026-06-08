@@ -123,6 +123,8 @@ class ConfigUI(QDialog):
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.show_audio_volume_bar = QCheckBox("Show Audio Volume Bar")
+        self.post_recording_diarization = QCheckBox("Post-Recording Speaker Diarization (WhisperX)")
+        self.delete_wav_after_diarization = QCheckBox("Delete .wav files after Diarization")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.auto_summarize_transcription = QCheckBox("Auto-summarize transcription on stop")
         self.summarize_transcription_prompt = QLineEdit(
@@ -555,6 +557,16 @@ class ConfigUI(QDialog):
             self.config.get("auto_summarize_transcription", False)
         )
         layout.addRow("Auto-summarize:", self.auto_summarize_transcription)
+
+        self.post_recording_diarization.setChecked(
+            self.config.get("post_recording_diarization", False)
+        )
+        layout.addRow("Offline Diarization:", self.post_recording_diarization)
+
+        self.delete_wav_after_diarization.setChecked(
+            self.config.get("delete_wav_after_diarization", True)
+        )
+        layout.addRow("Auto-Delete Audio:", self.delete_wav_after_diarization)
         
         self.summarize_transcription_prompt.setPlaceholderText("e.g. Summarize the following transcribed conversation:")
         layout.addRow("Summary Prompt:", self.summarize_transcription_prompt)
@@ -855,6 +867,8 @@ class ConfigUI(QDialog):
         )
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["auto_summarize_transcription"] = self.auto_summarize_transcription.isChecked()
+        self.config["post_recording_diarization"] = self.post_recording_diarization.isChecked()
+        self.config["delete_wav_after_diarization"] = self.delete_wav_after_diarization.isChecked()
         self.config["summarize_transcription_prompt"] = self.summarize_transcription_prompt.text()
         self.config["save_images"] = self.save_images.isChecked()
         self.config["speaker_name"] = self.speaker_name.text().strip() or "interviewer"

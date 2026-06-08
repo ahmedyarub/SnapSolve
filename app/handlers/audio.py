@@ -54,6 +54,58 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
         assert isinstance(active_source, SoundSource)
         text = active_source.stop_recording()
 
+        if config.get("post_recording_diarization", False):
+            import app.state as state
+            import os
+            import requests
+            import threading
+            
+            if state.session_manager:
+                session_dir = state.session_manager.get_session_dir(state.session_manager.current_session_id)
+                if session_dir:
+                    mic_path = os.path.join(session_dir, "audio_mic.wav")
+                    loopback_path = os.path.join(session_dir, "audio_loopback.wav")
+                    
+                    def run_diarization():
+                        try:
+                            files = {}
+                            if os.path.exists(mic_path):
+                                files["audio_mic"] = open(mic_path, "rb")
+                            if os.path.exists(loopback_path):
+                                files["audio_loopback"] = open(loopback_path, "rb")
+                                
+                            if not files:
+                                return
+                                
+                            data = {"speaker_name": config.get("speaker_name", "interviewer")}
+                            
+                            response = requests.post("http://127.0.0.1:8001/diarize", files=files, data=data)
+                            
+                            for f in files.values():
+                                f.close()
+                                
+                            if response.status_code == 200:
+                                res_json = response.json()
+                                segments = res_json.get("segments", [])
+                                if segments:
+                                    transcription_path = os.path.join(session_dir, "transcription.txt")
+                                    with open(transcription_path, "w", encoding="utf-8") as f:
+                                        for seg in segments:
+                                            f.write(f"[{seg['speaker']}] {seg['text']}\n")
+                                            
+                                if config.get("delete_wav_after_diarization", True):
+                                    if os.path.exists(mic_path):
+                                        try: os.remove(mic_path)
+                                        except: pass
+                                    if os.path.exists(loopback_path):
+                                        try: os.remove(loopback_path)
+                                        except: pass
+                        except Exception as e:
+                            print(f"Failed to run diarization service: {e}")
+                            
+                    threading.Thread(target=run_diarization, daemon=True).start()
+                    status_update("Diarization sent to service.")
+
         if not is_long_press:
             status_update("Transcription stopped.")
             from core.output import clear_subtitles

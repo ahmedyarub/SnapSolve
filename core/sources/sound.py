@@ -407,22 +407,50 @@ class SoundSource(Source):
         """Stream loopback audio to WhisperLive."""
         if not self.transcription_client_loopback:
             return
+            
+        wav_file = None
+        if self.config.get("post_recording_diarization", False) and self.session_manager:
+            session_dir = self.session_manager.get_session_dir(self.session_manager.current_session_id)
+            if session_dir:
+                wav_path = os.path.join(session_dir, "audio_loopback.wav")
+                wav_file = wave.open(wav_path, "wb")
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
         try:
             import soundcard as sc
             loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == device_name and m.isloopback), None)
             if loopback_device is None: raise ValueError(f"Loopback device {device_name} not found")
             target_sample_rate = 16000
+            
+            if wav_file:
+                wav_file.setframerate(target_sample_rate)
+                
             logger.info(f"Loopback device {device_name} opened.")
             with loopback_device.recorder(samplerate=target_sample_rate, channels=1) as mic:
                 while not self._stop_event.is_set():
                     data = mic.record(numframes=4096)
                     audio_array = data.flatten().astype(np.float32)
                     self.transcription_client_loopback.client.send_packet_to_server(audio_array.tobytes())
+                    
+                    if wav_file:
+                        int16_data = (audio_array * 32767).astype(np.int16).tobytes()
+                        wav_file.writeframes(int16_data)
         except Exception as e:
             logger.error(f"Audio streaming loopback error: {e}")
+        finally:
+            if wav_file:
+                wav_file.close()
 
     def _stream_audio_to_whisperlive(self, device_index, device_name):
         """Stream audio to WhisperLive."""
+        wav_file = None
+        if self.config.get("post_recording_diarization", False) and self.session_manager:
+            session_dir = self.session_manager.get_session_dir(self.session_manager.current_session_id)
+            if session_dir:
+                wav_path = os.path.join(session_dir, "audio_mic.wav")
+                wav_file = wave.open(wav_path, "wb")
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
         try:
             with sr.Microphone(device_index=device_index) as source:
                 stream = source.stream
@@ -431,6 +459,9 @@ class SoundSource(Source):
                 logger.info(
                     f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz."
                 )
+                
+                if wav_file:
+                    wav_file.setframerate(target_sample_rate)
 
                 while not self._stop_event.is_set():
                     data = stream.read(source.CHUNK)
@@ -446,8 +477,15 @@ class SoundSource(Source):
                     self.transcription_client_mic.client.send_packet_to_server(
                         audio_array.tobytes()
                     )
+                    
+                    if wav_file:
+                        int16_data = (audio_array * 32767).astype(np.int16).tobytes()
+                        wav_file.writeframes(int16_data)
         except Exception as e:
             logger.error(f"Audio streaming error: {e}")
+        finally:
+            if wav_file:
+                wav_file.close()
 
     def _cleanup_transcription_clients(self):
         """Cleanup transcription clients."""
