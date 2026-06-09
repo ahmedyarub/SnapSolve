@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageChops
 
 if TYPE_CHECKING:
     from core.session_manager import SessionManager
@@ -50,6 +50,7 @@ class PeriodicScreenshotService:
         self._keyboard_hook = None
         self._mouse_hook = None
         self._lock = threading.Lock()
+        self._last_image: ImageGrab.Image.Image | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -63,6 +64,7 @@ class PeriodicScreenshotService:
 
         self._running = True
         self._stop_event.clear()
+        self._last_image = None
 
         interval = self._config.get("periodic_screenshots_interval", 15)
 
@@ -239,6 +241,16 @@ class PeriodicScreenshotService:
                 return
 
             img = ImageGrab.grab()
+
+            if self._last_image is not None:
+                if img.size == self._last_image.size and img.mode == self._last_image.mode:
+                    diff = ImageChops.difference(img, self._last_image)
+                    if diff.getbbox() is None:
+                        logger.debug("Screenshot identical to previous, skipping capture")
+                        return
+
+            self._last_image = img
+
             timestamp = datetime.now().strftime(DATE_FORMAT)
             filename = f"{timestamp}.png"
             filepath = os.path.join(save_dir, filename)
