@@ -23,6 +23,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [ ] **Better Parsing of Verification Results**: Improve parsing and formatting of verification script (`verify.ps1`/`verify.sh`) output to provide clearer, more structured results.
 
 ## UI/UX Enhancements
+- [ ] **Quick Context Switching**: Allow switching theme/context/session easily
 - [ ] **Simplify Control Panel**: Hide control panel buttons that are not used frequently
 - [ ] **Simplify Config UI**: Hide config UI options that are not used frequently
 - [ ] **Popup Sizing Stability**: Fix the issue where small prompt popups dynamically change sizes (starting large and subsequently shrinking).
@@ -63,6 +64,7 @@ This document tracks planned features, enhancements, and known issues that need 
 Features identified from a deep comparison with [Screenpipe](https://github.com/screenpipe/screenpipe), a complementary open-source 24/7 screen + audio recording tool. See [snapsolve_vs_screenpipe.md](../docs/snapsolve_vs_screenpipe.md) for the full analysis.
 
 ### Extensibility & API
+- [ ] **Obsidian Integration**: Obsidian integration (read/write)
 - [x] **REST API** `[Screenpipe]`: Added a lightweight local REST API (default `localhost:3031`) exposing session data and query endpoints (`GET /sessions`, `GET /sessions/{id}`, `GET /search`, `GET /tags`, `POST /action`, `GET /config`, `GET /health` with downstream status, `POST /response_image/ack`, `POST /config/transcription_language`). This unlocks third-party integrations without building each one manually, complete with Swagger UI.
 - [x] **MCP Server** `[Screenpipe]`: Expose SnapSolve's session history, captured OCR text, and transcription data as an MCP server so external AI tools (Claude Desktop, Cursor, VS Code) can query past sessions.
 - [ ] **Plugin System (Pipes-Inspired)** `[Screenpipe]`: Implement a plugin/extension framework for context providers and post-session actions. Screenpipe uses markdown-defined "Pipes" — SnapSolve could adopt a similar pattern for community-built extensions (e.g., Jira sync, Obsidian export, Notion push).
@@ -79,6 +81,7 @@ Features identified from a deep comparison with [Screenpipe](https://github.com/
 - [ ] **Encryption at Rest** `[Screenpipe]`: Optionally encrypt session data (JSON files, images, transcriptions) stored on disk using a user-provided key or OS credential store.
 
 ### Search & Review
+- [ ] **Timeline Summarization**: Summarize whole timeline and not just transcription
 - [x] **Natural Language Session Search** `[Screenpipe]`: Enable semantic search across all session history using embeddings (e.g., Gemini `text-embedding-004`). Allow queries like "What did the interviewer ask about microservices?" across weeks of sessions.
 - [x] **Session Timeline View** `[Screenpipe]`: Add a visual timeline for each session showing timestamped events (recording start, screenshots, OCR captures, LLM queries, responses) rendered in the Session Browser.
 - [ ] **Auto-Summary on Session End** `[Screenpipe]`: Automatically generate a structured summary (key topics, questions asked, answers given, action items) when a session ends. Store as `session_summary.md` in the session folder.
