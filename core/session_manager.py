@@ -324,6 +324,17 @@ class SessionManager:
         except IOError as e:
             logger.error(f"[SessionManager] Failed to set context config: {e}")
 
+    def get_session_dir(self, session_id: str) -> Optional[str]:
+        """Returns the directory path for the given session_id, or None if it doesn't exist."""
+        path = _session_dir(session_id)
+        if os.path.exists(path):
+            return path
+        legacy = _legacy_session_json_path(session_id)
+        if os.path.exists(legacy):
+            _migrate_legacy_session(session_id)
+            return _session_dir(session_id)
+        return None
+
     def import_context(
         self,
         source_session_id: str,
