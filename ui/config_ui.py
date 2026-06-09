@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QSlider,
 )
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from config.settings import get_audio_devices
 
 
@@ -59,6 +59,17 @@ TRANSCRIPTION_LANGUAGES: list[tuple[str, str]] = [
     ("Hebrew", "he"), ("Thai", "th"), ("Vietnamese", "vi"),
     ("Indonesian", "id"), ("Malay", "ms"),
 ]
+
+
+class RefreshableComboBox(QComboBox):
+    def __init__(self, parent=None, on_show_popup=None):
+        super().__init__(parent)
+        self.on_show_popup = on_show_popup
+
+    def showPopup(self):
+        if self.on_show_popup:
+            self.on_show_popup()
+        super().showPopup()
 
 
 class ConfigUI(QDialog):
@@ -116,9 +127,9 @@ class ConfigUI(QDialog):
         self.piper_model = QLineEdit(
             self.config.get("piper_model", "en_US-lessac-medium.onnx")
         )
-        self.tts_output_device_combo = QComboBox()
-        self.audio_input_device_combo = QComboBox()
-        self.audio_loopback_device_combo = QComboBox()
+        self.tts_output_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
+        self.audio_input_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
+        self.audio_loopback_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
         self.background_mode = QCheckBox("Run in system tray")
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
@@ -219,6 +230,51 @@ class ConfigUI(QDialog):
         self.resize(600, 500)
 
         self.init_ui()
+
+
+    def refresh_audio_devices(self):
+        current_tts = self.tts_output_device_combo.currentData()
+        current_input = self.audio_input_device_combo.currentData()
+        current_loopback = self.audio_loopback_device_combo.currentData()
+
+        self.tts_output_device_combo.clear()
+        self.tts_output_device_combo.addItem("Default System Output", None)
+        try:
+            from config.settings import get_audio_devices  # noqa: PLC0415
+            for device in get_audio_devices():
+                self.tts_output_device_combo.addItem(device["name"], device["name"])
+        except Exception:
+            pass
+
+        self.audio_input_device_combo.clear()
+        self.audio_input_device_combo.addItem("Default System Input", None)
+        try:
+            from config.settings import get_audio_input_devices  # noqa: PLC0415
+            for device in get_audio_input_devices():
+                self.audio_input_device_combo.addItem(device["name"], device["name"])
+        except Exception:
+            pass
+
+        self.audio_loopback_device_combo.clear()
+        self.audio_loopback_device_combo.addItem("(Use input device instead)", None)
+        try:
+            from config.settings import get_audio_loopback_devices  # noqa: PLC0415
+            for device in get_audio_loopback_devices():
+                self.audio_loopback_device_combo.addItem(device["name"], device["name"])
+        except Exception:
+            pass
+
+        idx = self.tts_output_device_combo.findData(current_tts)
+        if idx >= 0:
+            self.tts_output_device_combo.setCurrentIndex(idx)
+            
+        idx = self.audio_input_device_combo.findData(current_input)
+        if idx >= 0:
+            self.audio_input_device_combo.setCurrentIndex(idx)
+            
+        idx = self.audio_loopback_device_combo.findData(current_loopback)
+        if idx >= 0:
+            self.audio_loopback_device_combo.setCurrentIndex(idx)
 
     def save_json(self, path, data):
         try:
