@@ -23,6 +23,7 @@ For a full, detailed breakdown of all features, see [FEATURES.md](docs/FEATURES.
 For technical details regarding how data flows through the application, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 For details regarding the real-time transcription feature, see [REALTIME_TRANSCRIPTION.md](REALTIME_TRANSCRIPTION.md).
 For details on the session browser, see [SESSION_BROWSER.md](docs/SESSION_BROWSER.md).
+For details on streaming screen and audio from a remote device, see [REMOTE_CAPTURE.md](docs/REMOTE_CAPTURE.md).
 
 ## Setup & Installation
 
