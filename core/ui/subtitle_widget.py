@@ -78,8 +78,27 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         screen = QApplication.primaryScreen().size()
         w = int(screen.width() * 0.6)
         self.setFixedWidth(w)
-        self.adjustSize()
-        h = self.height()
+        
+        # Calculate correct height manually to avoid layout caching delays
+        # This prevents the widget from "jumping" when new text is added
+        margins = self.layout.contentsMargins()
+        h = margins.top() + margins.bottom()
+        label_w = w - margins.left() - margins.right()
+        
+        for label in self.subtitle_labels:
+            if label.hasHeightForWidth():
+                h += label.heightForWidth(label_w)
+            else:
+                h += label.sizeHint().height()
+                
+        # Add spacing between labels
+        if self.subtitle_labels:
+            h += self.layout.spacing() * (len(self.subtitle_labels) - 1)
+            
+        # Ensure a minimum height if empty
+        if h == 0:
+            h = 50
+            
         x = (screen.width() - w) // 2
         y = screen.height() - h - 50
         self.setGeometry(x, y, w, h)
@@ -138,8 +157,7 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         # Force layout update before adjusting size
         self.layout.activate()
 
-        # Update widget size
-        self.adjustSize()
+        # Update widget size and position
         self.update_position()
 
         # Ensure widget has minimum height
@@ -186,9 +204,8 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
             last_label.setText(text)
             logger.info(f"Updated last subtitle to: {text}")
 
-        # Force layout update and size adjustment
+        # Force layout update and position adjustment
         self.layout.activate()
-        self.adjustSize()
         self.update_position()
 
         # Ensure widget is visible
@@ -260,5 +277,4 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
                 oldest = self.subtitle_labels.pop(0)
                 self.layout.removeWidget(oldest)
                 oldest.deleteLater()
-                self.adjustSize()
                 self.update_position()
