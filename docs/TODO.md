@@ -15,12 +15,16 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 
 ## Core & Architecture Improvements
+- [ ] **Dynamic Configuration**: Change configs dynamically (especially audio input/output and profile)
+- [ ] **Simultaneous Transcription**: Enable transcription simultaneously with OCR and text input (do not cancel recording when cycling source)
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
 - [ ] **Asynchronous Remote OCR Service**: When the remote OCR source is enabled, start the service asynchronously. Disable the capture and multi-select buttons until the service port is successfully polled. Ensure that if the app starts the service, it correctly kills it upon exiting.
 - [ ] **Application Initialization State**: Introduce a "Ready" popup indicating that initialization has finished. Prevent showing the control panel or accepting keyboard shortcuts until the application is fully loaded.
 - [ ] **Better Parsing of Verification Results**: Improve parsing and formatting of verification script (`verify.ps1`/`verify.sh`) output to provide clearer, more structured results.
 
 ## UI/UX Enhancements
+- [ ] **Simplify Control Panel**: Hide control panel buttons that are not used frequently
+- [ ] **Simplify Config UI**: Hide config UI options that are not used frequently
 - [ ] **Popup Sizing Stability**: Fix the issue where small prompt popups dynamically change sizes (starting large and subsequently shrinking).
 - [ ] **Large Output Scroll Position**: Maintain the user's scroll position when large chunks of text are streamed into the popup.
 - [ ] **Audio Recording UI**: Improve visual feedback during audio recording with better indicators and controls.
