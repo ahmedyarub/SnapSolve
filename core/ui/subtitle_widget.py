@@ -50,7 +50,7 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Use a more visible background for debugging
         self.setStyleSheet(
-            "background-color: transparent; border: 1px solid rgba(255, 0, 0, 0.3);"
+            "background-color: rgba(0, 0, 0, 1); border: 1px solid rgba(255, 0, 0, 0.3);"
         )
 
         self.layout = QVBoxLayout(self)

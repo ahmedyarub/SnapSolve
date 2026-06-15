@@ -42,7 +42,7 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(36, 36)
         self.close_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: white; border: none; font-size: 20px; font-weight: bold; } QPushButton:hover { color: red; }"
+            "QPushButton { background-color: rgba(0, 0, 0, 1); color: white; border: none; font-size: 20px; font-weight: bold; } QPushButton:hover { color: red; }"
         )
         self.close_btn.clicked.connect(self.hide)
         self.top_bar.addStretch()

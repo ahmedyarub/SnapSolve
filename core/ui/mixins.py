@@ -78,14 +78,14 @@ class _DragHandleBar(QWidget):
         bar_layout.setContentsMargins(8, 2, 4, 2)
 
         grip_label = QLabel("⠿")
-        grip_label.setStyleSheet("color: #888; font-size: 18px; background: transparent;")
+        grip_label.setStyleSheet("color: #888; font-size: 18px; background: rgba(0, 0, 0, 1);")
         bar_layout.addWidget(grip_label)
         bar_layout.addStretch()
 
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(32, 32)
         close_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: gray;"
+            "QPushButton { background-color: rgba(0, 0, 0, 1); color: gray;"
             " border: none; font-size: 20px; font-weight: bold; }"
             " QPushButton:hover { color: white; }"
         )
