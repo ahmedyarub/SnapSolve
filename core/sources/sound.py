@@ -65,7 +65,7 @@ def is_whisperlive_service_online(host="localhost", port=9090):
         return False
 
 
-def start_whisperlive_service():
+def start_whisperlive_service(model_size="small"):
     """Start WhisperLive service if not already running."""
     server_script = os.path.join(whisperlive_path, "run_server.py")
     if not os.path.exists(server_script):
@@ -88,6 +88,8 @@ def start_whisperlive_service():
                 "9090",
                 "--backend",
                 "faster_whisper",
+                "--faster_whisper_custom_model_path",
+                model_size,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -136,7 +138,8 @@ class SoundSource(Source):
         logger.info("Warming up SoundSource...")
         if not is_whisperlive_service_online():
             logger.info("WhisperLive service is not running. Starting it now...")
-            self.whisperlive_process = start_whisperlive_service()
+            model_size = self.config.get("transcription_model", "small")
+            self.whisperlive_process = start_whisperlive_service(model_size)
             time.sleep(10)  # Give it time to start and load models
             if self.whisperlive_process and self.whisperlive_process.poll() is not None:
                 logger.error("Failed to start WhisperLive service.")

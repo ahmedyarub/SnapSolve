@@ -43,6 +43,7 @@
   "realtime_transcription": true,
   "show_audio_volume_bar": true,
   "transcription_language": "en",
+  "transcription_model": "small",
   "tts_language": "en",
   "translation_language": "",
   "ocr_config": {

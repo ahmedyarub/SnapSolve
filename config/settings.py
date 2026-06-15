@@ -184,6 +184,7 @@ def _get_default_config():
         "show_audio_volume_bar": True,
         "transcription_pause_threshold": 1.0,
         "transcription_language": "en",
+        "transcription_model": "small",
         "tts_language": "en",
         "translation_language": "",
         # API & Remote Control server
@@ -455,6 +456,11 @@ def parse_args():
         help="Language code for speech recognition / transcription (e.g., en, es, fr)",
     )
     parser.add_argument(
+        "--transcription-model",
+        type=str,
+        help="Whisper model size for transcription (e.g., tiny, base, small, medium, large-v3)",
+    )
+    parser.add_argument(
         "--tts-language",
         type=str,
         help="Language code for text-to-speech (e.g., en, es, fr)",
@@ -657,6 +663,9 @@ def _apply_transcription_config(config, args):
 
     if args.transcription_language is not None:
         config["transcription_language"] = args.transcription_language
+
+    if args.transcription_model is not None:
+        config["transcription_model"] = args.transcription_model
 
     if args.tts_language is not None:
         config["tts_language"] = args.tts_language

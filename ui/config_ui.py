@@ -142,6 +142,7 @@ class ConfigUI(QDialog):
             self.config.get("summarize_transcription_prompt", "Summarize the following transcribed conversation:\n")
         )
         self.transcription_language = QComboBox()
+        self.transcription_model = QComboBox()
         self.tts_language = QComboBox()
         self.translation_language = QComboBox()
         self.save_images = QCheckBox("Save Captured Images to Session")
@@ -570,6 +571,16 @@ class ConfigUI(QDialog):
             self.transcription_language.setCurrentIndex(trans_idx)
         layout.addRow("Transcription Language:", self.transcription_language)
 
+        # Transcription Model
+        transcription_models = ["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large"]
+        for m in transcription_models:
+            self.transcription_model.addItem(m, m)
+        current_trans_model = self.config.get("transcription_model", "small")
+        model_idx = self.transcription_model.findData(current_trans_model)
+        if model_idx >= 0:
+            self.transcription_model.setCurrentIndex(model_idx)
+        layout.addRow("Transcription Model:", self.transcription_model)
+
         self.realtime_transcription.setChecked(
             self.config.get("realtime_transcription", True)
         )
@@ -914,6 +925,9 @@ class ConfigUI(QDialog):
         self.config["show_audio_volume_bar"] = self.show_audio_volume_bar.isChecked()
         self.config["transcription_language"] = (
             self.transcription_language.currentData() or "en"
+        )
+        self.config["transcription_model"] = (
+            self.transcription_model.currentData() or "small"
         )
         self.config["tts_language"] = (
             self.tts_language.currentData() or "en"
