@@ -13,7 +13,7 @@
         "id": "programming",
         "name": "Detailed programming responses",
         "llm_engine": "google-genai",
-        "model": "gemini-3-pro-preview",
+        "model": "gemini-3.1-pro-preview",
         "fallback_model": "gemini-3-flash-preview",
         "ocr_engine": "remote_paddle",
         "prompt_id": "detailed",
