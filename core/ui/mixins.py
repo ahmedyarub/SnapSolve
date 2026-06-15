@@ -47,6 +47,7 @@ class DraggableWidgetMixin:
             delta = event.globalPosition().toPoint() - self._drag_pos
             self.move(self.pos() + delta)  # type: ignore[attr-defined]
             self._drag_pos = event.globalPosition().toPoint()
+            self._has_been_moved = True
         super().mouseMoveEvent(event)  # type: ignore[misc]
 
     # noinspection PyPep8Naming
@@ -104,6 +105,7 @@ class _DragHandleBar(QWidget):
         if self._drag_pos is not None:
             delta = event.globalPosition().toPoint() - self._drag_pos
             self._parent_window.move(self._parent_window.pos() + delta)
+            self._parent_window._has_been_moved = True
             self._drag_pos = event.globalPosition().toPoint()
             event.accept()
         else:

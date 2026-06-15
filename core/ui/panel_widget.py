@@ -201,6 +201,8 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self._broadcast_state()
 
     def update_position(self):
+        if getattr(self, "_has_been_moved", False):
+            return
         screen = QApplication.primaryScreen().size()
         x = 20
         y = screen.height() - self.height() - 50
