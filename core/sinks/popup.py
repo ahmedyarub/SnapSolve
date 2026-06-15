@@ -36,12 +36,18 @@ class PopupSink(Sink):
             return
 
         if replace:
-            self.accumulated_fallback.clear()
-            self.accumulated_result.clear()
-            if self.show_headers:
-                self.accumulated_result.append(
-                    f"## Main Model ({self.main_model_name})\n\n"
-                )
+            if is_main:
+                self.accumulated_result.clear()
+                if self.show_headers:
+                    self.accumulated_result.append(
+                        f"## Main Model ({self.main_model_name})\n\n"
+                    )
+            else:
+                self.accumulated_fallback.clear()
+                if self.show_headers:
+                    self.accumulated_fallback.append(
+                        f"## Fallback Model ({self.fallback_model_name})\n\n"
+                    )
 
         if is_main:
             self.accumulated_result.append(chunk)

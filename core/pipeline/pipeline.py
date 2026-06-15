@@ -87,6 +87,9 @@ def _call_llm_with_retry(
             if status_callback:
                 status_callback(f"Retrying ({attempt + 1}/{max_retries})...")
 
+            if sink:
+                sink.process_chunk("", is_main=is_main, replace=True)
+
             # Sleep in small increments so we can bail on cancellation.
             deadline = time.time() + delay
             while time.time() < deadline:
@@ -123,16 +126,22 @@ class ConcurrentSinkWrapper(Sink):
 
         with self.lock:
             if is_main:
-                self.main_started[0] = True
-                self.target_sink.process_chunk(chunk, is_main=True, replace=False)
+                if replace and chunk == "":
+                    self.main_started[0] = False
+                    self.target_sink.process_chunk("", is_main=True, replace=True)
+                    if self.fallback_started[0]:
+                        self.target_sink.process_chunk("", is_main=False, replace=False)
+                    return
+                else:
+                    self.main_started[0] = True
+                self.target_sink.process_chunk(chunk, is_main=True, replace=replace)
             else:
                 if (
                     not self.main_started[0]
                     and not self.main_success[0]
-                    and not self.main_finished_event.is_set()
                 ):
                     self.fallback_started[0] = True
-                    self.target_sink.process_chunk(chunk, is_main=False, replace=False)
+                    self.target_sink.process_chunk(chunk, is_main=False, replace=replace)
 
     def force_replace(self):
         if self.target_sink and self.fallback_started[0]:
@@ -369,6 +378,11 @@ def _run_llm_thread(
         _store_llm_result(results, lock, ans, is_main, main_success)
     except Exception as error:
         _store_llm_error(results, lock, error, is_main)
+        if is_main and sink:
+            try:
+                sink.process_chunk("", is_main=True, replace=True)
+            except Exception as e:
+                logger.error(f"Error clearing sink on main model failure: {e}")
     finally:
         if is_main:
             main_finished.set()
