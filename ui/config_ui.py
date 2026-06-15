@@ -135,6 +135,7 @@ class ConfigUI(QDialog):
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.show_audio_volume_bar = QCheckBox("Show Audio Volume Bar")
         self.post_recording_diarization = QCheckBox("Post-Recording Speaker Diarization (WhisperX)")
+        self.diarization_model = QComboBox()
         self.delete_wav_after_diarization = QCheckBox("Delete .wav files after Diarization")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
         self.auto_summarize_transcription = QCheckBox("Auto-summarize transcription on stop")
@@ -630,6 +631,15 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Offline Diarization:", self.post_recording_diarization)
 
+        diarization_models = ["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large"]
+        for m in diarization_models:
+            self.diarization_model.addItem(m, m)
+        current_diarize_model = self.config.get("diarization_model", "base")
+        d_model_idx = self.diarization_model.findData(current_diarize_model)
+        if d_model_idx >= 0:
+            self.diarization_model.setCurrentIndex(d_model_idx)
+        layout.addRow("Diarization Model:", self.diarization_model)
+
         self.delete_wav_after_diarization.setChecked(
             self.config.get("delete_wav_after_diarization", True)
         )
@@ -938,6 +948,9 @@ class ConfigUI(QDialog):
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
         self.config["auto_summarize_transcription"] = self.auto_summarize_transcription.isChecked()
         self.config["post_recording_diarization"] = self.post_recording_diarization.isChecked()
+        self.config["diarization_model"] = (
+            self.diarization_model.currentData() or "base"
+        )
         self.config["delete_wav_after_diarization"] = self.delete_wav_after_diarization.isChecked()
         self.config["summarize_transcription_prompt"] = self.summarize_transcription_prompt.text()
         self.config["save_images"] = self.save_images.isChecked()

@@ -77,7 +77,10 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
                             if not files:
                                 return
                                 
-                            data = {"speaker_name": config.get("speaker_name", "interviewer")}
+                            data = {
+                                "speaker_name": config.get("speaker_name", "interviewer"),
+                                "model": config.get("diarization_model", "base")
+                            }
                             
                             response = requests.post("http://127.0.0.1:8001/diarize", files=files, data=data)
                             

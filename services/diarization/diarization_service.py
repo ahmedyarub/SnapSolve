@@ -37,11 +37,11 @@ except ImportError:
     logging.info("Torch not available. Falling back to CPU (int8).")
 
 
-def diarize_mic(wav_path, speaker_name):
+def diarize_mic(wav_path, speaker_name, model_name="base"):
     # Use faster-whisper to transcribe mic
     from faster_whisper import WhisperModel
-    logging.info(f"Transcribing mic with faster-whisper on {DEVICE}...")
-    model = WhisperModel("base", device=DEVICE, compute_type=COMPUTE_TYPE)
+    logging.info(f"Transcribing mic with faster-whisper ({model_name}) on {DEVICE}...")
+    model = WhisperModel(model_name, device=DEVICE, compute_type=COMPUTE_TYPE)
     segments, info = model.transcribe(wav_path, beam_size=5)
     results = []
     for segment in segments:
@@ -54,13 +54,13 @@ def diarize_mic(wav_path, speaker_name):
     return results
 
 
-def diarize_loopback(wav_path):
+def diarize_loopback(wav_path, model_name="base"):
     # Use whisperx to transcribe and diarize loopback
     import whisperx
-    logging.info(f"Transcribing and diarizing loopback with whisperx on {DEVICE}...")
+    logging.info(f"Transcribing and diarizing loopback with whisperx ({model_name}) on {DEVICE}...")
     hf_token = os.environ.get("HF_TOKEN", False)
 
-    model = whisperx.load_model("base", DEVICE, compute_type=COMPUTE_TYPE)
+    model = whisperx.load_model(model_name, DEVICE, compute_type=COMPUTE_TYPE)
     audio = whisperx.load_audio(wav_path)
     result = model.transcribe(audio, batch_size=16)
 
@@ -90,6 +90,7 @@ app = FastAPI(title="Diarization Service")
 @app.post("/diarize")
 async def diarize(
         speaker_name: str = Form("You"),
+        model: str = Form("base"),
         audio_mic: Optional[UploadFile] = File(None),
         audio_loopback: Optional[UploadFile] = File(None)
 ):
@@ -104,14 +105,14 @@ async def diarize(
             with open(mic_path, "wb") as buffer:
                 shutil.copyfileobj(audio_mic.file, buffer)
             logging.info("Processing mic audio...")
-            all_segments.extend(diarize_mic(mic_path, speaker_name))
+            all_segments.extend(diarize_mic(mic_path, speaker_name, model))
 
         if audio_loopback and audio_loopback.filename:
             loopback_path = os.path.join(temp_dir, "audio_loopback.wav")
             with open(loopback_path, "wb") as buffer:
                 shutil.copyfileobj(audio_loopback.file, buffer)
             logging.info("Processing loopback audio...")
-            all_segments.extend(diarize_loopback(loopback_path))
+            all_segments.extend(diarize_loopback(loopback_path, model))
 
     except Exception as e:
         logging.error(f"Error during diarization: {e}")

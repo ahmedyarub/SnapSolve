@@ -71,7 +71,7 @@ class DiarizationTestUI(QWidget):
                 # We send the selected wav file as audio_loopback to the service.
                 with open(wav_file, "rb") as f:
                     files = {"audio_loopback": f}
-                    data = {"speaker_name": "TestUser"}
+                    data = {"speaker_name": "TestUser", "model": "base"}
                     
                     QMetaObject.invokeMethod(
                         self.results_box, 

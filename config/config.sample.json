@@ -68,5 +68,6 @@
   "webhook_url": "",
   "webhook_trigger_on_summary": false,
   "post_recording_diarization": false,
+  "diarization_model": "base",
   "delete_wav_after_diarization": true
 }
