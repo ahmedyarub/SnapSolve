@@ -100,6 +100,9 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
                                     if os.path.exists(loopback_path):
                                         try: os.remove(loopback_path)
                                         except: pass
+                                        
+                                if state.session_manager:
+                                    state.session_manager.index_session(state.session_manager.current_session_id)
                         except Exception as e:
                             print(f"Failed to run diarization service: {e}")
                             
@@ -129,6 +132,11 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
 
                         handle_text_submit(config, active_profile, summary_prompt, source_name="audio", post_action=_on_summary_complete)
                         
+            else:
+                import app.state as state
+                if state.session_manager:
+                    state.session_manager.index_session(state.session_manager.current_session_id)
+                    
             return
 
         if not text:

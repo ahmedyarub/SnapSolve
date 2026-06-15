@@ -904,22 +904,21 @@ class SessionBrowserDialog(QDialog):
             
         if search_term:
             from PyQt6.QtGui import QTextCharFormat, QColor, QTextDocument
+            from PyQt6.QtCore import QRegularExpression
             fmt = QTextCharFormat()
             fmt.setBackground(QColor("#e5c07b"))
             fmt.setForeground(QColor("#282c34"))
             
             doc = self.prompt_view.document()
             
-            # Pass a default flag to ensure case-insensitive matching in PyQt6 if default changed
-            # But wait, Qt.MatchContains etc is for models. For QTextDocument it's QTextDocument.FindFlag
-            # No flags means case-insensitive by default in Qt 5/6.
-            cursor = doc.find(search_term)
+            regex = QRegularExpression(search_term, QRegularExpression.PatternOption.CaseInsensitiveOption)
+            cursor = doc.find(regex)
             first_cursor = None
             while not cursor.isNull():
                 if not first_cursor:
                     first_cursor = cursor
                 cursor.mergeCharFormat(fmt)
-                cursor = doc.find(search_term, cursor)
+                cursor = doc.find(regex, cursor)
             
             # Scroll to first match
             if first_cursor:

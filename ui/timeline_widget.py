@@ -987,14 +987,16 @@ class _TranscriptionPanel(QFrame):
             return
             
         from PyQt6.QtGui import QTextCharFormat, QColor
+        from PyQt6.QtCore import QRegularExpression
         fmt = QTextCharFormat()
         fmt.setBackground(QColor("#e5c07b"))
         fmt.setForeground(QColor("#282c34"))
         
-        cursor = doc.find(self._search_term)
+        regex = QRegularExpression(self._search_term, QRegularExpression.PatternOption.CaseInsensitiveOption)
+        cursor = doc.find(regex)
         while not cursor.isNull():
             cursor.mergeCharFormat(fmt)
-            cursor = doc.find(self._search_term, cursor)
+            cursor = doc.find(regex, cursor)
 
     def _toggle_collapse(self) -> None:
         self._collapsed = not self._collapsed

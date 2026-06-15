@@ -61,6 +61,13 @@ def _has_screenshots(session_id: str) -> bool:
         return False
     return any(f.endswith(".png") for f in os.listdir(screenshots_dir))
 
+def _has_transcription(session_id: str) -> bool:
+    """Return True if the session has a non-empty transcription file."""
+    trans_path = _session_transcription_path(session_id)
+    if not os.path.isfile(trans_path):
+        return False
+    return os.path.getsize(trans_path) > 0
+
 def _legacy_session_json_path(session_id: str) -> str:
     """Return the legacy flat-file session path: sessions/<session_id>.json"""
     return os.path.join(SESSIONS_DIR, f"{session_id}.json")
@@ -452,6 +459,9 @@ class SessionManager:
 
         history.append(interaction)
         self._save_session_data(history)
+        
+        # Index the session after interaction so it becomes searchable
+        self.index_session(self.current_session_id)
 
     def append_transcription_segment(self, segment_text: str, speaker_name: Optional[str] = None):
         """Appends a completed transcription segment to the active transcription file.
@@ -583,11 +593,12 @@ class SessionManager:
         """
         sessions = SessionManager._list_all_sessions_unfiltered()
 
-        # Filter out empty sessions (no interactions and no screenshots)
+        # Filter out empty sessions (no interactions, no screenshots, and no transcription)
         sessions = [
             s for s in sessions
             if s["interaction_count"] > 0
             or _has_screenshots(s["id"])
+            or _has_transcription(s["id"])
         ]
 
         sessions.sort(key=lambda s: s["updated_at"], reverse=True)
@@ -595,11 +606,11 @@ class SessionManager:
 
     @staticmethod
     def count_empty_sessions() -> int:
-        """Return the number of empty sessions (no interactions and no screenshots)."""
+        """Return the number of empty sessions (no interactions, no screenshots, no transcription)."""
         all_sessions = SessionManager._list_all_sessions_unfiltered()
         return sum(
             1 for s in all_sessions
-            if s["interaction_count"] == 0 and not _has_screenshots(s["id"])
+            if s["interaction_count"] == 0 and not _has_screenshots(s["id"]) and not _has_transcription(s["id"])
         )
 
     @staticmethod
@@ -608,7 +619,7 @@ class SessionManager:
         all_sessions = SessionManager._list_all_sessions_unfiltered()
         empty_ids = [
             s["id"] for s in all_sessions
-            if s["interaction_count"] == 0 and not _has_screenshots(s["id"])
+            if s["interaction_count"] == 0 and not _has_screenshots(s["id"]) and not _has_transcription(s["id"])
         ]
         deleted = 0
         for sid in empty_ids:
@@ -1013,18 +1024,41 @@ class SessionManager:
             if summary:
                 chunks.append({"type": "summary", "index": 0, "text": summary})
             
+            # Load existing embeddings to avoid re-embedding everything
+            emb_path = os.path.join(_session_dir(session_id), "embeddings.json")
+            existing_embeddings = {}
+            if os.path.exists(emb_path):
+                try:
+                    with open(emb_path, "r", encoding="utf-8") as f:
+                        old_chunks = json.load(f)
+                    for c in old_chunks:
+                        key = (c.get("type"), c.get("index"), c.get("text"))
+                        if c.get("embedding"):
+                            existing_embeddings[key] = c["embedding"]
+                except Exception:
+                    pass
+            
             if not chunks:
                 return
                 
-            texts = [c["text"] for c in chunks]
-            embeddings = engine.embed_texts(texts)
+            texts_to_embed = []
+            chunk_indices_to_embed = []
             
             for i, chunk in enumerate(chunks):
-                chunk["embedding"] = embeddings[i].tolist()
+                key = (chunk["type"], chunk["index"], chunk["text"])
+                if key in existing_embeddings:
+                    chunk["embedding"] = existing_embeddings[key]
+                else:
+                    texts_to_embed.append(chunk["text"])
+                    chunk_indices_to_embed.append(i)
+            
+            if texts_to_embed:
+                embeddings = engine.embed_texts(texts_to_embed)
+                for j, idx in enumerate(chunk_indices_to_embed):
+                    chunks[idx]["embedding"] = embeddings[j].tolist()
                 
-            emb_path = os.path.join(_session_dir(session_id), "embeddings.json")
             _atomic_json_write(emb_path, chunks)
-            logger.info(f"[SessionManager] Indexed {len(chunks)} chunks for session {session_id}")
+            logger.info(f"[SessionManager] Indexed {len(chunks)} chunks ({len(texts_to_embed)} new) for session {session_id}")
             
         except Exception as e:
             logger.error(f"[SessionManager] Failed to index session {session_id}: {e}")
