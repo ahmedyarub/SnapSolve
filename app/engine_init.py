@@ -5,7 +5,7 @@ import sys
 import threading
 
 from app.state import DEFAULT_MODEL_NAME
-from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, AntigravityEngine
+from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, AntigravityEngine, LiteLLMEngine
 from core.sinks import AudioSink
 from core.sources import SoundSource
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
@@ -86,6 +86,18 @@ def _initialize_llm_engines(active_profile, config, manager):
                 config.get("antigravity_service_url", "http://localhost:8200"),
                 session_manager=manager,
             )
+    elif llm_type == "litellm":
+        llm_engine = LiteLLMEngine(
+            model,
+            config,
+            session_manager=manager,
+        )
+        if fallback_model and fallback_model != "None":
+            fallback_llm_engine = LiteLLMEngine(
+                fallback_model,
+                config,
+                session_manager=manager,
+            )
     else:
         llm_engine = GeminiCLIEngine(model, session_manager=manager)
         if fallback_model and fallback_model != "None":
@@ -131,6 +143,12 @@ def _initialize_correction_engine(active_profile, config, manager, prompts):
         correction_llm = AntigravityEngine(
             correction_model,
             config.get("antigravity_service_url", "http://localhost:8200"),
+            session_manager=None,
+        )
+    elif llm_type == "litellm":
+        correction_llm = LiteLLMEngine(
+            correction_model,
+            config,
             session_manager=None,
         )
     else:

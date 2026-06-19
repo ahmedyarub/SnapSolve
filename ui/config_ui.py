@@ -129,6 +129,10 @@ class ConfigUI(QDialog):
             self.config.get("ollama_url", "http://localhost:11434")
         )
         self.gemini_api_key = QLineEdit(self.config.get("gemini_api_key", ""))
+        self.openai_api_key = QLineEdit(self.config.get("openai_api_key", ""))
+        self.anthropic_api_key = QLineEdit(self.config.get("anthropic_api_key", ""))
+        self.groq_api_key = QLineEdit(self.config.get("groq_api_key", ""))
+        self.openrouter_api_key = QLineEdit(self.config.get("openrouter_api_key", ""))
 
         # IDE paths
         default_antigravity = str(
@@ -152,7 +156,9 @@ class ConfigUI(QDialog):
         self.prof_enable_chat_sessions = QCheckBox("Enable Chat Sessions")
         self.prof_llm_engine = QComboBox()
         self.prof_model = QComboBox()
+        self.prof_model.setEditable(True)
         self.prof_fallback_model = QComboBox()
+        self.prof_fallback_model.setEditable(True)
         self.prof_ocr_engine = QComboBox()
         self.prof_prompt = QComboBox()
         self.output_mode_audio = None
@@ -928,6 +934,18 @@ class ConfigUI(QDialog):
         self.gemini_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addRow("Gemini API Key:", self.gemini_api_key)
 
+        self.openai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("OpenAI API Key:", self.openai_api_key)
+
+        self.anthropic_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Anthropic API Key:", self.anthropic_api_key)
+
+        self.groq_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Groq API Key:", self.groq_api_key)
+
+        self.openrouter_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("OpenRouter API Key:", self.openrouter_api_key)
+
         # LLM Retry
         self.llm_max_retries.setPlaceholderText("e.g. 3")
         self.llm_max_retries.setToolTip(
@@ -970,7 +988,7 @@ class ConfigUI(QDialog):
         form_layout.addRow("Profile Name:", self.prof_name)
 
         self.prof_llm_engine.addItems(
-            ["gemini", "ollama", "google-genai", "antigravity"]
+            ["gemini", "ollama", "google-genai", "antigravity", "litellm"]
         )
         self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
         form_layout.addRow("LLM Engine:", self.prof_llm_engine)
@@ -1036,10 +1054,14 @@ class ConfigUI(QDialog):
             idx = self.prof_model.findData(model_id)
             if idx >= 0:
                 self.prof_model.setCurrentIndex(idx)
+            elif model_id:
+                self.prof_model.setCurrentText(model_id)
 
             idx2 = self.prof_fallback_model.findData(fallback_id)
             if idx2 >= 0:
                 self.prof_fallback_model.setCurrentIndex(idx2)
+            elif fallback_id:
+                self.prof_fallback_model.setCurrentText(fallback_id)
 
             correction_id = self._current_profile_data.get("correction_model")
             idx3 = self.prof_correction_model.findData(correction_id)
@@ -1077,8 +1099,8 @@ class ConfigUI(QDialog):
         profile = self.profiles[index]
         profile["name"] = self.prof_name.text()
         profile["llm_engine"] = self.prof_llm_engine.currentText()
-        profile["model"] = self.prof_model.currentData()
-        profile["fallback_model"] = self.prof_fallback_model.currentData()
+        profile["model"] = self.prof_model.currentData() or self.prof_model.currentText()
+        profile["fallback_model"] = self.prof_fallback_model.currentData() or self.prof_fallback_model.currentText()
         profile["ocr_engine"] = self.prof_ocr_engine.currentText()
         profile["prompt_id"] = self.prof_prompt.currentData()
         profile["correction_model"] = self.prof_correction_model.currentData()
@@ -1431,6 +1453,10 @@ class ConfigUI(QDialog):
         )
         self.config["ollama_url"] = self.ollama_url.text()
         self.config["gemini_api_key"] = self.gemini_api_key.text()
+        self.config["openai_api_key"] = self.openai_api_key.text()
+        self.config["anthropic_api_key"] = self.anthropic_api_key.text()
+        self.config["groq_api_key"] = self.groq_api_key.text()
+        self.config["openrouter_api_key"] = self.openrouter_api_key.text()
         self.config["ide_pycharm_path"] = (
             self.ide_pycharm_path.text().strip() or "pycharm"
         )

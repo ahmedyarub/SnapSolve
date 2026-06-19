@@ -148,6 +148,7 @@ If you wish to add new languages, change the theme, or rebuild the bundle, see [
 * `google-genai` - Uses the official Python SDK for Google GenAI. Requires an API key. Supports both image and text
   inputs.
 * `antigravity` - Uses the Google Antigravity SDK via a local FastAPI service. See [services/antigravity/README.md](services/antigravity/README.md).
+* `litellm` - Universal API router that allows you to connect to over 100+ LLMs using the standard OpenAI format. Supports Claude, Groq, Mistral, DeepSeek, OpenRouter, and more.
 
 **Input Sources (`default_source`):**
 

@@ -27,3 +27,4 @@ SoundCard
 scipy
 noisereduce
 pyloudnorm
+litellm

@@ -31,5 +31,16 @@
         "prompt_id": "ai_coding_tool_read_only",
         "enable_chat_sessions": true,
         "correction_model": "None"
+    },
+    {
+        "id": "litellm_example",
+        "name": "Groq Llama 3 (LiteLLM)",
+        "llm_engine": "litellm",
+        "model": "groq/llama3-8b-8192",
+        "fallback_model": "None",
+        "ocr_engine": "none",
+        "prompt_id": "quick",
+        "enable_chat_sessions": true,
+        "correction_model": "None"
     }
 ]

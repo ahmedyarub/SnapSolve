@@ -101,9 +101,37 @@
       "name": "Antigravity Agent Preview",
       "supports_ocr": true
     },
+    },
     {
       "id": "gemini-2.5-flash",
       "name": "Gemini 2.5 Flash",
+      "supports_ocr": true
+    }
+  ],
+  "litellm": [
+    {
+      "id": "groq/llama3-8b-8192",
+      "name": "Groq Llama 3 (8B)",
+      "supports_ocr": false
+    },
+    {
+      "id": "groq/llama3-70b-8192",
+      "name": "Groq Llama 3 (70B)",
+      "supports_ocr": false
+    },
+    {
+      "id": "anthropic/claude-3-5-sonnet-20240620",
+      "name": "Claude 3.5 Sonnet",
+      "supports_ocr": true
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "OpenAI GPT-4o",
+      "supports_ocr": true
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI GPT-4o Mini",
       "supports_ocr": true
     }
   ]

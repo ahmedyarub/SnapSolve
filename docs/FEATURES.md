@@ -77,6 +77,7 @@ The Screen Capture & QA application provides several customizable features organ
     *   `google-genai`: Uses the official Python SDK for Google GenAI with streaming and multi-turn history.
     *   `ollama`: Integrates with a local Ollama server, avoiding external network requests.
     *   `antigravity`: Uses the Google Antigravity SDK via a local FastAPI service. Provides agentic coding capabilities with full project context, streaming SSE responses, and multi-turn conversation support.
+    *   `litellm`: Universal API router that integrates with 100+ LLM providers (Anthropic, Groq, OpenRouter, CustomOpenAI, etc.) into a single engine. Selectable from the UI with specific API key fields and custom model string support.
 *   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
 *   **Remote OCR:** Offload OCR processing to a remote PaddleOCR FastAPI service.
