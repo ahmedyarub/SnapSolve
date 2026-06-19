@@ -21,7 +21,7 @@ if platform.system() == "Windows":
 
 # FORCE PyQt6 initialization at the VERY FIRST entry point
 try:
-    import PyQt6.QtWebEngineWidgets
+    pass
 except Exception:
     pass
 
@@ -67,15 +67,32 @@ def load_json(path, default):
 # Shared language list used by config UI and control panel
 TRANSCRIPTION_LANGUAGES: list[tuple[str, str]] = [
     ("Auto-detect", ""),
-    ("English", "en"), ("Spanish", "es"), ("French", "fr"),
-    ("German", "de"), ("Italian", "it"), ("Portuguese", "pt"),
-    ("Russian", "ru"), ("Chinese", "zh"), ("Japanese", "ja"),
-    ("Korean", "ko"), ("Arabic", "ar"), ("Hindi", "hi"),
-    ("Turkish", "tr"), ("Polish", "pl"), ("Dutch", "nl"),
-    ("Swedish", "sv"), ("Czech", "cs"), ("Romanian", "ro"),
-    ("Hungarian", "hu"), ("Ukrainian", "uk"), ("Greek", "el"),
-    ("Hebrew", "he"), ("Thai", "th"), ("Vietnamese", "vi"),
-    ("Indonesian", "id"), ("Malay", "ms"),
+    ("English", "en"),
+    ("Spanish", "es"),
+    ("French", "fr"),
+    ("German", "de"),
+    ("Italian", "it"),
+    ("Portuguese", "pt"),
+    ("Russian", "ru"),
+    ("Chinese", "zh"),
+    ("Japanese", "ja"),
+    ("Korean", "ko"),
+    ("Arabic", "ar"),
+    ("Hindi", "hi"),
+    ("Turkish", "tr"),
+    ("Polish", "pl"),
+    ("Dutch", "nl"),
+    ("Swedish", "sv"),
+    ("Czech", "cs"),
+    ("Romanian", "ro"),
+    ("Hungarian", "hu"),
+    ("Ukrainian", "uk"),
+    ("Greek", "el"),
+    ("Hebrew", "he"),
+    ("Thai", "th"),
+    ("Vietnamese", "vi"),
+    ("Indonesian", "id"),
+    ("Malay", "ms"),
 ]
 
 
@@ -93,9 +110,7 @@ class RefreshableComboBox(QComboBox):
 class ConfigUI(QDialog):
     def __init__(self, config_path, models_path, profiles_path, prompts_path):
         super().__init__()
-        self.setWindowFlags(
-            self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
 
         # Load configurations
         self.config_path = config_path
@@ -113,15 +128,24 @@ class ConfigUI(QDialog):
         self.ollama_url = QLineEdit(
             self.config.get("ollama_url", "http://localhost:11434")
         )
-        self.gemini_api_key = QLineEdit(
-            self.config.get("gemini_api_key", "")
-        )
-        
+        self.gemini_api_key = QLineEdit(self.config.get("gemini_api_key", ""))
+
         # IDE paths
-        default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
-        self.ide_pycharm_path = QLineEdit(self.config.get("ide_pycharm_path", "pycharm"))
-        self.ide_antigravity_path = QLineEdit(self.config.get("ide_antigravity_path", default_antigravity))
-        self.antigravity_service_url = QLineEdit(self.config.get("antigravity_service_url", "http://localhost:8200"))
+        default_antigravity = str(
+            Path(os.environ.get("LOCALAPPDATA", ""))
+            / "Programs"
+            / "Antigravity IDE"
+            / "Antigravity IDE.exe"
+        )
+        self.ide_pycharm_path = QLineEdit(
+            self.config.get("ide_pycharm_path", "pycharm")
+        )
+        self.ide_antigravity_path = QLineEdit(
+            self.config.get("ide_antigravity_path", default_antigravity)
+        )
+        self.antigravity_service_url = QLineEdit(
+            self.config.get("antigravity_service_url", "http://localhost:8200")
+        )
         self.profile_combo = QComboBox()
         self.profile_form = QWidget()
         self.prof_name = QLineEdit()
@@ -148,29 +172,43 @@ class ConfigUI(QDialog):
         self.piper_model = QLineEdit(
             self.config.get("piper_model", "en_US-lessac-medium.onnx")
         )
-        self.tts_output_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
-        self.audio_input_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
-        self.audio_loopback_device_combo = RefreshableComboBox(on_show_popup=self.refresh_audio_devices)
+        self.tts_output_device_combo = RefreshableComboBox(
+            on_show_popup=self.refresh_audio_devices
+        )
+        self.audio_input_device_combo = RefreshableComboBox(
+            on_show_popup=self.refresh_audio_devices
+        )
+        self.audio_loopback_device_combo = RefreshableComboBox(
+            on_show_popup=self.refresh_audio_devices
+        )
         self.background_mode = QCheckBox("Run in system tray")
         self.hide_from_capture = QCheckBox("Hide windows from screen capture")
         self.realtime_transcription = QCheckBox("Enable Real-time Transcription")
         self.show_audio_volume_bar = QCheckBox("Show Audio Volume Bar")
-        self.post_recording_diarization = QCheckBox("Post-Recording Speaker Diarization (WhisperX)")
+        self.post_recording_diarization = QCheckBox(
+            "Post-Recording Speaker Diarization (WhisperX)"
+        )
         self.diarization_model = QComboBox()
-        self.delete_wav_after_diarization = QCheckBox("Delete .wav files after Diarization")
+        self.delete_wav_after_diarization = QCheckBox(
+            "Delete .wav files after Diarization"
+        )
+        self.enable_audio_enhancement = QCheckBox("Enable Audio Enhancement Pipeline")
         self.save_transcriptions = QCheckBox("Save Transcriptions to Files")
-        self.auto_summarize_transcription = QCheckBox("Auto-summarize transcription on stop")
+        self.auto_summarize_transcription = QCheckBox(
+            "Auto-summarize transcription on stop"
+        )
         self.summarize_transcription_prompt = QLineEdit(
-            self.config.get("summarize_transcription_prompt", "Summarize the following transcribed conversation:\n")
+            self.config.get(
+                "summarize_transcription_prompt",
+                "Summarize the following transcribed conversation:\n",
+            )
         )
         self.transcription_language = QComboBox()
         self.transcription_model = QComboBox()
         self.tts_language = QComboBox()
         self.translation_language = QComboBox()
         self.save_images = QCheckBox("Save Captured Images to Session")
-        self.speaker_name = QLineEdit(
-            self.config.get("speaker_name", "interviewer")
-        )
+        self.speaker_name = QLineEdit(self.config.get("speaker_name", "interviewer"))
         self.warmup_ocr = QCheckBox("Warmup OCR Engine")
         self.warmup_llm = QCheckBox("Warmup LLM Engine")
         self.warmup_tts = QCheckBox("Warmup TTS Engine")
@@ -213,15 +251,9 @@ class ConfigUI(QDialog):
         # API & Remote Control tab widgets
         self.remote_control_tab = QWidget()
         self.enable_api_server = QCheckBox("Enable API & Remote Control Server")
-        self.api_server_host = QLineEdit(
-            self.config.get("api_server_host", "0.0.0.0")
-        )
-        self.api_server_port = QLineEdit(
-            str(self.config.get("api_server_port", 3031))
-        )
-        self.api_server_key = QLineEdit(
-            self.config.get("api_server_key", "")
-        )
+        self.api_server_host = QLineEdit(self.config.get("api_server_host", "0.0.0.0"))
+        self.api_server_port = QLineEdit(str(self.config.get("api_server_port", 3031)))
+        self.api_server_key = QLineEdit(self.config.get("api_server_key", ""))
         self.api_server_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_server_key.setPlaceholderText("Optional API Key for REST endpoints")
         self.mouse_sensitivity = QLineEdit(
@@ -233,15 +265,15 @@ class ConfigUI(QDialog):
         self.share_response_with_android = QCheckBox(
             "Share LLM response screenshot with Android app"
         )
-        
+
         # Webhook settings
         self.webhook_url = QLineEdit(self.config.get("webhook_url", ""))
-        self.webhook_trigger_on_summary = QCheckBox("Trigger webhook when a session summary is generated")
+        self.webhook_trigger_on_summary = QCheckBox(
+            "Trigger webhook when a session summary is generated"
+        )
 
         # LLM Retry settings
-        self.llm_max_retries = QLineEdit(
-            str(self.config.get("llm_max_retries", 3))
-        )
+        self.llm_max_retries = QLineEdit(str(self.config.get("llm_max_retries", 3)))
         self.llm_retry_base_delay = QLineEdit(
             str(self.config.get("llm_retry_base_delay", 5))
         )
@@ -257,10 +289,8 @@ class ConfigUI(QDialog):
         self.periodic_screenshots_activity_min_delay = QLineEdit(
             str(self.config.get("periodic_screenshots_activity_min_delay", 5))
         )
-        self.track_active_window = QCheckBox(
-            "Track Active Window with Screenshots"
-        )
-        
+        self.track_active_window = QCheckBox("Track Active Window with Screenshots")
+
         self.embedding_engine_combo = QComboBox()
         self.embedding_engine_combo.addItem("Local (sentence-transformers)", "local")
         self.embedding_engine_combo.addItem("Remote (Gemini)", "remote")
@@ -269,14 +299,21 @@ class ConfigUI(QDialog):
         icon_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "assets",
-            "icon.png"
+            "icon.png",
         )
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.resize(600, 500)
+            
+        screen = QApplication.primaryScreen()
+        max_height = 500
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            max_height = int(screen_geometry.height() * 0.8)
+            self.setMaximumHeight(max_height)
+            
+        self.resize(600, min(650, max_height))
 
         self.init_ui()
-
 
     def refresh_audio_devices(self):
         current_tts = self.tts_output_device_combo.currentData()
@@ -287,6 +324,7 @@ class ConfigUI(QDialog):
         self.tts_output_device_combo.addItem("Default System Output", None)
         try:
             from config.settings import get_audio_devices  # noqa: PLC0415
+
             for device in get_audio_devices():
                 self.tts_output_device_combo.addItem(device["name"], device["name"])
         except Exception:
@@ -296,6 +334,7 @@ class ConfigUI(QDialog):
         self.audio_input_device_combo.addItem("Default System Input", None)
         try:
             from config.settings import get_audio_input_devices  # noqa: PLC0415
+
             for device in get_audio_input_devices():
                 self.audio_input_device_combo.addItem(device["name"], device["name"])
         except Exception:
@@ -305,6 +344,7 @@ class ConfigUI(QDialog):
         self.audio_loopback_device_combo.addItem("(Use input device instead)", None)
         try:
             from config.settings import get_audio_loopback_devices  # noqa: PLC0415
+
             for device in get_audio_loopback_devices():
                 self.audio_loopback_device_combo.addItem(device["name"], device["name"])
         except Exception:
@@ -313,11 +353,11 @@ class ConfigUI(QDialog):
         idx = self.tts_output_device_combo.findData(current_tts)
         if idx >= 0:
             self.tts_output_device_combo.setCurrentIndex(idx)
-            
+
         idx = self.audio_input_device_combo.findData(current_input)
         if idx >= 0:
             self.audio_input_device_combo.setCurrentIndex(idx)
-            
+
         idx = self.audio_loopback_device_combo.findData(current_loopback)
         if idx >= 0:
             self.audio_loopback_device_combo.setCurrentIndex(idx)
@@ -330,7 +370,14 @@ class ConfigUI(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to save {path}:\n{e}")
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("QScrollArea { border: none; }")
+        
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
 
         # --- Search bar ---
         search_container = QHBoxLayout()
@@ -341,7 +388,7 @@ class ConfigUI(QDialog):
         self._search_input.textChanged.connect(self._on_search_text_changed)
         search_container.addWidget(search_icon)
         search_container.addWidget(self._search_input)
-        layout.addLayout(search_container)
+        main_layout.addLayout(search_container)
 
         self._search_results.setVisible(False)
         self._search_results.setSpacing(0)
@@ -358,7 +405,7 @@ class ConfigUI(QDialog):
             "QListWidget::item:selected { background: #4a4a7a; }"
         )
         self._search_results.itemClicked.connect(self._on_search_result_clicked)
-        layout.addWidget(self._search_results)
+        main_layout.addWidget(self._search_results)
 
         layout.addWidget(self.tabs)
 
@@ -385,6 +432,9 @@ class ConfigUI(QDialog):
         self.setup_shortcuts_tab()
         self.setup_remote_control_tab()
 
+        scroll_area.setWidget(scroll_widget)
+        main_layout.addWidget(scroll_area)
+
         # Buttons
         self.button_box = QDialogButtonBox()
         self.button_box.addButton(QDialogButtonBox.StandardButton.Save)
@@ -397,7 +447,7 @@ class ConfigUI(QDialog):
         self.button_box.rejected.connect(self.reject)
         assert self.btn_save_run is not None
         self.btn_save_run.clicked.connect(self.save_and_run)
-        layout.addWidget(self.button_box)
+        main_layout.addWidget(self.button_box)
 
         # Build search index after all tabs are fully populated
         QTimer.singleShot(0, self._build_search_index)
@@ -417,18 +467,23 @@ class ConfigUI(QDialog):
 
     def browse_pycharm_path(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select PyCharm Executable", "", "Executables (*.exe *.cmd *.bat);;All Files (*)"
+            self,
+            "Select PyCharm Executable",
+            "",
+            "Executables (*.exe *.cmd *.bat);;All Files (*)",
         )
         if file_path:
             self.ide_pycharm_path.setText(file_path)
 
     def browse_antigravity_path(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Antigravity IDE Executable", "", "Executables (*.exe);;All Files (*)"
+            self,
+            "Select Antigravity IDE Executable",
+            "",
+            "Executables (*.exe);;All Files (*)",
         )
         if file_path:
             self.ide_antigravity_path.setText(file_path)
-
 
     def setup_app_tab(self):
         layout = QFormLayout(self.app_tab)
@@ -464,9 +519,7 @@ class ConfigUI(QDialog):
         opacity_layout.addWidget(self.opacity_label)
         layout.addRow("Opacity:", opacity_layout)
 
-        self.save_images.setChecked(
-            self.config.get("save_images", True)
-        )
+        self.save_images.setChecked(self.config.get("save_images", True))
         layout.addRow("Save Images:", self.save_images)
 
         # Background Mode
@@ -528,7 +581,9 @@ class ConfigUI(QDialog):
         self.periodic_screenshots_on_activity.toggled.connect(
             self.periodic_screenshots_activity_min_delay.setEnabled
         )
-        layout.addRow("Activity Min Delay (s):", self.periodic_screenshots_activity_min_delay)
+        layout.addRow(
+            "Activity Min Delay (s):", self.periodic_screenshots_activity_min_delay
+        )
 
         self.track_active_window.setChecked(
             self.config.get("track_active_window", True)
@@ -548,7 +603,7 @@ class ConfigUI(QDialog):
         if idx >= 0:
             self.embedding_engine_combo.setCurrentIndex(idx)
         layout.addRow("Embedding Engine:", self.embedding_engine_combo)
-        
+
         self.reindex_btn = QPushButton("Re-index All Sessions")
         self.reindex_btn.clicked.connect(self.reindex_all_sessions)
         layout.addRow("Index:", self.reindex_btn)
@@ -597,6 +652,19 @@ class ConfigUI(QDialog):
             self.tts_language.setCurrentIndex(tts_idx)
         layout.addRow("TTS Language:", self.tts_language)
 
+        # --- Audio Enhancement ---
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Audio Enhancement</b>"))
+
+        self.enable_audio_enhancement.setChecked(
+            self.config.get("enable_audio_enhancement", False)
+        )
+        self.enable_audio_enhancement.setToolTip(
+            "Apply a 3-stage audio processing pipeline in real-time:\n"
+            "High-pass filter → Noise Suppression → Loudness Normalization"
+        )
+        layout.addRow("Enhancement Pipeline:", self.enable_audio_enhancement)
+
         # --- Speech Recognition ---
         layout.addRow(QLabel(""))  # spacer
         layout.addRow(QLabel("<b>Speech Recognition</b>"))
@@ -633,9 +701,13 @@ class ConfigUI(QDialog):
         except Exception as e:
             print(f"Failed to load audio loopback devices: {e}")
 
-        current_loopback_device_name = self.config.get("audio_loopback_device_name", None)
+        current_loopback_device_name = self.config.get(
+            "audio_loopback_device_name", None
+        )
         if current_loopback_device_name is not None:
-            idx = self.audio_loopback_device_combo.findData(current_loopback_device_name)
+            idx = self.audio_loopback_device_combo.findData(
+                current_loopback_device_name
+            )
             if idx >= 0:
                 self.audio_loopback_device_combo.setCurrentIndex(idx)
 
@@ -651,7 +723,20 @@ class ConfigUI(QDialog):
         layout.addRow("Transcription Language:", self.transcription_language)
 
         # Transcription Model
-        transcription_models = ["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large"]
+        transcription_models = [
+            "tiny",
+            "tiny.en",
+            "base",
+            "base.en",
+            "small",
+            "small.en",
+            "medium",
+            "medium.en",
+            "large-v1",
+            "large-v2",
+            "large-v3",
+            "large",
+        ]
         for m in transcription_models:
             self.transcription_model.addItem(m, m)
         current_trans_model = self.config.get("transcription_model", "small")
@@ -709,7 +794,20 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Offline Diarization:", self.post_recording_diarization)
 
-        diarization_models = ["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large"]
+        diarization_models = [
+            "tiny",
+            "tiny.en",
+            "base",
+            "base.en",
+            "small",
+            "small.en",
+            "medium",
+            "medium.en",
+            "large-v1",
+            "large-v2",
+            "large-v3",
+            "large",
+        ]
         for m in diarization_models:
             self.diarization_model.addItem(m, m)
         current_diarize_model = self.config.get("diarization_model", "base")
@@ -722,8 +820,10 @@ class ConfigUI(QDialog):
             self.config.get("delete_wav_after_diarization", True)
         )
         layout.addRow("Auto-Delete Audio:", self.delete_wav_after_diarization)
-        
-        self.summarize_transcription_prompt.setPlaceholderText("e.g. Summarize the following transcribed conversation:")
+
+        self.summarize_transcription_prompt.setPlaceholderText(
+            "e.g. Summarize the following transcribed conversation:"
+        )
         layout.addRow("Summary Prompt:", self.summarize_transcription_prompt)
 
         self.speaker_name.setPlaceholderText("e.g. interviewer")
@@ -869,7 +969,9 @@ class ConfigUI(QDialog):
 
         form_layout.addRow("Profile Name:", self.prof_name)
 
-        self.prof_llm_engine.addItems(["gemini", "ollama", "google-genai", "antigravity"])
+        self.prof_llm_engine.addItems(
+            ["gemini", "ollama", "google-genai", "antigravity"]
+        )
         self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
         form_layout.addRow("LLM Engine:", self.prof_llm_engine)
 
@@ -962,8 +1064,10 @@ class ConfigUI(QDialog):
         idx = self.prof_prompt.findData(prompt_id)
         if idx >= 0:
             self.prof_prompt.setCurrentIndex(idx)
-            
-        self.prof_enable_chat_sessions.setChecked(profile.get("enable_chat_sessions", True))
+
+        self.prof_enable_chat_sessions.setChecked(
+            profile.get("enable_chat_sessions", True)
+        )
 
     def save_current_profile(self):
         index = self.profile_combo.currentIndex()
@@ -1009,9 +1113,7 @@ class ConfigUI(QDialog):
         """
         layout = QFormLayout(self.remote_control_tab)
 
-        self.enable_api_server.setChecked(
-            self.config.get("enable_api_server", False)
-        )
+        self.enable_api_server.setChecked(self.config.get("enable_api_server", False))
         layout.addRow("Enable Server:", self.enable_api_server)
 
         self.api_server_host.setPlaceholderText("e.g. 0.0.0.0 (all interfaces)")
@@ -1037,7 +1139,9 @@ class ConfigUI(QDialog):
         layout.addRow(QLabel("<b>Webhooks / Integrations</b>"))
         self.webhook_url.setPlaceholderText("e.g. https://hooks.slack.com/services/...")
         layout.addRow("Webhook URL:", self.webhook_url)
-        self.webhook_trigger_on_summary.setChecked(self.config.get("webhook_trigger_on_summary", False))
+        self.webhook_trigger_on_summary.setChecked(
+            self.config.get("webhook_trigger_on_summary", False)
+        )
         layout.addRow("Auto-Trigger:", self.webhook_trigger_on_summary)
 
         hint = QLabel(
@@ -1116,6 +1220,7 @@ class ConfigUI(QDialog):
     def _index_form_layout(self, layout: QFormLayout, tab_index: int, tab_name: str):
         """Extract label→widget pairs from a single QFormLayout."""
         import re
+
         for row in range(layout.rowCount()):
             label_item = layout.itemAt(row, QFormLayout.ItemRole.LabelRole)
             field_item = layout.itemAt(row, QFormLayout.ItemRole.FieldRole)
@@ -1136,13 +1241,15 @@ class ConfigUI(QDialog):
             display_label = label_text.rstrip(":")
             # Include tooltip for richer matching
             tooltip = field_widget.toolTip() if hasattr(field_widget, "toolTip") else ""
-            self._search_index.append({
-                "label": display_label,
-                "tab_index": tab_index,
-                "tab_name": tab_name,
-                "widget": field_widget,
-                "tooltip": tooltip,
-            })
+            self._search_index.append(
+                {
+                    "label": display_label,
+                    "tab_index": tab_index,
+                    "tab_name": tab_name,
+                    "widget": field_widget,
+                    "tooltip": tooltip,
+                }
+            )
 
     def _on_search_text_changed(self, text: str):
         """Filter search index and populate results list."""
@@ -1290,20 +1397,29 @@ class ConfigUI(QDialog):
         self.config["transcription_model"] = (
             self.transcription_model.currentData() or "small"
         )
-        self.config["tts_language"] = (
-            self.tts_language.currentData() or "en"
-        )
+        self.config["tts_language"] = self.tts_language.currentData() or "en"
         self.config["translation_language"] = (
             self.translation_language.currentData() or ""
         )
         self.config["save_transcriptions"] = self.save_transcriptions.isChecked()
-        self.config["auto_summarize_transcription"] = self.auto_summarize_transcription.isChecked()
-        self.config["post_recording_diarization"] = self.post_recording_diarization.isChecked()
+        self.config["auto_summarize_transcription"] = (
+            self.auto_summarize_transcription.isChecked()
+        )
+        self.config["post_recording_diarization"] = (
+            self.post_recording_diarization.isChecked()
+        )
         self.config["diarization_model"] = (
             self.diarization_model.currentData() or "base"
         )
-        self.config["delete_wav_after_diarization"] = self.delete_wav_after_diarization.isChecked()
-        self.config["summarize_transcription_prompt"] = self.summarize_transcription_prompt.text()
+        self.config["delete_wav_after_diarization"] = (
+            self.delete_wav_after_diarization.isChecked()
+        )
+        self.config["enable_audio_enhancement"] = (
+            self.enable_audio_enhancement.isChecked()
+        )
+        self.config["summarize_transcription_prompt"] = (
+            self.summarize_transcription_prompt.text()
+        )
         self.config["save_images"] = self.save_images.isChecked()
         self.config["speaker_name"] = self.speaker_name.text().strip() or "interviewer"
         self.config["warmup_ocr"] = self.warmup_ocr.isChecked()
@@ -1315,12 +1431,23 @@ class ConfigUI(QDialog):
         )
         self.config["ollama_url"] = self.ollama_url.text()
         self.config["gemini_api_key"] = self.gemini_api_key.text()
-        self.config["ide_pycharm_path"] = self.ide_pycharm_path.text().strip() or "pycharm"
-        
-        default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
-        self.config["ide_antigravity_path"] = self.ide_antigravity_path.text().strip() or default_antigravity
-        self.config["antigravity_service_url"] = self.antigravity_service_url.text().strip() or "http://localhost:8200"
-        
+        self.config["ide_pycharm_path"] = (
+            self.ide_pycharm_path.text().strip() or "pycharm"
+        )
+
+        default_antigravity = str(
+            Path(os.environ.get("LOCALAPPDATA", ""))
+            / "Programs"
+            / "Antigravity IDE"
+            / "Antigravity IDE.exe"
+        )
+        self.config["ide_antigravity_path"] = (
+            self.ide_antigravity_path.text().strip() or default_antigravity
+        )
+        self.config["antigravity_service_url"] = (
+            self.antigravity_service_url.text().strip() or "http://localhost:8200"
+        )
+
         self.config["opacity"] = self.opacity_slider.value() / 100.0
 
         # LLM Retry
@@ -1375,7 +1502,9 @@ class ConfigUI(QDialog):
             self.share_response_with_android.isChecked()
         )
         self.config["webhook_url"] = self.webhook_url.text().strip()
-        self.config["webhook_trigger_on_summary"] = self.webhook_trigger_on_summary.isChecked()
+        self.config["webhook_trigger_on_summary"] = (
+            self.webhook_trigger_on_summary.isChecked()
+        )
 
         # Clean up legacy piper path if it exists
         if "piper_path" in self.config:
@@ -1406,9 +1535,15 @@ class ConfigUI(QDialog):
         self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
 
         # Real-time Correction
-        self.config["realtime_correction_enabled"] = self.realtime_correction_enabled.isChecked()
-        self.config["realtime_correction_fact_check"] = self.realtime_correction_fact_check.isChecked()
-        self.config["realtime_correction_grammar"] = self.realtime_correction_grammar.isChecked()
+        self.config["realtime_correction_enabled"] = (
+            self.realtime_correction_enabled.isChecked()
+        )
+        self.config["realtime_correction_fact_check"] = (
+            self.realtime_correction_fact_check.isChecked()
+        )
+        self.config["realtime_correction_grammar"] = (
+            self.realtime_correction_grammar.isChecked()
+        )
         self.config["realtime_correction_content_suggestions"] = (
             self.realtime_correction_content_suggestions.isChecked()
         )
@@ -1445,39 +1580,44 @@ class ConfigUI(QDialog):
 
     def reindex_all_sessions(self):
         reply = QMessageBox.question(
-            self, "Re-index All Sessions",
+            self,
+            "Re-index All Sessions",
             "This will re-embed all sessions. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             # Temporarily save engine choice
             self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
             self.config["gemini_api_key"] = self.gemini_api_key.text()
-            
+
             from core.session_manager import SessionManager
             from PyQt6.QtWidgets import QProgressDialog
             from PyQt6.QtCore import Qt
             from PyQt6.QtWidgets import QApplication
-            
+
             manager = SessionManager(self.config)
             sessions = manager.list_all_sessions()
             total = len(sessions)
-            
-            progress = QProgressDialog("Re-indexing sessions...", "Cancel", 0, total, self)
+
+            progress = QProgressDialog(
+                "Re-indexing sessions...", "Cancel", 0, total, self
+            )
             progress.setWindowTitle("Indexing")
             progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.show()
-            
+
             for i, s in enumerate(sessions):
                 if progress.wasCanceled():
                     break
                 progress.setValue(i)
-                progress.setLabelText(f"Indexing session {i+1} of {total}...")
+                progress.setLabelText(f"Indexing session {i + 1} of {total}...")
                 QApplication.processEvents()
                 manager.index_session_sync(s["id"])
-                
+
             progress.setValue(total)
-            QMessageBox.information(self, "Indexing Complete", "Re-indexing has finished.")
+            QMessageBox.information(
+                self, "Indexing Complete", "Re-indexing has finished."
+            )
 
 
 def open_config_ui(config_path, models_path, profiles_path, prompts_path):

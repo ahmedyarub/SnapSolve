@@ -74,5 +74,6 @@
   "realtime_correction_fact_check": true,
   "realtime_correction_grammar": true,
   "realtime_correction_content_suggestions": false,
-  "realtime_correction_window_size": 4
+  "realtime_correction_window_size": 4,
+  "enable_audio_enhancement": false
 }

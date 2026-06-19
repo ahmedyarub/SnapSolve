@@ -1,7 +1,6 @@
 import logging
 import os
 import subprocess
-import functools
 import tempfile
 import threading
 import wave
@@ -40,13 +39,32 @@ logger = logging.getLogger(__name__)
 
 # Short language code → BCP-47 locale for Google Speech Recognition
 _GOOGLE_LANGUAGE_MAP: dict[str, str] = {
-    "en": "en-US", "es": "es-ES", "fr": "fr-FR", "de": "de-DE",
-    "it": "it-IT", "pt": "pt-BR", "ru": "ru-RU", "zh": "zh-CN",
-    "ja": "ja-JP", "ko": "ko-KR", "ar": "ar-SA", "hi": "hi-IN",
-    "tr": "tr-TR", "pl": "pl-PL", "nl": "nl-NL", "sv": "sv-SE",
-    "cs": "cs-CZ", "ro": "ro-RO", "hu": "hu-HU", "uk": "uk-UA",
-    "el": "el-GR", "he": "he-IL", "th": "th-TH", "vi": "vi-VN",
-    "id": "id-ID", "ms": "ms-MY",
+    "en": "en-US",
+    "es": "es-ES",
+    "fr": "fr-FR",
+    "de": "de-DE",
+    "it": "it-IT",
+    "pt": "pt-BR",
+    "ru": "ru-RU",
+    "zh": "zh-CN",
+    "ja": "ja-JP",
+    "ko": "ko-KR",
+    "ar": "ar-SA",
+    "hi": "hi-IN",
+    "tr": "tr-TR",
+    "pl": "pl-PL",
+    "nl": "nl-NL",
+    "sv": "sv-SE",
+    "cs": "cs-CZ",
+    "ro": "ro-RO",
+    "hu": "hu-HU",
+    "uk": "uk-UA",
+    "el": "el-GR",
+    "he": "he-IL",
+    "th": "th-TH",
+    "vi": "vi-VN",
+    "id": "id-ID",
+    "ms": "ms-MY",
 }
 
 
@@ -117,7 +135,9 @@ class SoundSource(Source):
 
         # WhisperLive related
         self.transcription_client_mic: Optional[WhisperLiveTranscriptionClient] = None
-        self.transcription_client_loopback: Optional[WhisperLiveTranscriptionClient] = None
+        self.transcription_client_loopback: Optional[WhisperLiveTranscriptionClient] = (
+            None
+        )
         self.whisperlive_process: Optional[subprocess.Popen] = None
         self._last_transcription_text = ""
         self._current_utterance_text = {"mic": "", "loopback": ""}
@@ -203,7 +223,9 @@ class SoundSource(Source):
         loopback_name = self.config.get("audio_loopback_device_name")
         if status_callback:
             if loopback_name:
-                status_callback(f"Starting recording on {device_name} & {loopback_name}...")
+                status_callback(
+                    f"Starting recording on {device_name} & {loopback_name}..."
+                )
             else:
                 status_callback(f"Starting recording on {device_name}...")
 
@@ -211,7 +233,7 @@ class SoundSource(Source):
             self._record_thread = threading.Thread(
                 target=self._record_and_transcribe_worker,
                 args=(status_callback,),
-                daemon=True
+                daemon=True,
             )
         else:
             self._record_thread = threading.Thread(
@@ -244,13 +266,33 @@ class SoundSource(Source):
                     self._sample_rate = source.SAMPLE_RATE
                     self._sample_width = source.SAMPLE_WIDTH
                     stream = source.stream
-                    logger.info(f"Microphone {device_name} opened for simple recording.")
+                    logger.info(
+                        f"Microphone {device_name} opened for simple recording."
+                    )
+
+                    enhancer = None
+                    if self.config.get("enable_audio_enhancement", False):
+                        from .audio_processing import AudioEnhancer
+
+                        enhancer = AudioEnhancer(sample_rate=self._sample_rate)
+
                     with wave.open(temp_wav_path, "wb") as wf:
                         wf.setnchannels(1)
                         wf.setsampwidth(self._sample_width)
                         wf.setframerate(self._sample_rate)
                         while not self._stop_event.is_set():
                             data = stream.read(source.CHUNK)
+
+                            if enhancer:
+                                audio_array = (
+                                    np.frombuffer(data, dtype=np.int16).astype(
+                                        np.float32
+                                    )
+                                    / 32768.0
+                                )
+                                audio_array = enhancer.enhance(audio_array)
+                                data = (audio_array * 32767).astype(np.int16).tobytes()
+
                             self.audio_frames_dict["mic"].append(data)
                             self._update_volume(data)
                             wf.writeframes(data)
@@ -260,19 +302,45 @@ class SoundSource(Source):
         def record_loopback():
             import soundcard as sc
             import numpy as np
+
             try:
-                speaker_name = loopback_name if loopback_name else sc.default_speaker().name
-                loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == speaker_name and m.isloopback), None)
-                if loopback_device is None: raise ValueError(f"Loopback device {speaker_name} not found")
+                speaker_name = (
+                    loopback_name if loopback_name else sc.default_speaker().name
+                )
+                loopback_device = next(
+                    (
+                        m
+                        for m in sc.all_microphones(include_loopback=True)
+                        if m.name == speaker_name and m.isloopback
+                    ),
+                    None,
+                )
+                if loopback_device is None:
+                    raise ValueError(f"Loopback device {speaker_name} not found")
                 # Fallback if sample rate wasn't set yet
                 sample_rate = getattr(self, "_sample_rate", 16000)
                 if not sample_rate:
                     sample_rate = 16000
                 logger.info(f"Loopback {loopback_name} opened for simple recording.")
-                with loopback_device.recorder(samplerate=sample_rate, channels=1) as mic:
+
+                enhancer = None
+                if self.config.get("enable_audio_enhancement", False):
+                    from .audio_processing import AudioEnhancer
+
+                    enhancer = AudioEnhancer(sample_rate=sample_rate)
+
+                with loopback_device.recorder(
+                    samplerate=sample_rate, channels=1
+                ) as mic:
                     while not self._stop_event.is_set():
                         data = mic.record(numframes=1024)
                         audio_array = data.flatten()
+
+                        if enhancer:
+                            audio_array = enhancer.enhance(
+                                audio_array.astype(np.float32)
+                            )
+
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         self.audio_frames_dict["loopback"].append(int16_data)
             except Exception as e:
@@ -282,12 +350,12 @@ class SoundSource(Source):
         t1 = threading.Thread(target=record_mic)
         threads.append(t1)
         t1.start()
-        
+
         if loopback_name:
             t2 = threading.Thread(target=record_loopback)
             threads.append(t2)
             t2.start()
-            
+
         for t in threads:
             t.join()
 
@@ -320,18 +388,24 @@ class SoundSource(Source):
             if translation_lang:
                 translate_kwargs["enable_translation"] = True
                 translate_kwargs["target_language"] = translation_lang
-                logger.info("Translation enabled — target language: %s", translation_lang)
+                logger.info(
+                    "Translation enabled — target language: %s", translation_lang
+                )
 
             # Mic Client
             mic_kwargs = translate_kwargs.copy()
             if translation_lang:
-                mic_kwargs["translation_callback"] = lambda _, segs: self._on_translation_result(_, segs, source="mic")
+                mic_kwargs["translation_callback"] = lambda _, segs: (
+                    self._on_translation_result(_, segs, source="mic")
+                )
             self.transcription_client_mic = WhisperLiveTranscriptionClient(
                 host="localhost",
                 port=9090,
                 lang=transcription_lang,
                 use_vad=True,
-                transcription_callback=lambda _, segs: self._on_transcription_result(_, segs, source="mic"),
+                transcription_callback=lambda _, segs: self._on_transcription_result(
+                    _, segs, source="mic"
+                ),
                 no_speech_thresh=0.4,
                 **mic_kwargs,
             )
@@ -341,13 +415,17 @@ class SoundSource(Source):
             if loopback_device:
                 loop_kwargs = translate_kwargs.copy()
                 if translation_lang:
-                    loop_kwargs["translation_callback"] = lambda _, segs: self._on_translation_result(_, segs, source="loopback")
+                    loop_kwargs["translation_callback"] = lambda _, segs: (
+                        self._on_translation_result(_, segs, source="loopback")
+                    )
                 self.transcription_client_loopback = WhisperLiveTranscriptionClient(
                     host="localhost",
                     port=9090,
                     lang=transcription_lang,
                     use_vad=True,
-                    transcription_callback=lambda _, segs: self._on_transcription_result(_, segs, source="loopback"),
+                    transcription_callback=lambda _, segs: (
+                        self._on_transcription_result(_, segs, source="loopback")
+                    ),
                     no_speech_thresh=0.4,
                     **loop_kwargs,
                 )
@@ -413,10 +491,15 @@ class SoundSource(Source):
         """Stream loopback audio to WhisperLive."""
         if not self.transcription_client_loopback:
             return
-            
+
         wav_file = None
-        if self.config.get("post_recording_diarization", False) and self.session_manager:
-            session_dir = self.session_manager.get_session_dir(self.session_manager.current_session_id)
+        if (
+            self.config.get("post_recording_diarization", False)
+            and self.session_manager
+        ):
+            session_dir = self.session_manager.get_session_dir(
+                self.session_manager.current_session_id
+            )
             if session_dir:
                 wav_path = os.path.join(session_dir, "audio_loopback.wav")
                 wav_file = wave.open(wav_path, "wb")
@@ -424,20 +507,43 @@ class SoundSource(Source):
                 wav_file.setsampwidth(2)
         try:
             import soundcard as sc
-            loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == device_name and m.isloopback), None)
-            if loopback_device is None: raise ValueError(f"Loopback device {device_name} not found")
+
+            loopback_device = next(
+                (
+                    m
+                    for m in sc.all_microphones(include_loopback=True)
+                    if m.name == device_name and m.isloopback
+                ),
+                None,
+            )
+            if loopback_device is None:
+                raise ValueError(f"Loopback device {device_name} not found")
             target_sample_rate = 16000
-            
+
             if wav_file:
                 wav_file.setframerate(target_sample_rate)
-                
+
+            enhancer = None
+            if self.config.get("enable_audio_enhancement", False):
+                from .audio_processing import AudioEnhancer
+
+                enhancer = AudioEnhancer(sample_rate=target_sample_rate)
+
             logger.info(f"Loopback device {device_name} opened.")
-            with loopback_device.recorder(samplerate=target_sample_rate, channels=1) as mic:
+            with loopback_device.recorder(
+                samplerate=target_sample_rate, channels=1
+            ) as mic:
                 while not self._stop_event.is_set():
                     data = mic.record(numframes=4096)
                     audio_array = data.flatten().astype(np.float32)
-                    self.transcription_client_loopback.client.send_packet_to_server(audio_array.tobytes())
-                    
+
+                    if enhancer:
+                        audio_array = enhancer.enhance(audio_array)
+
+                    self.transcription_client_loopback.client.send_packet_to_server(
+                        audio_array.tobytes()
+                    )
+
                     if wav_file:
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         wav_file.writeframes(int16_data)
@@ -450,8 +556,13 @@ class SoundSource(Source):
     def _stream_audio_to_whisperlive(self, device_index, device_name):
         """Stream audio to WhisperLive."""
         wav_file = None
-        if self.config.get("post_recording_diarization", False) and self.session_manager:
-            session_dir = self.session_manager.get_session_dir(self.session_manager.current_session_id)
+        if (
+            self.config.get("post_recording_diarization", False)
+            and self.session_manager
+        ):
+            session_dir = self.session_manager.get_session_dir(
+                self.session_manager.current_session_id
+            )
             if session_dir:
                 wav_path = os.path.join(session_dir, "audio_mic.wav")
                 wav_file = wave.open(wav_path, "wb")
@@ -465,9 +576,15 @@ class SoundSource(Source):
                 logger.info(
                     f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz."
                 )
-                
+
                 if wav_file:
                     wav_file.setframerate(target_sample_rate)
+
+                enhancer = None
+                if self.config.get("enable_audio_enhancement", False):
+                    from .audio_processing import AudioEnhancer
+
+                    enhancer = AudioEnhancer(sample_rate=target_sample_rate)
 
                 while not self._stop_event.is_set():
                     data = stream.read(source.CHUNK)
@@ -480,10 +597,13 @@ class SoundSource(Source):
                             audio_array, source_sample_rate, target_sample_rate
                         )
 
+                    if enhancer:
+                        audio_array = enhancer.enhance(audio_array)
+
                     self.transcription_client_mic.client.send_packet_to_server(
                         audio_array.tobytes()
                     )
-                    
+
                     if wav_file:
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         wav_file.writeframes(int16_data)
@@ -495,7 +615,10 @@ class SoundSource(Source):
 
     def _cleanup_transcription_clients(self):
         """Cleanup transcription clients."""
-        for client_attr in ['transcription_client_mic', 'transcription_client_loopback']:
+        for client_attr in [
+            "transcription_client_mic",
+            "transcription_client_loopback",
+        ]:
             client = getattr(self, client_attr, None)
             if client:
                 try:
@@ -509,9 +632,13 @@ class SoundSource(Source):
     def _wait_for_clients_ready(self, timeout=15, status_callback=None):
         ready = True
         if self.transcription_client_mic:
-            ready = ready and self._wait_for_client_ready(self.transcription_client_mic.client, timeout, status_callback)
+            ready = ready and self._wait_for_client_ready(
+                self.transcription_client_mic.client, timeout, status_callback
+            )
         if self.transcription_client_loopback:
-            ready = ready and self._wait_for_client_ready(self.transcription_client_loopback.client, timeout, status_callback)
+            ready = ready and self._wait_for_client_ready(
+                self.transcription_client_loopback.client, timeout, status_callback
+            )
         return ready
 
     def _record_and_transcribe_worker(self, status_callback=None):
@@ -523,7 +650,9 @@ class SoundSource(Source):
             return
 
         timeout = 600 if self._translation_language else 15
-        if not self._wait_for_clients_ready(timeout=timeout, status_callback=status_callback):
+        if not self._wait_for_clients_ready(
+            timeout=timeout, status_callback=status_callback
+        ):
             self.is_recording = False
             return
 
@@ -532,17 +661,22 @@ class SoundSource(Source):
 
         device_name = self.config.get("audio_input_device_name")
         device_index = self._find_audio_device_index(device_name)
-        
+
         loopback_name = self.config.get("audio_loopback_device_name")
 
         threads = []
         try:
             if self.transcription_client_mic:
-                t1 = threading.Thread(target=self._stream_audio_to_whisperlive, args=(device_index, device_name))
+                t1 = threading.Thread(
+                    target=self._stream_audio_to_whisperlive,
+                    args=(device_index, device_name),
+                )
                 threads.append(t1)
                 t1.start()
             if self.transcription_client_loopback and loopback_name:
-                t2 = threading.Thread(target=self._stream_loopback_to_whisperlive, args=(loopback_name,))
+                t2 = threading.Thread(
+                    target=self._stream_loopback_to_whisperlive, args=(loopback_name,)
+                )
                 threads.append(t2)
                 t2.start()
 
@@ -625,7 +759,9 @@ class SoundSource(Source):
             if start > self._last_translated_segment_start[source]:
                 if self._current_translated_utterance[source]:
                     prefix = "🎤 " if source == "mic" else "💻 "
-                    self._last_translated_text += f"{prefix}{self._current_translated_utterance[source]} "
+                    self._last_translated_text += (
+                        f"{prefix}{self._current_translated_utterance[source]} "
+                    )
                 prefix = "🎤 " if source == "mic" else "💻 "
                 show_subtitle(f"{prefix}{text}")
                 self._last_translated_segment_start[source] = start
@@ -668,9 +804,13 @@ class SoundSource(Source):
         for source in ["mic", "loopback"]:
             if self._current_translated_utterance[source]:
                 prefix = "🎤 " if source == "mic" else "💻 "
-                self._last_translated_text += f"{prefix}{self._current_translated_utterance[source]} "
+                self._last_translated_text += (
+                    f"{prefix}{self._current_translated_utterance[source]} "
+                )
 
-        has_content = any(self._current_utterance_text.values()) or any(self._current_translated_utterance.values())
+        has_content = any(self._current_utterance_text.values()) or any(
+            self._current_translated_utterance.values()
+        )
         if not has_content:
             threading.Timer(5.0, clear_subtitles).start()
 
@@ -692,19 +832,27 @@ class SoundSource(Source):
             if not frames:
                 continue
             try:
-                if not hasattr(self, "_sample_rate") or not hasattr(self, "_sample_width"):
+                if not hasattr(self, "_sample_rate") or not hasattr(
+                    self, "_sample_width"
+                ):
                     continue
                 audio_data = sr.AudioData(
                     b"".join(frames), self._sample_rate, self._sample_width
                 )
-                text = self.recognizer.recognize_google(audio_data, language=google_lang)  # type: ignore[attr-defined]
+                text = self.recognizer.recognize_google(
+                    audio_data, language=google_lang
+                )  # type: ignore[attr-defined]
                 if text:
                     prefix = "🎤 " if source == "mic" else "💻 "
                     results.append(f"{prefix}{text}")
             except sr.UnknownValueError:
-                logger.info(f"Speech Recognition could not understand audio from {source}")
+                logger.info(
+                    f"Speech Recognition could not understand audio from {source}"
+                )
             except sr.RequestError as e:
-                logger.error(f"Could not request results from Speech Recognition service for {source}; {e}")
+                logger.error(
+                    f"Could not request results from Speech Recognition service for {source}; {e}"
+                )
             except Exception as e:
                 logger.error(f"Error during audio processing for {source}: {e}")
 
@@ -713,22 +861,23 @@ class SoundSource(Source):
     def _update_volume(self, data: bytes):
         """Calculate and broadcast audio volume for UI."""
         from core.ui.signals import ui_signals
+
         audio_data = np.frombuffer(data, dtype=np.int16)
         if len(audio_data) > 0:
             vol = np.abs(audio_data.astype(np.float32)).max()
-            
-            # Keep a running max of the volume to auto-normalize 
+
+            # Keep a running max of the volume to auto-normalize
             # against whatever the current OS mixer volume is.
-            self._max_observed_vol = max(getattr(self, '_max_observed_vol', 500.0), vol)
-            
+            self._max_observed_vol = max(getattr(self, "_max_observed_vol", 500.0), vol)
+
             # Slowly decay the max volume so it can adapt if the user turns their system volume down
             # Floor at 500.0 so that a totally silent room doesn't decay to the noise floor and show 100%
             self._max_observed_vol = max(500.0, self._max_observed_vol * 0.995)
-            
+
             # Scale the current volume relative to the maximum observed volume
             scaled_vol = int((vol / self._max_observed_vol) * 100)
             scaled_vol = min(100, max(0, scaled_vol))
-            
+
             ui_signals.update_volume.emit(scaled_vol)
 
     def stop_recording(self) -> str:
@@ -741,6 +890,7 @@ class SoundSource(Source):
         logger.info("Recording stopped.")
 
         from core.ui.signals import ui_signals
+
         ui_signals.update_volume.emit(0)
 
         if self.realtime_transcription:

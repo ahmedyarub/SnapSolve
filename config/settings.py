@@ -126,12 +126,10 @@ def get_audio_loopback_devices():
     """
     try:
         import soundcard as sc
+
         loopback_devices = []
         for speaker in sc.all_speakers():
-            loopback_devices.append({
-                "name": speaker.name,
-                "id": speaker.id
-            })
+            loopback_devices.append({"name": speaker.name, "id": speaker.id})
         loopback_devices.sort(key=lambda x: x["name"].lower())
         return loopback_devices
     except Exception as e:
@@ -195,7 +193,12 @@ def _get_default_config():
         "remote_mouse_idle_timeout": 3.0,
         "share_response_with_android": False,
         "ide_pycharm_path": "pycharm",
-        "ide_antigravity_path": str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe"),
+        "ide_antigravity_path": str(
+            Path(os.environ.get("LOCALAPPDATA", ""))
+            / "Programs"
+            / "Antigravity IDE"
+            / "Antigravity IDE.exe"
+        ),
         # LLM retry on transient errors (503, rate limits, etc.)
         "llm_max_retries": 3,
         "llm_retry_base_delay": 5,
@@ -211,6 +214,7 @@ def _get_default_config():
         "webhook_trigger_on_summary": False,
         "post_recording_diarization": False,
         "delete_wav_after_diarization": True,
+        "enable_audio_enhancement": False,
     }
 
 
@@ -291,7 +295,10 @@ def load_config():
     elif "popup_opacity" in file_config:
         del file_config["popup_opacity"]
 
-    if "enable_remote_control" in file_config and "enable_api_server" not in file_config:
+    if (
+        "enable_remote_control" in file_config
+        and "enable_api_server" not in file_config
+    ):
         file_config["enable_api_server"] = file_config.pop("enable_remote_control")
     elif "enable_remote_control" in file_config:
         del file_config["enable_remote_control"]
@@ -360,9 +367,13 @@ def parse_args():
         help="Ollama API URL (default: http://localhost:11434)",
     )
     parser.add_argument("--gemini-api-key", type=str, help="Gemini API Key")
-    parser.add_argument("--api-server-host", type=str, help="Host/IP for the API Server")
+    parser.add_argument(
+        "--api-server-host", type=str, help="Host/IP for the API Server"
+    )
     parser.add_argument("--api-server-port", type=int, help="Port for the API Server")
-    parser.add_argument("--api-key", type=str, help="API Key required for REST endpoints")
+    parser.add_argument(
+        "--api-key", type=str, help="API Key required for REST endpoints"
+    )
     parser.add_argument(
         "--auto-close-results", action="store_true", help="Auto close result popups"
     )
@@ -372,7 +383,9 @@ def parse_args():
         help="Do not auto close result popups",
     )
     parser.add_argument(
-        "--popup-opacity", type=float, help="Opacity of all overlay windows (0.0 to 1.0)"
+        "--popup-opacity",
+        type=float,
+        help="Opacity of all overlay windows (0.0 to 1.0)",
     )
     parser.add_argument(
         "--fallback-language",
@@ -535,6 +548,16 @@ def parse_args():
         action="store_true",
         help="Disable automatically deleting .wav files after diarization",
     )
+    parser.add_argument(
+        "--enable-audio-enhancement",
+        action="store_true",
+        help="Enable real-time audio enhancement pipeline (denoise, normalize)",
+    )
+    parser.add_argument(
+        "--disable-audio-enhancement",
+        action="store_true",
+        help="Disable real-time audio enhancement pipeline",
+    )
 
     return parser.parse_args()
 
@@ -649,6 +672,11 @@ def _apply_audio_config(config, args):
     if args.audio_loopback_device_name is not None:
         config["audio_loopback_device_name"] = args.audio_loopback_device_name
 
+    if args.enable_audio_enhancement:
+        config["enable_audio_enhancement"] = True
+    elif args.disable_audio_enhancement:
+        config["enable_audio_enhancement"] = False
+
 
 def _apply_transcription_config(config, args):
     """Apply transcription configuration options from command line args."""
@@ -700,7 +728,9 @@ def _apply_periodic_screenshots_config(config, args):
         config["periodic_screenshots_on_activity"] = False
 
     if args.periodic_screenshots_activity_min_delay is not None:
-        config["periodic_screenshots_activity_min_delay"] = args.periodic_screenshots_activity_min_delay
+        config["periodic_screenshots_activity_min_delay"] = (
+            args.periodic_screenshots_activity_min_delay
+        )
 
 
 def get_config():

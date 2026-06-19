@@ -1,5 +1,4 @@
 import difflib
-import json
 import logging
 import os
 import string
@@ -27,6 +26,7 @@ from PyQt6.QtWidgets import (  # noqa: E402
     QHBoxLayout,
     QLabel,
     QComboBox,
+    QCheckBox,
     QTextEdit,
     QPushButton,
     QProgressBar,
@@ -236,7 +236,7 @@ class SoundTestApp(QMainWindow):
         in_layout.addWidget(QLabel("Input Device:"))
         in_layout.addWidget(self.in_combo)
         layout.addLayout(in_layout)
-        
+
         # Loopback Device
         loop_layout = QHBoxLayout()
         loop_layout.addWidget(QLabel("Loopback Device:"))
@@ -254,6 +254,12 @@ class SoundTestApp(QMainWindow):
         self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
         lang_layout.addWidget(self.lang_combo)
         layout.addLayout(lang_layout)
+
+        # Audio Enhancement
+        self.enable_audio_enhancement_cb = QCheckBox(
+            "Enable Audio Enhancement (Denoise, Normalize)"
+        )
+        layout.addWidget(self.enable_audio_enhancement_cb)
 
         # Text to Speak
         layout.addWidget(QLabel("Text to Speak:"))
@@ -338,11 +344,12 @@ class SoundTestApp(QMainWindow):
 
         # Input Devices are already populated by PyAudio loop above.
         self.in_combo.insertItem(0, "Default System Input", None)
-        
+
         # Populate Loopback Devices using soundcard directly
         self.loop_combo.addItem("(Use input device instead)", None)
         try:
             import soundcard as sc
+
             devices = sc.all_speakers()
             devices.sort(key=lambda x: x.name.lower())
             for speaker in devices:
@@ -368,7 +375,7 @@ class SoundTestApp(QMainWindow):
                     idx = self.in_combo.findData(data["in_idx"])
                     if idx >= 0:
                         self.in_combo.setCurrentIndex(idx)
-                        
+
                 if "loop_name" in data:
                     idx = self.loop_combo.findData(data["loop_name"])
                     if idx >= 0:
@@ -378,6 +385,11 @@ class SoundTestApp(QMainWindow):
                     idx = self.lang_combo.findData(data["lang_code"])
                     if idx >= 0:
                         self.lang_combo.setCurrentIndex(idx)
+
+                if "enable_enhancement" in data:
+                    self.enable_audio_enhancement_cb.setChecked(
+                        data["enable_enhancement"]
+                    )
             except Exception as e:
                 print(f"Failed to load settings: {e}")
 
@@ -390,6 +402,7 @@ class SoundTestApp(QMainWindow):
                 "in_idx": in_idx,
                 "loop_name": loop_name,
                 "lang_code": self.lang_combo.currentData(),
+                "enable_enhancement": self.enable_audio_enhancement_cb.isChecked(),
             }
             with open(self.settings_file, "w") as f:
                 json.dump(data, f)
@@ -406,9 +419,13 @@ class SoundTestApp(QMainWindow):
         if piper_basename:
             self.piper_model = piper_basename
             if not os.path.exists(piper_basename):
-                self.log(f"⚠ Piper model '{piper_basename}' not found locally. TTS may fail for {display_name}.")
+                self.log(
+                    f"⚠ Piper model '{piper_basename}' not found locally. TTS may fail for {display_name}."
+                )
         else:
-            self.log(f"ℹ No Piper TTS model available for {display_name}. TTS playback will be skipped.")
+            self.log(
+                f"ℹ No Piper TTS model available for {display_name}. TTS playback will be skipped."
+            )
             self.piper_model = ""
 
     def log(self, message):
@@ -535,7 +552,9 @@ class SoundTestApp(QMainWindow):
         threading.Thread(
             target=self.play_audio, args=(text, out_idx), daemon=True
         ).start()
-        threading.Thread(target=self.record_audio, args=(in_idx, loop_name), daemon=True).start()
+        threading.Thread(
+            target=self.record_audio, args=(in_idx, loop_name), daemon=True
+        ).start()
 
     def start_transcription_test(self):
         self.playback_only_btn.setEnabled(False)
@@ -676,8 +695,15 @@ class SoundTestApp(QMainWindow):
                 output_device_index=device_index,
             )
         except OSError as oe:
-            if "-9996" in str(oe) or "-9997" in str(oe) or "Invalid output device" in str(oe) or "Invalid sample rate" in str(oe):
-                self.signals.log_message.emit("Playback error: Invalid output device. PyAudio cannot use WASAPI loopback streams for output. Please select a normal MME/DirectSound device.")
+            if (
+                "-9996" in str(oe)
+                or "-9997" in str(oe)
+                or "Invalid output device" in str(oe)
+                or "Invalid sample rate" in str(oe)
+            ):
+                self.signals.log_message.emit(
+                    "Playback error: Invalid output device. PyAudio cannot use WASAPI loopback streams for output. Please select a normal MME/DirectSound device."
+                )
             else:
                 self.signals.log_message.emit(f"Playback error: {oe}")
             wf.close()
@@ -858,7 +884,14 @@ class SoundTestApp(QMainWindow):
         return stream, source_sample_rate, target_sample_rate, resampler
 
     def _stream_audio_to_whisperlive(
-        self, stream, source, source_sample_rate, target_sample_rate, resampler, client
+        self,
+        stream,
+        source,
+        source_sample_rate,
+        target_sample_rate,
+        resampler,
+        client,
+        enhancer=None,
     ):
         """Stream audio to WhisperLive."""
         while not self.playback_done:
@@ -876,6 +909,9 @@ class SoundTestApp(QMainWindow):
                         audio_array, source_sample_rate, target_sample_rate
                     )
 
+                if enhancer:
+                    audio_array = enhancer.enhance(audio_array)
+
                 client.send_packet_to_server(audio_array.tobytes())
 
             except Exception as e:
@@ -890,7 +926,9 @@ class SoundTestApp(QMainWindow):
         except Exception as e:
             self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
 
-    def record_audio_to_file(self, device_index, server_ready_event=None, loop_name=None):
+    def record_audio_to_file(
+        self, device_index, server_ready_event=None, loop_name=None
+    ):
         """Records audio and streams it directly to WhisperLive."""
         try:
             if not self._connect_to_whisperlive_server():
@@ -903,29 +941,56 @@ class SoundTestApp(QMainWindow):
 
             client = self.transcription_client.client
 
+            enhancer = None
+            if self.enable_audio_enhancement_cb.isChecked():
+                sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+                try:
+                    from core.sources.audio_processing import AudioEnhancer
+
+                    enhancer = AudioEnhancer(sample_rate=16000)
+                    self.signals.log_message.emit("Audio Enhancement Pipeline enabled.")
+                except ImportError as e:
+                    self.signals.log_message.emit(f"Failed to load AudioEnhancer: {e}")
+
             if loop_name:
                 import soundcard as sc
                 import numpy as np
-                self.signals.log_message.emit(f"Starting loopback recording on {loop_name} for transcription...")
+
+                self.signals.log_message.emit(
+                    f"Starting loopback recording on {loop_name} for transcription..."
+                )
                 speaker_name = loop_name if loop_name else sc.default_speaker().name
-                loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == speaker_name and m.isloopback), None)
-                if loopback_device is None: raise ValueError(f"Loopback device {speaker_name} not found")
+                loopback_device = next(
+                    (
+                        m
+                        for m in sc.all_microphones(include_loopback=True)
+                        if m.name == speaker_name and m.isloopback
+                    ),
+                    None,
+                )
+                if loopback_device is None:
+                    raise ValueError(f"Loopback device {speaker_name} not found")
                 with loopback_device.recorder(samplerate=16000, channels=1) as mic:
                     while not self.playback_done:
                         data = mic.record(numframes=1024)
-                        int16_data = (data.flatten() * 32767).astype(np.int16).tobytes()
+                        audio_array = data.flatten().astype(np.float32)
+
+                        if enhancer:
+                            audio_array = enhancer.enhance(audio_array)
+
+                        int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         self._update_volume_from_audio(int16_data)
-                        
-                        audio_array = np.frombuffer(int16_data, dtype=np.int16).astype(np.float32) / 32768.0
                         client.send_packet_to_server(audio_array.tobytes())
             else:
                 if device_index is None:
                     device_name = "Default System Input"
                 else:
                     try:
-                        device_name = self.p.get_device_info_by_index(device_index).get("name", self.UNKNOWN_DEVICE_NAME)
+                        device_name = self.p.get_device_info_by_index(device_index).get(
+                            "name", self.UNKNOWN_DEVICE_NAME
+                        )
                     except Exception:
-                        device_name = "Unknown Device" 
+                        device_name = "Unknown Device"
                 self.signals.log_message.emit(
                     f"Starting recording on {device_name} for transcription..."
                 )
@@ -936,7 +1001,13 @@ class SoundTestApp(QMainWindow):
                     )
 
                     self._stream_audio_to_whisperlive(
-                        stream, source, source_sample_rate, target_sample_rate, resampler, client
+                        stream,
+                        source,
+                        source_sample_rate,
+                        target_sample_rate,
+                        resampler,
+                        client,
+                        enhancer,
                     )
 
             self._send_end_of_audio_signal(client)
@@ -1057,10 +1128,21 @@ class SoundTestApp(QMainWindow):
             try:
                 import soundcard as sc
                 import numpy as np
-                self.signals.log_message.emit(f"Starting loopback monitoring on {loop_name}...")
+
+                self.signals.log_message.emit(
+                    f"Starting loopback monitoring on {loop_name}..."
+                )
                 speaker_name = loop_name if loop_name else sc.default_speaker().name
-                loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == speaker_name and m.isloopback), None)
-                if loopback_device is None: raise ValueError(f"Loopback device {speaker_name} not found")
+                loopback_device = next(
+                    (
+                        m
+                        for m in sc.all_microphones(include_loopback=True)
+                        if m.name == speaker_name and m.isloopback
+                    ),
+                    None,
+                )
+                if loopback_device is None:
+                    raise ValueError(f"Loopback device {speaker_name} not found")
                 with loopback_device.recorder(samplerate=16000, channels=1) as mic:
                     while not self.playback_done:
                         data = mic.record(numframes=1024)
@@ -1075,9 +1157,11 @@ class SoundTestApp(QMainWindow):
             device_name = "Default System Input"
         else:
             try:
-                device_name = self.p.get_device_info_by_index(device_index).get("name", self.UNKNOWN_DEVICE_NAME)
+                device_name = self.p.get_device_info_by_index(device_index).get(
+                    "name", self.UNKNOWN_DEVICE_NAME
+                )
             except Exception:
-                device_name = "Unknown Device" 
+                device_name = "Unknown Device"
         try:
             self.signals.log_message.emit(
                 f"Starting microphone monitoring on {device_name}..."
@@ -1100,33 +1184,49 @@ class SoundTestApp(QMainWindow):
             if loop_name:
                 import soundcard as sc
                 import numpy as np
-                self.signals.log_message.emit(f"Starting loopback recording on {loop_name}...")
+
+                self.signals.log_message.emit(
+                    f"Starting loopback recording on {loop_name}..."
+                )
                 speaker_name = loop_name if loop_name else sc.default_speaker().name
-                loopback_device = next((m for m in sc.all_microphones(include_loopback=True) if m.name == speaker_name and m.isloopback), None)
-                if loopback_device is None: raise ValueError(f"Loopback device {speaker_name} not found")
+                loopback_device = next(
+                    (
+                        m
+                        for m in sc.all_microphones(include_loopback=True)
+                        if m.name == speaker_name and m.isloopback
+                    ),
+                    None,
+                )
+                if loopback_device is None:
+                    raise ValueError(f"Loopback device {speaker_name} not found")
                 with loopback_device.recorder(samplerate=16000, channels=1) as mic:
                     while not self.playback_done:
                         data = mic.record(numframes=1024)
                         int16_data = (data.flatten() * 32767).astype(np.int16).tobytes()
                         self.audio_frames.append(int16_data)
                         self._update_volume_from_audio(int16_data)
-                
-                self.signals.log_message.emit("Recording stopped. Processing speech recognition...")
+
+                self.signals.log_message.emit(
+                    "Recording stopped. Processing speech recognition..."
+                )
                 self.signals.update_volume.emit(0)
                 if self.audio_frames:
                     # Provide a dummy source since we don't have sr.Microphone
                     class DummySource:
                         SAMPLE_RATE = 16000
                         SAMPLE_WIDTH = 2
+
                     self._process_google_recognition(r, DummySource())
             else:
                 if device_index is None:
                     device_name = "Default System Input"
                 else:
                     try:
-                        device_name = self.p.get_device_info_by_index(device_index).get("name", self.UNKNOWN_DEVICE_NAME)
+                        device_name = self.p.get_device_info_by_index(device_index).get(
+                            "name", self.UNKNOWN_DEVICE_NAME
+                        )
                     except Exception:
-                        device_name = "Unknown Device" 
+                        device_name = "Unknown Device"
                 self.signals.log_message.emit(f"Starting recording on {device_name}...")
 
                 with sr.Microphone(device_index=device_index) as source:
@@ -1142,7 +1242,9 @@ class SoundTestApp(QMainWindow):
                             self.signals.log_message.emit(f"Recording error: {e}")
                             break
 
-                self.signals.log_message.emit("Recording stopped. Processing speech recognition...")
+                self.signals.log_message.emit(
+                    "Recording stopped. Processing speech recognition..."
+                )
                 self.signals.update_volume.emit(0)
 
                 if self.audio_frames:
@@ -1158,19 +1260,19 @@ class SoundTestApp(QMainWindow):
         audio_data = np.frombuffer(data, dtype=np.int16)
         if len(audio_data) > 0:
             vol = np.abs(audio_data.astype(np.float32)).max()
-            
-            # Keep a running max of the volume to auto-normalize 
+
+            # Keep a running max of the volume to auto-normalize
             # against whatever the current OS mixer volume is.
-            self._max_observed_vol = max(getattr(self, '_max_observed_vol', 500.0), vol)
-            
+            self._max_observed_vol = max(getattr(self, "_max_observed_vol", 500.0), vol)
+
             # Slowly decay the max volume so it can adapt if the user turns their system volume down
             # Floor at 500.0 so that a totally silent room doesn't decay to the noise floor and show 100%
             self._max_observed_vol = max(500.0, self._max_observed_vol * 0.995)
-            
+
             # Scale the current volume relative to the maximum observed volume
             scaled_vol = int((vol / self._max_observed_vol) * 100)
             scaled_vol = min(100, max(0, scaled_vol))
-            
+
             self.signals.update_volume.emit(scaled_vol)
 
     def _process_google_recognition(self, recognizer, source):
