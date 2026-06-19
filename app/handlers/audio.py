@@ -27,6 +27,14 @@ def handle_start_record(config, enable_transcription):
         status_callback=status_update, enable_transcription=enable_transcription
     )
 
+    # Attach correction engine if available
+    import app.state as state
+    if state.correction_engine_instance:
+        state.correction_engine_instance.reset()
+        active_source.correction_engine = state.correction_engine_instance
+        from core.ui.signals import ui_signals
+        ui_signals.clear_corrections.emit()
+
 
 def handle_stop_record(config, active_profile, _active_prompt_text, is_long_press):
     """Stop audio recording and optionally send transcription to LLM."""
@@ -53,6 +61,16 @@ def handle_stop_record(config, active_profile, _active_prompt_text, is_long_pres
         assert active_source is not None
         assert isinstance(active_source, SoundSource)
         text = active_source.stop_recording()
+
+        # Save any accumulated corrections to the session
+        import app.state as state
+        if state.correction_engine_instance:
+            state.correction_engine_instance.stop()
+            corrections = state.correction_engine_instance.get_corrections()
+            if corrections and state.session_manager:
+                state.session_manager.append_corrections(corrections)
+        # Detach correction engine from source
+        active_source.correction_engine = None
 
         if config.get("post_recording_diarization", False):
             import app.state as state

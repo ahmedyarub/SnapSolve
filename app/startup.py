@@ -29,6 +29,7 @@ from app.config_validation import validate_config
 from app.engine_init import (
     _initialize_ocr_engine,
     _initialize_llm_engines,
+    _initialize_correction_engine,
     _perform_llm_warmup,
     _initialize_audio_components,
 )
@@ -247,6 +248,12 @@ def main():
     )
 
     _perform_llm_warmup(config, state.llm_engine_instance, state.fallback_llm_engine_instance)
+
+    # Initialize real-time correction engine
+    prompts = load_prompts()
+    state.correction_engine_instance = _initialize_correction_engine(
+        active_profile, config, state.session_manager, prompts
+    )
 
     state.audio_sink_instance = _initialize_audio_components(
         config, state.session_manager, state.cancel_event

@@ -22,6 +22,7 @@ fallback_llm_engine_instance = None  # LLMEngine | None
 session_manager = None  # SessionManager | None
 audio_sink_instance = None  # AudioSink | None
 periodic_screenshot_service = None  # PeriodicScreenshotService | None
+correction_engine_instance = None  # CorrectionEngine | None
 
 # Multi-capture state
 is_multi_capturing = False

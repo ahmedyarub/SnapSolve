@@ -530,6 +530,7 @@ class SessionManager:
         existing_name = None
         existing_tags: List[str] = []
         existing_context = self._default_context_config()
+        existing_corrections: List[Dict[str, Any]] = []
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -537,6 +538,7 @@ class SessionManager:
                     existing_name = existing.get("name")
                     existing_tags = existing.get("tags", [])
                     existing_context = existing.get("context", existing_context)
+                    existing_corrections = existing.get("corrections", [])
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -549,6 +551,7 @@ class SessionManager:
             "transcription_file": "transcription.txt" if self.transcription_file and os.path.exists(self.transcription_file) else None,
             "updated_at": time.time(),
             "context": existing_context,
+            "corrections": existing_corrections,
             "history": history,
         }
 
@@ -583,6 +586,56 @@ class SessionManager:
         if self.current_session_id:
             self.index_session(self.current_session_id)
         self._close_transcription_file()
+
+    def append_corrections(self, corrections: List[Dict[str, Any]]):
+        """Append real-time corrections to the current session."""
+        if not self.current_session_id or not corrections:
+            return
+
+        path = _session_json_path(self.current_session_id)
+        data = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        existing = data.get("corrections", [])
+        existing.extend(corrections)
+        data["corrections"] = existing
+
+        if "id" not in data:
+            data["id"] = self.current_session_id
+        if "history" not in data:
+            data["history"] = []
+
+        try:
+            _atomic_json_write(path, data)
+            logger.info(
+                "[SessionManager] Appended %d corrections to session %s",
+                len(corrections),
+                self.current_session_id,
+            )
+        except IOError as e:
+            logger.error("[SessionManager] Failed to append corrections: %s", e)
+
+    def get_corrections(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return stored corrections for a session."""
+        sid = session_id or self.current_session_id
+        if not sid:
+            return []
+
+        path = _session_json_path(sid)
+        if not os.path.exists(path):
+            return []
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("corrections", [])
+        except (json.JSONDecodeError, IOError):
+            return []
 
     @staticmethod
     def list_all_sessions() -> List[Dict[str, Any]]:

@@ -98,6 +98,50 @@ def _initialize_llm_engines(active_profile, config, manager):
     return llm_engine, fallback_llm_engine
 
 
+def _initialize_correction_engine(active_profile, config, manager, prompts):
+    """Initialize the real-time correction engine with its own LLM instance.
+
+    Returns a ``CorrectionEngine`` if correction is enabled and a valid
+    correction model is configured, otherwise ``None``.
+    """
+    if not config.get("realtime_correction_enabled", False):
+        return None
+
+    correction_model = active_profile.get("correction_model", "None")
+    if not correction_model or correction_model == "None":
+        # Fall back to the profile's main model
+        correction_model = active_profile.get("model", DEFAULT_MODEL_NAME)
+
+    llm_type = active_profile.get("llm_engine", "google-genai")
+
+    # Create a lightweight LLM engine instance dedicated to corrections
+    if llm_type == "ollama":
+        correction_llm = OllamaEngine(
+            correction_model,
+            config.get("ollama_url", "http://localhost:11434"),
+            session_manager=None,  # corrections don't need session history
+        )
+    elif llm_type == "google-genai":
+        correction_llm = GoogleGenAIEngine(
+            correction_model,
+            config.get("gemini_api_key", ""),
+            session_manager=None,
+        )
+    elif llm_type == "antigravity":
+        correction_llm = AntigravityEngine(
+            correction_model,
+            config.get("antigravity_service_url", "http://localhost:8200"),
+            session_manager=None,
+        )
+    else:
+        correction_llm = GeminiCLIEngine(correction_model, session_manager=None)
+
+    from core.correction_engine import CorrectionEngine
+    engine = CorrectionEngine(config, correction_llm, prompts, session_manager=manager)
+    print(f"[CorrectionEngine] Initialized with model={correction_model}, engine={llm_type}")
+    return engine
+
+
 def _perform_llm_warmup(config, llm_engine, fallback_llm_engine):
     """Perform LLM warmup."""
 

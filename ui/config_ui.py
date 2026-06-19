@@ -1,7 +1,23 @@
 import json
 import os
+import platform
 import sys
 from pathlib import Path
+
+# Ensure PyCharm's Stop button kills the process immediately, even when
+# a modal QDialog event loop (dialog.exec()) is blocking the main thread.
+# The ctypes handler runs in a dedicated OS thread, bypassing Python's
+# signal-handling limitations (which only fire between bytecodes).
+if platform.system() == "Windows":
+    import ctypes
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
+    def _config_ui_ctrl_handler(ctrl_type):
+        # CTRL_C_EVENT=0, CTRL_BREAK_EVENT=1, CTRL_CLOSE_EVENT=2
+        os._exit(0)
+        return True  # pragma: no cover
+
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(_config_ui_ctrl_handler, True)
 
 # FORCE PyQt6 initialization at the VERY FIRST entry point
 try:
@@ -30,6 +46,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QSlider,
+    QListWidget,
+    QListWidgetItem,
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QTimer
@@ -75,6 +93,9 @@ class RefreshableComboBox(QComboBox):
 class ConfigUI(QDialog):
     def __init__(self, config_path, models_path, profiles_path, prompts_path):
         super().__init__()
+        self.setWindowFlags(
+            self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
+        )
 
         # Load configurations
         self.config_path = config_path
@@ -156,6 +177,29 @@ class ConfigUI(QDialog):
         self.warmup_sr = QCheckBox("Warmup Speech Recognition")
         self.warmup_realtime_transcription = QCheckBox("Warmup Real-time Transcription")
         self._current_profile_data = None
+
+        # Real-time Analysis widgets
+        self.realtime_analysis_tab = QWidget()
+        self.realtime_correction_enabled = QCheckBox("Enable Real-time Correction")
+        self.realtime_correction_fact_check = QCheckBox("Fact-Checking")
+        self.realtime_correction_grammar = QCheckBox("Grammar \u0026 Pronunciation")
+        self.realtime_correction_content_suggestions = QCheckBox("Content Suggestions")
+        self.realtime_correction_window_size = QLineEdit(
+            str(self.config.get("realtime_correction_window_size", 4))
+        )
+
+        # Profile: correction model
+        self.prof_correction_model = QComboBox()
+
+        # Search UI
+        self._search_index: list[dict] = []  # [{label, tab_index, widget}]
+        self._search_input = QLineEdit()
+        self._search_results = QListWidget()
+        self._highlighted_widget: QWidget | None = None
+        self._highlighted_original_style: str = ""
+        self._blink_timer: QTimer | None = None
+        self._blink_count: int = 0
+        self._blink_on: bool = False
 
         # Opacity slider
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
@@ -287,6 +331,35 @@ class ConfigUI(QDialog):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+
+        # --- Search bar ---
+        search_container = QHBoxLayout()
+        search_icon = QLabel("🔍")
+        search_icon.setStyleSheet("font-size: 16px; padding: 0 4px;")
+        self._search_input.setPlaceholderText("Search settings...")
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
+        search_container.addWidget(search_icon)
+        search_container.addWidget(self._search_input)
+        layout.addLayout(search_container)
+
+        self._search_results.setVisible(False)
+        self._search_results.setSpacing(0)
+        self._search_results.setUniformItemSizes(True)
+        self._search_results.setSizePolicy(
+            self._search_results.sizePolicy().horizontalPolicy(),
+            self._search_results.sizePolicy().verticalPolicy(),
+        )
+        self._search_results.setStyleSheet(
+            "QListWidget { border: 1px solid #555; border-radius: 4px; "
+            "background: #2b2b2b; color: #ddd; font-size: 13px; padding: 2px; }"
+            "QListWidget::item { padding: 1px 6px; margin: 0px; }"
+            "QListWidget::item:hover { background: #3a3a5a; }"
+            "QListWidget::item:selected { background: #4a4a7a; }"
+        )
+        self._search_results.itemClicked.connect(self._on_search_result_clicked)
+        layout.addWidget(self._search_results)
+
         layout.addWidget(self.tabs)
 
         # Create tabs
@@ -295,15 +368,17 @@ class ConfigUI(QDialog):
         self.shortcuts_tab = QWidget()
 
         self.tabs.addTab(self.app_tab, "Application Settings")
-        self.tabs.addTab(self.audio_tab, "Audio & Speech")
+        self.tabs.addTab(self.audio_tab, "Audio \u0026 Speech")
+        self.tabs.addTab(self.realtime_analysis_tab, "Real-time Analysis")
         self.tabs.addTab(self.profile_tab, "Profile Settings")
         self.tabs.addTab(self.llm_tab, "LLM Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
-        self.tabs.addTab(self.remote_control_tab, "API & Remote Control")
+        self.tabs.addTab(self.remote_control_tab, "API \u0026 Remote Control")
 
         self.setup_app_tab()
         self.setup_audio_tab()
+        self.setup_realtime_analysis_tab()
         self.setup_profile_tab()
         self.setup_llm_tab()
         self.setup_warmup_tab()
@@ -323,6 +398,9 @@ class ConfigUI(QDialog):
         assert self.btn_save_run is not None
         self.btn_save_run.clicked.connect(self.save_and_run)
         layout.addWidget(self.button_box)
+
+        # Build search index after all tabs are fully populated
+        QTimer.singleShot(0, self._build_search_index)
 
         self.should_run = False
 
@@ -655,6 +733,88 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Speaker Name:", self.speaker_name)
 
+    def setup_realtime_analysis_tab(self):
+        """Build the Real-time Analysis tab.
+
+        Contains toggles for real-time correction types and window size.
+        """
+        layout = QFormLayout(self.realtime_analysis_tab)
+
+        layout.addRow(QLabel("<b>Real-time Speech Correction</b>"))
+
+        self.realtime_correction_enabled.setChecked(
+            self.config.get("realtime_correction_enabled", False)
+        )
+        self.realtime_correction_enabled.setToolTip(
+            "When enabled, transcribed speech is analyzed in real-time\n"
+            "by an LLM during recording. Corrections appear in a side panel."
+        )
+        layout.addRow("Enable:", self.realtime_correction_enabled)
+
+        # Sub-toggles (indented)
+        layout.addRow(QLabel("<b>Correction Types</b>"))
+
+        self.realtime_correction_fact_check.setChecked(
+            self.config.get("realtime_correction_fact_check", True)
+        )
+        self.realtime_correction_fact_check.setToolTip(
+            "Identify and correct factual errors, wrong statistics,\n"
+            "incorrect dates, and misleading claims."
+        )
+        layout.addRow("    Fact-Checking:", self.realtime_correction_fact_check)
+
+        self.realtime_correction_grammar.setChecked(
+            self.config.get("realtime_correction_grammar", True)
+        )
+        self.realtime_correction_grammar.setToolTip(
+            "Flag grammatical errors, malapropisms, incorrect word\n"
+            "usage, and likely transcription errors (homophones)."
+        )
+        layout.addRow("    Grammar:", self.realtime_correction_grammar)
+
+        self.realtime_correction_content_suggestions.setChecked(
+            self.config.get("realtime_correction_content_suggestions", False)
+        )
+        self.realtime_correction_content_suggestions.setToolTip(
+            "Suggest stronger phrasing, more precise terminology,\n"
+            "and supporting data to strengthen your speech."
+        )
+        layout.addRow("    Suggestions:", self.realtime_correction_content_suggestions)
+
+        # Disable sub-toggles when master is off
+        def _on_master_toggled(checked):
+            self.realtime_correction_fact_check.setEnabled(checked)
+            self.realtime_correction_grammar.setEnabled(checked)
+            self.realtime_correction_content_suggestions.setEnabled(checked)
+            self.realtime_correction_window_size.setEnabled(checked)
+
+        self.realtime_correction_enabled.toggled.connect(_on_master_toggled)
+        _on_master_toggled(self.realtime_correction_enabled.isChecked())
+
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Advanced</b>"))
+
+        self.realtime_correction_window_size.setPlaceholderText("e.g. 4")
+        self.realtime_correction_window_size.setToolTip(
+            "Number of finalized sentences to accumulate before\n"
+            "sending them to the LLM for analysis.\n"
+            "Lower = faster feedback but less context.\n"
+            "Higher = more context but slower feedback."
+        )
+        layout.addRow("Window Size (sentences):", self.realtime_correction_window_size)
+
+        hint = QLabel(
+            "Real-time correction analyzes your speech during recording\n"
+            "and displays fact-checks, grammar fixes, and suggestions\n"
+            "in a side panel. Use a fast model (e.g. Flash Lite) for\n"
+            "low latency. The correction model is set per-profile\n"
+            "in the Profile Settings tab.\n\n"
+            "Correction prompts can be customized by editing the\n"
+            "correction_* entries in config/prompts.json."
+        )
+        hint.setWordWrap(True)
+        layout.addRow(hint)
+
     def setup_llm_tab(self):
         """Build the LLM Settings tab.
 
@@ -723,6 +883,8 @@ class ConfigUI(QDialog):
         self.populate_prompts()
         form_layout.addRow("Prompt:", self.prof_prompt)
 
+        form_layout.addRow("Correction Model:", self.prof_correction_model)
+
         form_layout.addRow("", self.prof_enable_chat_sessions)
 
         layout.addWidget(self.profile_form)
@@ -758,6 +920,12 @@ class ConfigUI(QDialog):
             self.prof_model.addItem(m["name"], m["id"])
             self.prof_fallback_model.addItem(m["name"], m["id"])
 
+        # Populate correction model dropdown
+        self.prof_correction_model.clear()
+        self.prof_correction_model.addItem("None (use main model)", "None")
+        for m in models:
+            self.prof_correction_model.addItem(m["name"], m["id"])
+
         # Try to restore previous selection if valid
         if hasattr(self, "_current_profile_data"):
             model_id = self._current_profile_data.get("model")
@@ -770,6 +938,11 @@ class ConfigUI(QDialog):
             idx2 = self.prof_fallback_model.findData(fallback_id)
             if idx2 >= 0:
                 self.prof_fallback_model.setCurrentIndex(idx2)
+
+            correction_id = self._current_profile_data.get("correction_model")
+            idx3 = self.prof_correction_model.findData(correction_id)
+            if idx3 >= 0:
+                self.prof_correction_model.setCurrentIndex(idx3)
 
     def on_profile_changed(self, index):
         if index < 0 or index >= len(self.profiles):
@@ -804,6 +977,7 @@ class ConfigUI(QDialog):
         profile["fallback_model"] = self.prof_fallback_model.currentData()
         profile["ocr_engine"] = self.prof_ocr_engine.currentText()
         profile["prompt_id"] = self.prof_prompt.currentData()
+        profile["correction_model"] = self.prof_correction_model.currentData()
         profile["enable_chat_sessions"] = self.prof_enable_chat_sessions.isChecked()
 
         # Update combo box text
@@ -913,6 +1087,183 @@ class ConfigUI(QDialog):
 
         layout = QVBoxLayout(self.shortcuts_tab)
         layout.addWidget(scroll)
+
+    # ------------------------------------------------------------------
+    # Search functionality
+    # ------------------------------------------------------------------
+
+    def _build_search_index(self):
+        """Walk every tab recursively to find all QFormLayout label→widget pairs."""
+        self._search_index.clear()
+        for tab_index in range(self.tabs.count()):
+            tab_widget = self.tabs.widget(tab_index)
+            tab_name = self.tabs.tabText(tab_index)
+            self._index_widget_tree(tab_widget, tab_index, tab_name)
+
+    def _index_widget_tree(self, widget, tab_index: int, tab_name: str):
+        """Recursively search *widget* and all its children for QFormLayouts."""
+        if widget is None:
+            return
+        layout = widget.layout() if hasattr(widget, "layout") else None
+        if isinstance(layout, QFormLayout):
+            self._index_form_layout(layout, tab_index, tab_name)
+        # Recurse into children (catches profile_form, scroll-area containers, etc.)
+        for child in widget.findChildren(QWidget):
+            child_layout = child.layout() if hasattr(child, "layout") else None
+            if isinstance(child_layout, QFormLayout) and child_layout is not layout:
+                self._index_form_layout(child_layout, tab_index, tab_name)
+
+    def _index_form_layout(self, layout: QFormLayout, tab_index: int, tab_name: str):
+        """Extract label→widget pairs from a single QFormLayout."""
+        import re
+        for row in range(layout.rowCount()):
+            label_item = layout.itemAt(row, QFormLayout.ItemRole.LabelRole)
+            field_item = layout.itemAt(row, QFormLayout.ItemRole.FieldRole)
+            if label_item is None or field_item is None:
+                continue
+            label_widget = label_item.widget()
+            field_widget = field_item.widget()
+            if label_widget is None or field_widget is None:
+                continue
+            label_text = label_widget.text().strip()
+            # Extract text from HTML bold labels like <b>Section</b>
+            if label_text.startswith("<b>"):
+                match = re.search(r"<b>(.*?)</b>", label_text)
+                label_text = match.group(1) if match else ""
+            if not label_text:
+                continue
+            # Strip trailing colons for cleaner display
+            display_label = label_text.rstrip(":")
+            # Include tooltip for richer matching
+            tooltip = field_widget.toolTip() if hasattr(field_widget, "toolTip") else ""
+            self._search_index.append({
+                "label": display_label,
+                "tab_index": tab_index,
+                "tab_name": tab_name,
+                "widget": field_widget,
+                "tooltip": tooltip,
+            })
+
+    def _on_search_text_changed(self, text: str):
+        """Filter search index and populate results list."""
+        self._stop_blink()
+        self._search_results.clear()
+
+        if not text.strip():
+            self._search_results.setVisible(False)
+            return
+
+        query = text.strip().lower()
+        matches = []
+        for entry in self._search_index:
+            label_lower = entry["label"].lower()
+            tooltip_lower = entry["tooltip"].lower()
+            if query in label_lower or query in tooltip_lower:
+                matches.append(entry)
+
+        if not matches:
+            self._search_results.setVisible(False)
+            return
+
+        for entry in matches[:15]:  # Cap at 15 results
+            display = f"{entry['label']}   [{entry['tab_name']}]"
+            item = QListWidgetItem(display)
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            self._search_results.addItem(item)
+
+        # Dynamically size the list to fit its content (no empty space)
+        row_height = self._search_results.sizeHintForRow(0)
+        if row_height < 1:
+            row_height = 22  # Reasonable fallback
+        count = self._search_results.count()
+        # +6 accounts for border + padding on the container
+        desired = row_height * count + 6
+        self._search_results.setFixedHeight(min(desired, 250))
+        self._search_results.setVisible(True)
+
+    def _on_search_result_clicked(self, item: QListWidgetItem):
+        """Switch to the tab and blink-highlight the target widget."""
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        if not entry:
+            return
+
+        # Switch to the correct tab
+        self.tabs.setCurrentIndex(entry["tab_index"])
+
+        # Scroll the widget into view
+        target: QWidget = entry["widget"]
+        target.setFocus()
+
+        # Walk up to find any parent QScrollArea and scroll to the widget
+        parent = target.parent()
+        while parent:
+            if isinstance(parent, QScrollArea):
+                parent.ensureWidgetVisible(target)
+                break
+            parent = parent.parent() if hasattr(parent, "parent") else None
+
+        # Start blink animation
+        self._start_blink(target)
+
+        # Hide results and clear search (block signals to avoid _stop_blink)
+        self._search_results.setVisible(False)
+        self._search_input.blockSignals(True)
+        self._search_input.clear()
+        self._search_input.blockSignals(False)
+
+    def _start_blink(self, widget: QWidget):
+        """Start a blink animation on the target widget (4 on/off cycles)."""
+        from PyQt6.QtWidgets import QGraphicsColorizeEffect
+        from PyQt6.QtGui import QColor
+
+        self._stop_blink()  # Clean up any previous blink
+        self._highlighted_widget = widget
+        self._blink_count = 0
+        self._blink_on = False
+
+        # Create a colorize effect (golden tint)
+        effect = QGraphicsColorizeEffect(widget)
+        effect.setColor(QColor(255, 215, 0))  # Gold
+        effect.setStrength(0.0)  # Start invisible
+        widget.setGraphicsEffect(effect)
+
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(250)
+        self._blink_timer.timeout.connect(self._blink_tick)
+        self._blink_timer.start()
+
+    def _blink_tick(self):
+        """Toggle highlight effect for one blink cycle."""
+        if self._highlighted_widget is None:
+            self._stop_blink()
+            return
+
+        self._blink_on = not self._blink_on
+        try:
+            effect = self._highlighted_widget.graphicsEffect()
+            if effect is not None:
+                effect.setStrength(0.6 if self._blink_on else 0.0)
+                if self._blink_on:
+                    self._blink_count += 1
+        except RuntimeError:
+            self._stop_blink()
+            return
+
+        if self._blink_count >= 4:
+            self._stop_blink()
+
+    def _stop_blink(self):
+        """Stop blinking and remove the graphics effect."""
+        if hasattr(self, "_blink_timer") and self._blink_timer is not None:
+            self._blink_timer.stop()
+            self._blink_timer.deleteLater()
+            self._blink_timer = None
+        if self._highlighted_widget is not None:
+            try:
+                self._highlighted_widget.setGraphicsEffect(None)
+            except RuntimeError:
+                pass
+            self._highlighted_widget = None
 
     def save_all(self):
         # Save App Settings
@@ -1053,6 +1404,20 @@ class ConfigUI(QDialog):
 
         self.config["track_active_window"] = self.track_active_window.isChecked()
         self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
+
+        # Real-time Correction
+        self.config["realtime_correction_enabled"] = self.realtime_correction_enabled.isChecked()
+        self.config["realtime_correction_fact_check"] = self.realtime_correction_fact_check.isChecked()
+        self.config["realtime_correction_grammar"] = self.realtime_correction_grammar.isChecked()
+        self.config["realtime_correction_content_suggestions"] = (
+            self.realtime_correction_content_suggestions.isChecked()
+        )
+        try:
+            self.config["realtime_correction_window_size"] = int(
+                self.realtime_correction_window_size.text().strip() or "4"
+            )
+        except ValueError:
+            self.config["realtime_correction_window_size"] = 4
 
         # Save Profile Settings
         self.save_current_profile()

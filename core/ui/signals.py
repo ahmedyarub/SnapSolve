@@ -27,6 +27,10 @@ class UISignals(QObject):
     update_periodic_screenshots_btn = pyqtSignal(bool)
     ocr_text_to_input = pyqtSignal(str)
     update_volume = pyqtSignal(int)
+    # Real-time correction signals
+    show_correction = pyqtSignal(dict)
+    clear_corrections = pyqtSignal()
+    toggle_correction_panel = pyqtSignal()
 
 
 class SelectorSignals(QObject):

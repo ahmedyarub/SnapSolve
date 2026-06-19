@@ -130,6 +130,9 @@ class SoundSource(Source):
         self._current_translated_utterance = {"mic": "", "loopback": ""}
         self._last_translated_segment_start = {"mic": -1.0, "loopback": -1.0}
 
+        # Real-time correction engine (set externally before start_recording)
+        self.correction_engine = None
+
     def warmup(self):
         if WhisperLiveTranscriptionClient is None:
             logger.error("WhisperLive client not imported. Cannot perform warmup.")
@@ -553,12 +556,13 @@ class SoundSource(Source):
     def _finalize_current_utterance(self, source="mic"):
         """Finalize current utterance."""
         if self._current_utterance_text[source]:
+            finalized_text = self._current_utterance_text[source]
             prefix = "🎤 " if source == "mic" else "💻 "
-            self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
+            self._last_transcription_text += f"{prefix}{finalized_text} "
             if self.session_manager:
                 speaker = "🎤" if source == "mic" else "💻"
                 self.session_manager.append_transcription_segment(
-                    self._current_utterance_text[source], speaker_name=speaker
+                    finalized_text, speaker_name=speaker
                 )
             self._current_utterance_text[source] = ""
 
@@ -597,6 +601,13 @@ class SoundSource(Source):
                 self._process_new_segment(text, start, source)
             elif start == self._last_segment_start[source]:
                 self._process_segment_update(text, source)
+
+            # When a segment is marked completed, immediately forward it
+            # to the correction engine.  The normal finalization path only
+            # triggers when the *next* segment arrives, which can be
+            # arbitrarily delayed — too late for real-time feedback.
+            if segment.get("completed") and self.correction_engine and text:
+                self.correction_engine.on_sentence_finalized(text, source)
 
     def _on_translation_result(self, _, segments, source="mic"):
         """Callback from WhisperLive client with translated segments."""
@@ -637,13 +648,17 @@ class SoundSource(Source):
         """Finalize last utterance."""
         for source in ["mic", "loopback"]:
             if self._current_utterance_text[source]:
+                finalized_text = self._current_utterance_text[source]
                 prefix = "🎤 " if source == "mic" else "💻 "
-                self._last_transcription_text += f"{prefix}{self._current_utterance_text[source]} "
+                self._last_transcription_text += f"{prefix}{finalized_text} "
                 if self.session_manager:
                     speaker = "🎤" if source == "mic" else "💻"
                     self.session_manager.append_transcription_segment(
-                        self._current_utterance_text[source], speaker_name=speaker
+                        finalized_text, speaker_name=speaker
                     )
+                # Feed finalized sentence to the real-time correction engine
+                if self.correction_engine:
+                    self.correction_engine.on_sentence_finalized(finalized_text, source)
 
     def _process_realtime_transcription(self):
         """Process realtime transcription."""

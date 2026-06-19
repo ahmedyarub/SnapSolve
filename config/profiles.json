@@ -7,7 +7,8 @@
         "ocr_engine": "remote_paddle",
         "prompt_id": "quick",
         "enable_chat_sessions": false,
-        "fallback_model": "None"
+        "fallback_model": "None",
+        "correction_model": "gemini-2.5-flash-lite"
     },
     {
         "id": "programming",
@@ -17,7 +18,8 @@
         "fallback_model": "gemini-3-flash-preview",
         "ocr_engine": "remote_paddle",
         "prompt_id": "detailed",
-        "enable_chat_sessions": true
+        "enable_chat_sessions": true,
+        "correction_model": "gemini-2.5-flash"
     },
     {
         "id": "read_only",
@@ -27,6 +29,7 @@
         "fallback_model": "None",
         "ocr_engine": "remote_paddle",
         "prompt_id": "ai_coding_tool_read_only",
-        "enable_chat_sessions": true
+        "enable_chat_sessions": true,
+        "correction_model": "None"
     }
 ]

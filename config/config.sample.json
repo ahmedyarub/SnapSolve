@@ -69,5 +69,10 @@
   "webhook_trigger_on_summary": false,
   "post_recording_diarization": false,
   "diarization_model": "base",
-  "delete_wav_after_diarization": true
+  "delete_wav_after_diarization": true,
+  "realtime_correction_enabled": false,
+  "realtime_correction_fact_check": true,
+  "realtime_correction_grammar": true,
+  "realtime_correction_content_suggestions": false,
+  "realtime_correction_window_size": 4
 }

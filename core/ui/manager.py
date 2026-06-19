@@ -11,6 +11,7 @@ from core.ui.signals import ui_signals, selector_signals, _app_callbacks
 from core.ui.subtitle_widget import SubtitleWidget
 from core.ui.text_input_widget import TextInputWidget
 from core.ui.url_input_widget import UrlInputWidget
+from core.ui.correction_panel_widget import CorrectionPanelWidget
 
 
 def _on_request_active_source(q):
@@ -37,6 +38,7 @@ class UIManager(QObject):
         self.text_input: TextInputWidget | None = None
         self.subtitle: SubtitleWidget | None = None
         self.url_input: UrlInputWidget | None = None
+        self.correction_panel: CorrectionPanelWidget | None = None
         self._init_ui()
         selector_signals.request_coords.connect(_handle_request_coords)
 
@@ -48,6 +50,7 @@ class UIManager(QObject):
         self.text_input = TextInputWidget()
         self.subtitle = SubtitleWidget()
         self.url_input = UrlInputWidget()
+        self.correction_panel = CorrectionPanelWidget()
 
         # Install event filters so capture-hiding is applied on every show
         self.popup.installEventFilter(self)
@@ -55,6 +58,7 @@ class UIManager(QObject):
         self.text_input.installEventFilter(self)
         self.subtitle.installEventFilter(self)
         self.url_input.installEventFilter(self)
+        self.correction_panel.installEventFilter(self)
 
         # Connect signals
         ui_signals.toggle_panel.connect(self._on_toggle_panel)
@@ -222,6 +226,7 @@ class UIManager(QObject):
             "panel": self.panel,
             "text_input": self.text_input,
             "subtitle": self.subtitle,
+            "correction_panel": self.correction_panel,
         }
 
         if self._saved_visibility is None:
