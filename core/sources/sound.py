@@ -153,6 +153,30 @@ class SoundSource(Source):
         # Real-time correction engine (set externally before start_recording)
         self.correction_engine = None
 
+    def _handle_stream_error(self, e: Exception, device_name: str, source_type: str, status_callback: Optional[Callable[[str], None]] = None):
+        error_str = str(e).lower()
+        err_msg = ""
+        
+        if "unanticipated host error" in error_str or "-9999" in error_str:
+            err_msg = f"Device Disconnected: {device_name} ({source_type}) was unplugged or lost."
+        elif "device unavailable" in error_str or "-9985" in error_str:
+            err_msg = f"Device Unavailable: {device_name} ({source_type}) is in use or disconnected."
+        elif "invalid input device" in error_str or "-9996" in error_str:
+            err_msg = f"Invalid Device: {device_name} ({source_type}) cannot be opened."
+        elif "input overflowed" in error_str or "-9981" in error_str:
+            logger.warning(f"Audio input overflow on {device_name} ({source_type})")
+            return
+        elif "access denied" in error_str or "permission" in error_str:
+            err_msg = f"Permission Denied: Cannot access {device_name} ({source_type}). Check OS privacy settings."
+        else:
+            err_msg = f"Audio Stream Error on {device_name} ({source_type}): {e}"
+            
+        logger.error(err_msg)
+        if status_callback:
+            status_callback(f"Error: {err_msg}")
+        
+        show_subtitle(f"⚠️ {err_msg}")
+
     def warmup(self):
         if WhisperLiveTranscriptionClient is None:
             logger.error("WhisperLive client not imported. Cannot perform warmup.")
@@ -237,12 +261,12 @@ class SoundSource(Source):
             )
         else:
             self._record_thread = threading.Thread(
-                target=self._record_only_worker, daemon=True
+                target=self._record_only_worker, args=(status_callback,), daemon=True
             )
 
         self._record_thread.start()
 
-    def _record_only_worker(self):
+    def _record_only_worker(self, status_callback=None):
         """Records audio without streaming it to WhisperLive."""
         device_name = self.config.get("audio_input_device_name")
         device_index = None
@@ -297,7 +321,7 @@ class SoundSource(Source):
                             self._update_volume(data)
                             wf.writeframes(data)
             except Exception as e:
-                logger.error(f"Mic Recording error: {e}")
+                self._handle_stream_error(e, str(device_name), "mic", status_callback)
 
         def record_loopback():
             import soundcard as sc
@@ -344,7 +368,7 @@ class SoundSource(Source):
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         self.audio_frames_dict["loopback"].append(int16_data)
             except Exception as e:
-                logger.error(f"Loopback Recording error: {e}")
+                self._handle_stream_error(e, str(speaker_name), "loopback", status_callback)
 
         threads = []
         t1 = threading.Thread(target=record_mic)
@@ -487,7 +511,7 @@ class SoundSource(Source):
             p.terminate()
         return device_index
 
-    def _stream_loopback_to_whisperlive(self, device_name):
+    def _stream_loopback_to_whisperlive(self, device_name, status_callback=None):
         """Stream loopback audio to WhisperLive."""
         if not self.transcription_client_loopback:
             return
@@ -548,12 +572,12 @@ class SoundSource(Source):
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         wav_file.writeframes(int16_data)
         except Exception as e:
-            logger.error(f"Audio streaming loopback error: {e}")
+            self._handle_stream_error(e, str(device_name), "loopback", status_callback)
         finally:
             if wav_file:
                 wav_file.close()
 
-    def _stream_audio_to_whisperlive(self, device_index, device_name):
+    def _stream_audio_to_whisperlive(self, device_index, device_name, status_callback=None):
         """Stream audio to WhisperLive."""
         wav_file = None
         if (
@@ -608,7 +632,7 @@ class SoundSource(Source):
                         int16_data = (audio_array * 32767).astype(np.int16).tobytes()
                         wav_file.writeframes(int16_data)
         except Exception as e:
-            logger.error(f"Audio streaming error: {e}")
+            self._handle_stream_error(e, str(device_name), "mic", status_callback)
         finally:
             if wav_file:
                 wav_file.close()
@@ -669,13 +693,13 @@ class SoundSource(Source):
             if self.transcription_client_mic:
                 t1 = threading.Thread(
                     target=self._stream_audio_to_whisperlive,
-                    args=(device_index, device_name),
+                    args=(device_index, device_name, status_callback),
                 )
                 threads.append(t1)
                 t1.start()
             if self.transcription_client_loopback and loopback_name:
                 t2 = threading.Thread(
-                    target=self._stream_loopback_to_whisperlive, args=(loopback_name,)
+                    target=self._stream_loopback_to_whisperlive, args=(loopback_name, status_callback)
                 )
                 threads.append(t2)
                 t2.start()
