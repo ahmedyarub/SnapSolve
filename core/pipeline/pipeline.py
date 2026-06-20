@@ -442,145 +442,48 @@ def process_pipeline(
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> str:
+    """Process a source through the LLM pipeline and return the result.
+
+    This is the legacy entry-point.  Internally it builds and runs a
+    composable :class:`Pipeline` of processors.
+    """
     if cancel_event is None:
         cancel_event = threading.Event()
 
     pipeline_start_time = time.time()
-    source_name = getattr(source, "name", "unknown")
-
     print(f"Using source: {source.__class__.__name__}")
 
-    # 1. Text/Image Retrieval
-    try:
-        extracted_text, source_image_path, is_image = _retrieve_data_from_source(
-            source, coords, text, status_callback, cancel_event
-        )
-    except Exception as e:
-        return str(e)
+    from .frames import CancelledFrame, ErrorFrame, Frame, LLMResponseFrame
+    from .runner import build_pipeline
 
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
-
-    combined_image_paths = []
-    if image_paths:
-        combined_image_paths.extend(image_paths)
-    if source_image_path:
-        combined_image_paths.append(source_image_path)
-    if not combined_image_paths:
-        combined_image_paths = None
-    elif len(combined_image_paths) == 1:
-        combined_image_paths = combined_image_paths[0]
-
-    # 2. Prompt Augmentation
-    prompt = _build_prompt(prompt_text, extracted_text)
-    print(f"Submitted prompt: {prompt}")
-
-    # Store prompt for IDE context injection (Open in IDE prepends it as a comment)
-    from core.output import set_last_user_prompt
-    set_last_user_prompt(prompt)
-
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
-
-    # 3. LLM Execution (with Fallback Concurrency)
-    if not fallback_llm:
-        final_result = _execute_llm_without_fallback(
-            llm,
-            prompt,
-            combined_image_paths if isinstance(combined_image_paths, str) else None,
-            is_image,
-            status_callback,
-            enable_chat_sessions,
-            sink,
-            cancel_event,
-            max_retries=max_retries,
-            base_delay=base_delay,
-        )
-        _save_to_session(
-            session_manager, prompt, combined_image_paths, final_result, extracted_text, source_name
-        )
-        return final_result
-
-    results = {}
-    lock = threading.Lock()
-
-    main_started = [False]
-    fallback_started = [False]
-    main_success = [False]
-    main_finished = threading.Event()
-
-    concurrent_sink = (
-        ConcurrentSinkWrapper(
-            sink,
-            main_finished,
-            main_started,
-            fallback_started,
-            main_success,
-            cancel_event,
-        )
-        if sink
-        else None
+    pipeline = build_pipeline(
+        source=source,
+        llm=llm,
+        prompt_text=prompt_text,
+        status_callback=status_callback,
+        session_manager=session_manager,
+        enable_chat_sessions=enable_chat_sessions,
+        sink=sink,
+        fallback_llm=fallback_llm,
+        coords=coords,
+        text=text,
+        image_paths=image_paths,
+        cancel_event=cancel_event,
+        max_retries=max_retries,
+        base_delay=base_delay,
     )
 
-    main_thread = threading.Thread(
-        target=_run_llm_thread,
-        args=(
-            llm,
-            prompt,
-            combined_image_paths if isinstance(combined_image_paths, str) else None,
-            is_image,
-            status_callback,
-            enable_chat_sessions,
-            concurrent_sink,
-            True,
-            results,
-            lock,
-            main_success,
-            main_finished,
-            cancel_event,
-            max_retries,
-            base_delay,
-        ),
-        daemon=True,
-    )
-
-    fallback_thread = threading.Thread(
-        target=_run_llm_thread,
-        args=(
-            fallback_llm,
-            prompt,
-            combined_image_paths if isinstance(combined_image_paths, str) else None,
-            is_image,
-            None,
-            enable_chat_sessions,
-            concurrent_sink,
-            False,
-            results,
-            lock,
-            main_success,
-            main_finished,
-            cancel_event,
-            max_retries,
-            base_delay,
-        ),
-        daemon=True,
-    )
-
-    main_thread.start()
-    fallback_thread.start()
-
-    main_thread.join()
-
-    if cancel_event.is_set():
-        return PIPELINE_CANCELLED_MSG
+    initial_frame = Frame(cancel_event=cancel_event, metadata={})
+    result_frame = pipeline.run(initial_frame)
 
     elapsed_ms = (time.time() - pipeline_start_time) * 1000
-    print(f"[Pipeline] Main thread finished processing in {elapsed_ms:.2f} ms")
+    print(f"[Pipeline] Finished processing in {elapsed_ms:.2f} ms")
 
-    final_result = _determine_final_result(results, main_success, fallback_thread)
+    if isinstance(result_frame, CancelledFrame):
+        return PIPELINE_CANCELLED_MSG
+    if isinstance(result_frame, ErrorFrame):
+        return result_frame.error
+    if isinstance(result_frame, LLMResponseFrame):
+        return result_frame.result
 
-    _save_to_session(
-        session_manager, prompt, combined_image_paths, final_result, extracted_text, source_name
-    )
-
-    return final_result
+    return "Error: unexpected pipeline result."

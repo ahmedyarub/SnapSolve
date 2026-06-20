@@ -134,6 +134,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Resource Management:** Efficient resource utilization with proper cleanup and state management.
 *   **DPI Awareness:** Windows DPI awareness enabled early in lifecycle to prevent coordinate mismatches between screen capture and UI overlays.
 *   **WebSocket Message Coalescing:** High-frequency mouse-move events are coalesced to process only the latest position, preventing backlog during remote control.
+*   **Composable Pipeline Architecture:** The processing pipeline (Source → Prompt → LLM → Sink) is built on a composable, frame-based architecture inspired by Pipecat. Typed `Frame` dataclasses (`SourceFrame`, `PromptFrame`, `LLMResponseFrame`, `ErrorFrame`, `CancelledFrame`) flow through a chain of `Processor` objects, each performing a single stage of work. The `Pipeline` runner executes processors sequentially with automatic short-circuiting on errors or cancellation. A `build_pipeline()` factory constructs the standard processor chain. New processing steps (PII filtering, translation, routing) can be added by implementing a `Processor` subclass — no modification to the pipeline core required.
 
 ## Testing & Development
 
