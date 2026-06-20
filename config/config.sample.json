@@ -79,6 +79,7 @@
   "realtime_correction_grammar": true,
   "realtime_correction_content_suggestions": false,
   "realtime_correction_window_size": 4,
+  "realtime_correction_audio_source": "both",
   "enable_audio_enhancement": false,
   "log_level": "INFO",
   "log_file": "logs/snapsolve.log",

@@ -232,6 +232,9 @@ class ConfigUI(QDialog):
             str(self.config.get("realtime_correction_window_size", 4))
         )
 
+        # Audio source for corrections
+        self.realtime_correction_audio_source = QComboBox()
+
         # Profile: correction model
         self.prof_correction_model = QComboBox()
 
@@ -920,6 +923,22 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Enable:", self.realtime_correction_enabled)
 
+        # Audio source selector
+        self.realtime_correction_audio_source.addItem("Microphone & Loopback (both)", "both")
+        self.realtime_correction_audio_source.addItem("Microphone only", "mic")
+        self.realtime_correction_audio_source.addItem("System Loopback only", "loopback")
+        current_audio_src = self.config.get("realtime_correction_audio_source", "both")
+        src_idx = self.realtime_correction_audio_source.findData(current_audio_src)
+        if src_idx >= 0:
+            self.realtime_correction_audio_source.setCurrentIndex(src_idx)
+        self.realtime_correction_audio_source.setToolTip(
+            "Choose which audio stream is analyzed for corrections:\n"
+            "• Both — correct your speech and the other party's\n"
+            "• Microphone only — correct only your own speech\n"
+            "• Loopback only — correct only what you hear"
+        )
+        layout.addRow("Audio Source:", self.realtime_correction_audio_source)
+
         # Sub-toggles (indented)
         layout.addRow(QLabel("<b>Correction Types</b>"))
 
@@ -952,6 +971,7 @@ class ConfigUI(QDialog):
 
         # Disable sub-toggles when master is off
         def _on_master_toggled(checked):
+            self.realtime_correction_audio_source.setEnabled(checked)
             self.realtime_correction_fact_check.setEnabled(checked)
             self.realtime_correction_grammar.setEnabled(checked)
             self.realtime_correction_content_suggestions.setEnabled(checked)
@@ -985,7 +1005,7 @@ class ConfigUI(QDialog):
         layout.addRow(hint)
 
         # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
-        for row_idx in [6, 7, 8, 9]:
+        for row_idx in [2, 7, 8, 9, 10]:
             self._advanced_rows.append((layout, row_idx))
 
     def setup_llm_tab(self):
@@ -1789,6 +1809,9 @@ class ConfigUI(QDialog):
             )
         except ValueError:
             self.config["realtime_correction_window_size"] = 4
+        self.config["realtime_correction_audio_source"] = (
+            self.realtime_correction_audio_source.currentData() or "both"
+        )
 
         # Save Profile Settings
         self.save_current_profile()

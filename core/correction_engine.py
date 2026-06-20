@@ -97,6 +97,9 @@ class CorrectionEngine:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
 
+        # Which audio source(s) to apply corrections to: "both", "mic", "loopback"
+        self._audio_source: str = config.get("realtime_correction_audio_source", "both")
+
         # Determine which correction types are enabled
         self._enabled_types: list[str] = []
         for ctype, config_key in _CONFIG_KEYS.items():
@@ -104,8 +107,10 @@ class CorrectionEngine:
                 self._enabled_types.append(ctype)
 
         logger.info(
-            "[CorrectionEngine] Initialized with window_size=%d, enabled_types=%s",
+            "[CorrectionEngine] Initialized with window_size=%d, "
+            "audio_source=%s, enabled_types=%s",
             self._window_size,
+            self._audio_source,
             self._enabled_types,
         )
 
@@ -115,6 +120,14 @@ class CorrectionEngine:
             logger.debug(
                 "[CorrectionEngine] Skipping: text=%r, enabled_types=%s",
                 text.strip()[:50], self._enabled_types,
+            )
+            return
+
+        # Filter by configured audio source
+        if self._audio_source != "both" and source != self._audio_source:
+            logger.debug(
+                "[CorrectionEngine] Ignoring source '%s' (configured for '%s' only)",
+                source, self._audio_source,
             )
             return
 
