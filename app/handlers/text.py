@@ -13,6 +13,14 @@ def _execute_text_pipeline(
     if text is None:
         text = prompt_text
 
+    # Pre-flight: verify LLM engine is reachable
+    if state.llm_engine_instance:
+        available, err_msg = state.llm_engine_instance.is_available()
+        if not available:
+            from app.state import _show_status_popup
+            _show_status_popup(config, f"⚠️ LLM Unavailable: {err_msg}", auto_close=5000)
+            return None
+
     main_model = active_profile.get("model", state.DEFAULT_MODEL_NAME)
     fallback_model = active_profile.get("fallback_model", "None")
 

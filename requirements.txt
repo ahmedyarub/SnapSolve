@@ -28,3 +28,4 @@ scipy
 noisereduce
 pyloudnorm
 litellm
+loguru>=0.7.0

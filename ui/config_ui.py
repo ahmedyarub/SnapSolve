@@ -256,6 +256,7 @@ class ConfigUI(QDialog):
 
         # API & Remote Control tab widgets
         self.remote_control_tab = QWidget()
+        self.logging_tab = QWidget()
         self.enable_api_server = QCheckBox("Enable API & Remote Control Server")
         self.api_server_host = QLineEdit(self.config.get("api_server_host", "0.0.0.0"))
         self.api_server_port = QLineEdit(str(self.config.get("api_server_port", 3031)))
@@ -300,6 +301,32 @@ class ConfigUI(QDialog):
         self.embedding_engine_combo = QComboBox()
         self.embedding_engine_combo.addItem("Local (sentence-transformers)", "local")
         self.embedding_engine_combo.addItem("Remote (Gemini)", "remote")
+
+        # Logging settings
+        self.log_level_combo = QComboBox()
+        for level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+            self.log_level_combo.addItem(level, level)
+        self.log_file_path = QLineEdit(
+            self.config.get("log_file", "logs/snapsolve.log")
+        )
+        self.log_rotation = QLineEdit(
+            self.config.get("log_rotation", "10 MB")
+        )
+        self.log_retention = QLineEdit(
+            self.config.get("log_retention", "7 days")
+        )
+        # Per-dependency log level combos
+        self._dep_log_combos: dict[str, QComboBox] = {}
+        dep_defaults = self.config.get("log_levels", {})
+        for dep_name in ["urllib3", "PIL", "google", "httpx", "soundcard", "matplotlib"]:
+            combo = QComboBox()
+            for level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+                combo.addItem(level, level)
+            dep_level = dep_defaults.get(dep_name, "WARNING")
+            idx = combo.findData(dep_level.upper())
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            self._dep_log_combos[dep_name] = combo
 
         self.setWindowTitle("Application Configuration")
         icon_path = os.path.join(
@@ -421,13 +448,14 @@ class ConfigUI(QDialog):
         self.shortcuts_tab = QWidget()
 
         self.tabs.addTab(self.app_tab, "Application Settings")
-        self.tabs.addTab(self.audio_tab, "Audio \u0026 Speech")
+        self.tabs.addTab(self.audio_tab, "Audio & Speech")
         self.tabs.addTab(self.realtime_analysis_tab, "Real-time Analysis")
         self.tabs.addTab(self.profile_tab, "Profile Settings")
         self.tabs.addTab(self.llm_tab, "LLM Settings")
         self.tabs.addTab(self.warmup_tab, "Warmup Settings")
         self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
-        self.tabs.addTab(self.remote_control_tab, "API \u0026 Remote Control")
+        self.tabs.addTab(self.remote_control_tab, "API & Remote Control")
+        self.tabs.addTab(self.logging_tab, "Logging")
 
         self.setup_app_tab()
         self.setup_audio_tab()
@@ -437,6 +465,7 @@ class ConfigUI(QDialog):
         self.setup_warmup_tab()
         self.setup_shortcuts_tab()
         self.setup_remote_control_tab()
+        self.setup_logging_tab()
 
         scroll_area.setWidget(scroll_widget)
         main_layout.addWidget(scroll_area)
@@ -613,6 +642,7 @@ class ConfigUI(QDialog):
         self.reindex_btn = QPushButton("Re-index All Sessions")
         self.reindex_btn.clicked.connect(self.reindex_all_sessions)
         layout.addRow("Index:", self.reindex_btn)
+
 
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
@@ -1215,6 +1245,67 @@ class ConfigUI(QDialog):
         layout.addWidget(scroll)
 
     # ------------------------------------------------------------------
+    # Logging tab
+    # ------------------------------------------------------------------
+
+    def setup_logging_tab(self):
+        """Build the Logging tab."""
+        layout = QFormLayout(self.logging_tab)
+
+        layout.addRow(QLabel("<b>Application Logging</b>"))
+
+        current_log_level = self.config.get("log_level", "INFO").upper()
+        idx = self.log_level_combo.findData(current_log_level)
+        if idx >= 0:
+            self.log_level_combo.setCurrentIndex(idx)
+        self.log_level_combo.setToolTip(
+            "Controls the minimum log level shown in the console.\n"
+            "The log file always captures DEBUG level."
+        )
+        layout.addRow("Console Log Level:", self.log_level_combo)
+
+        self.log_file_path.setPlaceholderText("e.g. logs/snapsolve.log")
+        self.log_file_path.setToolTip(
+            "Path to the log file. Leave empty to disable file logging.\n"
+            "Relative paths are relative to the application directory."
+        )
+        layout.addRow("Log File:", self.log_file_path)
+
+        self.log_rotation.setPlaceholderText("e.g. 10 MB")
+        self.log_rotation.setToolTip(
+            "Log file rotation policy.\n"
+            "Examples: '10 MB', '1 day', '100 MB'"
+        )
+        layout.addRow("Log Rotation:", self.log_rotation)
+
+        self.log_retention.setPlaceholderText("e.g. 7 days")
+        self.log_retention.setToolTip(
+            "How long to keep old log files before deletion.\n"
+            "Examples: '7 days', '30 days', '1 month'"
+        )
+        layout.addRow("Log Retention:", self.log_retention)
+
+        # Dependency log levels
+        layout.addRow(QLabel(""))  # spacer
+        layout.addRow(QLabel("<b>Dependency Log Levels</b>"))
+
+        dep_labels = {
+            "urllib3": "urllib3 (HTTP):",
+            "PIL": "Pillow (Images):",
+            "google": "Google SDK:",
+            "httpx": "httpx (HTTP):",
+            "soundcard": "SoundCard:",
+            "matplotlib": "Matplotlib:",
+        }
+        for dep_name, combo in self._dep_log_combos.items():
+            label = dep_labels.get(dep_name, f"{dep_name}:")
+            combo.setToolTip(
+                f"Log level for the '{dep_name}' library.\n"
+                "Set to WARNING or higher to silence noisy output."
+            )
+            layout.addRow(label, combo)
+
+    # ------------------------------------------------------------------
     # Search functionality
     # ------------------------------------------------------------------
 
@@ -1559,6 +1650,16 @@ class ConfigUI(QDialog):
 
         self.config["track_active_window"] = self.track_active_window.isChecked()
         self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
+
+        # Logging
+        self.config["log_level"] = self.log_level_combo.currentData() or "INFO"
+        self.config["log_file"] = self.log_file_path.text().strip()
+        self.config["log_rotation"] = self.log_rotation.text().strip() or "10 MB"
+        self.config["log_retention"] = self.log_retention.text().strip() or "7 days"
+        log_levels = {}
+        for dep_name, combo in self._dep_log_combos.items():
+            log_levels[dep_name] = combo.currentData() or "WARNING"
+        self.config["log_levels"] = log_levels
 
         # Real-time Correction
         self.config["realtime_correction_enabled"] = (

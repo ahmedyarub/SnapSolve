@@ -104,6 +104,13 @@ def _execute_capture_pipeline(
     """Execute capture pipeline."""
     active_src = get_active_source_instance()
 
+    # Pre-flight: verify LLM engine is reachable
+    if state.llm_engine_instance:
+        available, err_msg = state.llm_engine_instance.is_available()
+        if not available:
+            _show_status_popup(config, f"⚠️ LLM Unavailable: {err_msg}", auto_close=5000)
+            return
+
     _ensure_ocr_engine(active_profile)
     if hasattr(active_src, "ocr_engine"):
         active_src.ocr_engine = state.ocr_engine_instance

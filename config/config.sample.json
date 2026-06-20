@@ -79,5 +79,17 @@
   "realtime_correction_grammar": true,
   "realtime_correction_content_suggestions": false,
   "realtime_correction_window_size": 4,
-  "enable_audio_enhancement": false
+  "enable_audio_enhancement": false,
+  "log_level": "INFO",
+  "log_file": "logs/snapsolve.log",
+  "log_rotation": "10 MB",
+  "log_retention": "7 days",
+  "log_levels": {
+    "urllib3": "WARNING",
+    "PIL": "WARNING",
+    "google": "WARNING",
+    "httpx": "WARNING",
+    "soundcard": "WARNING",
+    "matplotlib": "WARNING"
+  }
 }

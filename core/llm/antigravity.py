@@ -25,6 +25,16 @@ class AntigravityEngine(LLMEngine):
         super().__init__(model, session_manager=session_manager)
         self.service_url = service_url.rstrip("/")
 
+    def is_available(self) -> tuple[bool, str]:
+        """Check if the Antigravity SDK service is reachable."""
+        try:
+            resp = requests.get(f"{self.service_url}/health", timeout=3)
+            if resp.status_code == 200:
+                return True, ""
+            return False, f"Antigravity service returned status {resp.status_code}"
+        except Exception:
+            return False, f"Antigravity service is not reachable at {self.service_url}"
+
     @property
     def supports_images(self) -> bool:
         return True

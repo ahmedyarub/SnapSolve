@@ -23,6 +23,17 @@ class LLMEngine(abc.ABC):
         """Warms up the engine. Returns True if successful."""
         pass
 
+    def is_available(self) -> tuple[bool, str]:
+        """Check if this engine's backend service is reachable.
+
+        Returns ``(True, "")`` if available, or
+        ``(False, "human-readable error message")`` if not.
+
+        The default implementation assumes the engine is always available.
+        Override in subclasses that depend on network services.
+        """
+        return True, ""
+
     @abc.abstractmethod
     def process_text(
         self,

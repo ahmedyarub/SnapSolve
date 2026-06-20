@@ -211,9 +211,9 @@ def _handle_coordinates_setup(config, active_source):
 # ---------------------------------------------------------------------------
 def main():
     """Application entry point — initialize everything and start the Qt event loop."""
-    # Configure logging early
+    # Minimal early logging (before config is loaded)
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
@@ -222,6 +222,10 @@ def main():
     app = _initialize_qt_app()
 
     config, active_profile, active_prompt_text = _load_config_and_profiles()
+
+    # Replace early logging with full loguru setup now that config is available
+    from core.logging_config import setup_logging
+    setup_logging(config)
 
     validate_config(active_profile)
 

@@ -16,6 +16,20 @@ class OllamaEngine(LLMEngine):
         if status_callback:
             status_callback("Ollama engine initialized")
 
+    def is_available(self) -> tuple[bool, str]:
+        """Check if the Ollama API server is reachable."""
+        try:
+            req = urllib.request.Request(
+                f"{self.ollama_url.rstrip('/')}/api/tags",
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    return True, ""
+            return False, f"Ollama returned status {resp.status}"
+        except Exception:
+            return False, f"Ollama is not reachable at {self.ollama_url}"
+
     def warmup(self, status_callback=None) -> bool:
         if status_callback:
             status_callback("Warming up Ollama (loading model into memory)...")
