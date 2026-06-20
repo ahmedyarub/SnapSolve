@@ -245,6 +245,13 @@ class ConfigUI(QDialog):
         self._blink_count: int = 0
         self._blink_on: bool = False
 
+        # Advanced options toggle
+        self._advanced_mode: bool = False
+        self._advanced_rows: list[tuple] = []
+        self._all_tabs: list[tuple[QWidget, str, bool]] = []
+        self._search_container: QWidget | None = None
+        self._advanced_toggle_btn: QPushButton | None = None
+
         # Opacity slider
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(10, 100)
@@ -412,16 +419,18 @@ class ConfigUI(QDialog):
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
 
-        # --- Search bar ---
-        search_container = QHBoxLayout()
+        # --- Search bar (hidden when advanced options are off) ---
+        self._search_container = QWidget()
+        search_inner = QHBoxLayout(self._search_container)
+        search_inner.setContentsMargins(0, 0, 0, 0)
         search_icon = QLabel("🔍")
         search_icon.setStyleSheet("font-size: 16px; padding: 0 4px;")
         self._search_input.setPlaceholderText("Search settings...")
         self._search_input.setClearButtonEnabled(True)
         self._search_input.textChanged.connect(self._on_search_text_changed)
-        search_container.addWidget(search_icon)
-        search_container.addWidget(self._search_input)
-        main_layout.addLayout(search_container)
+        search_inner.addWidget(search_icon)
+        search_inner.addWidget(self._search_input)
+        main_layout.addWidget(self._search_container)
 
         self._search_results.setVisible(False)
         self._search_results.setSpacing(0)
@@ -447,15 +456,19 @@ class ConfigUI(QDialog):
         self.profile_tab = QWidget()
         self.shortcuts_tab = QWidget()
 
-        self.tabs.addTab(self.app_tab, "Application Settings")
-        self.tabs.addTab(self.audio_tab, "Audio & Speech")
-        self.tabs.addTab(self.realtime_analysis_tab, "Real-time Analysis")
-        self.tabs.addTab(self.profile_tab, "Profile Settings")
-        self.tabs.addTab(self.llm_tab, "LLM Settings")
-        self.tabs.addTab(self.warmup_tab, "Warmup Settings")
-        self.tabs.addTab(self.shortcuts_tab, "Keyboard Shortcuts")
-        self.tabs.addTab(self.remote_control_tab, "API & Remote Control")
-        self.tabs.addTab(self.logging_tab, "Logging")
+        self._all_tabs = [
+            (self.app_tab, "Application Settings", False),
+            (self.audio_tab, "Audio & Speech", False),
+            (self.realtime_analysis_tab, "Real-time Analysis", False),
+            (self.profile_tab, "Profile Settings", False),
+            (self.llm_tab, "LLM Settings", False),
+            (self.warmup_tab, "Warmup Settings", True),
+            (self.shortcuts_tab, "Keyboard Shortcuts", False),
+            (self.remote_control_tab, "API & Remote Control", True),
+            (self.logging_tab, "Logging", True),
+        ]
+        for tab_widget, tab_title, _ in self._all_tabs:
+            self.tabs.addTab(tab_widget, tab_title)
 
         self.setup_app_tab()
         self.setup_audio_tab()
@@ -482,10 +495,22 @@ class ConfigUI(QDialog):
         self.button_box.rejected.connect(self.reject)
         assert self.btn_save_run is not None
         self.btn_save_run.clicked.connect(self.save_and_run)
-        main_layout.addWidget(self.button_box)
+
+        bottom_layout = QHBoxLayout()
+        self._advanced_toggle_btn = QPushButton("⚙ Show Advanced")
+        self._advanced_toggle_btn.setCheckable(True)
+        self._advanced_toggle_btn.setChecked(False)
+        self._advanced_toggle_btn.toggled.connect(self._set_advanced_visible)
+        bottom_layout.addWidget(self._advanced_toggle_btn)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(self.button_box)
+        main_layout.addLayout(bottom_layout)
 
         # Build search index after all tabs are fully populated
         QTimer.singleShot(0, self._build_search_index)
+
+        # Start with advanced options hidden
+        self._set_advanced_visible(False)
 
         self.should_run = False
 
@@ -642,6 +667,10 @@ class ConfigUI(QDialog):
         self.reindex_btn = QPushButton("Re-index All Sessions")
         self.reindex_btn.clicked.connect(self.reindex_all_sessions)
         layout.addRow("Index:", self.reindex_btn)
+
+        # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
+        for row_idx in [2, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18]:
+            self._advanced_rows.append((layout, row_idx))
 
 
     def setup_audio_tab(self):
@@ -869,6 +898,10 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Speaker Name:", self.speaker_name)
 
+        # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
+        for row_idx in [0, 1, 2, 3, 4, 5, 12, 14, 20, 22, 23, 24, 25, 26]:
+            self._advanced_rows.append((layout, row_idx))
+
     def setup_realtime_analysis_tab(self):
         """Build the Real-time Analysis tab.
 
@@ -951,6 +984,10 @@ class ConfigUI(QDialog):
         hint.setWordWrap(True)
         layout.addRow(hint)
 
+        # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
+        for row_idx in [6, 7, 8, 9]:
+            self._advanced_rows.append((layout, row_idx))
+
     def setup_llm_tab(self):
         """Build the LLM Settings tab.
 
@@ -1000,6 +1037,10 @@ class ConfigUI(QDialog):
         )
         hint.setWordWrap(True)
         layout.addRow(hint)
+
+        # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
+        for row_idx in [6, 7, 8]:
+            self._advanced_rows.append((layout, row_idx))
 
     def setup_profile_tab(self):
         layout = QVBoxLayout(self.profile_tab)
@@ -1484,6 +1525,74 @@ class ConfigUI(QDialog):
             except RuntimeError:
                 pass
             self._highlighted_widget = None
+
+    # ------------------------------------------------------------------
+    # Advanced options toggle
+    # ------------------------------------------------------------------
+
+    def _set_advanced_visible(self, visible: bool):
+        """Toggle visibility of all advanced options, tabs, and search."""
+        self._advanced_mode = visible
+
+        # Toggle advanced rows within tabs
+        for layout, row in self._advanced_rows:
+            self._set_row_visible(layout, row, visible)
+
+        # Toggle advanced tabs (rebuild tab bar preserving order)
+        current_widget = self.tabs.currentWidget()
+        while self.tabs.count():
+            self.tabs.removeTab(0)
+        for tab_widget, tab_title, is_advanced in self._all_tabs:
+            if not is_advanced or visible:
+                self.tabs.addTab(tab_widget, tab_title)
+        idx = self.tabs.indexOf(current_widget)
+        if idx >= 0:
+            self.tabs.setCurrentIndex(idx)
+
+        # Toggle search bar and results
+        if self._search_container is not None:
+            self._search_container.setVisible(visible)
+        self._search_results.setVisible(False)
+        if not visible:
+            self._search_input.blockSignals(True)
+            self._search_input.clear()
+            self._search_input.blockSignals(False)
+
+        # Update button text
+        if self._advanced_toggle_btn is not None:
+            self._advanced_toggle_btn.setText(
+                "⚙ Hide Advanced" if visible else "⚙ Show Advanced"
+            )
+
+    def _set_row_visible(self, layout: QFormLayout, row: int, visible: bool):
+        """Show or hide a single row in a QFormLayout."""
+        for role in (
+            QFormLayout.ItemRole.LabelRole,
+            QFormLayout.ItemRole.FieldRole,
+            QFormLayout.ItemRole.SpanningRole,
+        ):
+            item = layout.itemAt(row, role)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.setVisible(visible)
+            else:
+                child_layout = item.layout()
+                if child_layout is not None:
+                    self._set_layout_visible(child_layout, visible)
+
+    def _set_layout_visible(self, layout, visible: bool):
+        """Recursively show/hide all widgets in a layout."""
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.setVisible(visible)
+                child_layout = item.layout()
+                if child_layout is not None:
+                    self._set_layout_visible(child_layout, visible)
 
     def save_all(self):
         # Save App Settings
