@@ -2,7 +2,9 @@
 
 This project is structured around a flexible, decoupled pipeline that flows from data extraction to text generation and finally to user presentation.
 
-The primary pipeline follows this sequence: **Source -> Enrich Prompt -> LLM Engine -> Response Sink**.
+The primary pipeline follows this sequence: **Source → Enrich Prompt → LLM Engine → Response Sink**.
+
+Internally, this sequence is implemented as a **composable, frame-based pipeline** (inspired by [Pipecat](https://github.com/pipecat-ai/pipecat)). Typed `Frame` dataclasses flow through a chain of `Processor` objects — each performing a single stage of work. The `Pipeline` runner executes processors sequentially with automatic short-circuiting on errors or cancellation. New processing steps (PII filtering, translation, routing) can be added by implementing a `Processor` subclass.
 
 ### High-Level Architecture Flowchart
 
@@ -98,9 +100,12 @@ The Source is responsible for capturing the initial raw data.
 *   **Multiple Source Types:**
     *   **TextSource:** Direct text input from the control panel.
     *   **ScreenshotSource:** Screen capture using coordinate selection.
-    *   **SoundSource:** Audio recording with speech recognition.
+    *   **SoundSource:** Audio recording with speech recognition — a thin orchestrator that delegates to three focused modules:
+        *   `whisperlive_manager.py` — WhisperLive service lifecycle (start, health check, warmup, cleanup).
+        *   `audio_recorder.py` — Device discovery, mic/loopback capture workers, volume metering, audio enhancement integration.
+        *   `transcription.py` — WhisperLive client management, real-time segment callbacks, utterance finalization, translation processing, and Google STT fallback.
 *   **OCR Integration (`core/sources/ocr/`):** If a local OCR engine (like PaddleOCR) or remote OCR service is configured, the pipeline attempts to extract text via the source's `get_text()` method.
-*   **Speech Recognition:** The SoundSource uses Google Speech-to-Text to transcribe audio input in real-time.
+*   **Speech Recognition:** The SoundSource uses WhisperLive for real-time transcription and Google Speech-to-Text as a fallback.
 *   If OCR is disabled or fails, the pipeline falls back to capturing the raw image (`get_image()`), provided the downstream LLM engine supports multimodal inputs.
 *   Image OCR extraction is optimized to run only once, regardless of how many LLM models are running concurrently.
 *   Audio recording runs in a background thread to avoid blocking the UI during capture.
@@ -117,6 +122,7 @@ The Engine layer handles communication with the AI models.
     *   Both models are warmed up upon application startup.
     *   If the fallback model begins generating first, its output is streamed to the user.
     *   If and when the main model responds, the fallback's output is abruptly replaced by the primary model's superior response.
+    *   In the composable pipeline, this is encapsulated by the `ConcurrentLLMProcessor`.
 *   **Streaming:** Engines process responses in chunks, yielding them to the Sink layer line-by-line to enable real-time UI updates.
 
 ## 4. Response Sink (`core/sinks/`)
@@ -130,10 +136,14 @@ The Sink layer is responsible for taking the generated text and presenting it to
     *   `session_manager.py`: Chat session persistence and history management.
     *   `remote_control_server.py`: HTTP server for Android remote control (mouse, actions).
     *   `sources/`: Input sources (`TextSource`, `ScreenshotSource`, `SoundSource`) and a `manager.py` singleton.
+    *   `sources/whisperlive_manager.py`: WhisperLive service lifecycle (start, health check, warmup, cleanup).
+    *   `sources/audio_recorder.py`: Audio device discovery, mic/loopback recording workers, volume metering.
+    *   `sources/transcription.py`: `TranscriptionProcessor` — WhisperLive client management, segment callbacks, utterance finalization.
+    *   `sources/audio_processing.py`: `AudioEnhancer` — 3-stage DSP pipeline (highpass filter, noise reduction, loudness normalization).
     *   `sources/ocr/`: OCR engines (`LocalPaddleOCREngine`, `RemotePaddleOCREngine`, `NoOCREngine`) with custom exception hierarchy.
-    *   `llm/`: LLM engine implementations (`GoogleGenAIEngine`, `GeminiCLIEngine`, `OllamaEngine`).
+    *   `llm/`: LLM engine implementations (`GoogleGenAIEngine`, `GeminiCLIEngine`, `OllamaEngine`, `AntigravityEngine`).
     *   `sinks/`: Output sinks (`PopupSink`, `AudioSink`, `CompositeSink`).
-    *   `pipeline/`: Pipeline orchestration (`process_pipeline()`) and `ConcurrentSinkWrapper` for fallback model concurrency.
+    *   `pipeline/`: Composable pipeline architecture — `frames.py` (typed data containers), `processors.py` (`Processor` ABC + concrete implementations), `runner.py` (`Pipeline` runner + `build_pipeline()` factory), and `pipeline.py` (legacy `process_pipeline()` adapter + `ConcurrentSinkWrapper`).
 *   `ui/`: PyQt6 dialog and overlay components.
     *   `config_ui.py`: Full configuration dialog (`ConfigUI`) with tabs for settings, profiles, shortcuts, warmup, and remote control.
     *   `selector.py`: Screen region selector overlay (`CoordinateSelector`) with DPI-aware coordinates.
