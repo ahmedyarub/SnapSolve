@@ -215,6 +215,14 @@ def _get_default_config():
         "post_recording_diarization": False,
         "delete_wav_after_diarization": True,
         "enable_audio_enhancement": False,
+        # LanguageTool grammar correction
+        "realtime_correction_grammar_engine": "llm",
+        "languagetool_mode": "local",
+        "languagetool_url": "http://localhost:8081",
+        "languagetool_username": "",
+        "languagetool_api_key": "",
+        "languagetool_language": "auto",
+        "languagetool_level": "picky",
     }
 
 

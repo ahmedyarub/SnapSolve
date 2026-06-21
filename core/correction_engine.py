@@ -100,6 +100,13 @@ class CorrectionEngine:
         # Which audio source(s) to apply corrections to: "both", "mic", "loopback"
         self._audio_source: str = config.get("realtime_correction_audio_source", "both")
 
+        # Grammar engine: "llm" (default) or "languagetool"
+        self._grammar_engine: str = config.get("realtime_correction_grammar_engine", "llm")
+        self._lt_client: "LanguageToolClient | None" = None
+        if self._grammar_engine == "languagetool":
+            from core.languagetool import LanguageToolClient  # noqa: PLC0415
+            self._lt_client = LanguageToolClient(config)
+
         # Determine which correction types are enabled
         self._enabled_types: list[str] = []
         for ctype, config_key in _CONFIG_KEYS.items():
@@ -108,10 +115,11 @@ class CorrectionEngine:
 
         logger.info(
             "[CorrectionEngine] Initialized with window_size=%d, "
-            "audio_source=%s, enabled_types=%s",
+            "audio_source=%s, enabled_types=%s, grammar_engine=%s",
             self._window_size,
             self._audio_source,
             self._enabled_types,
+            self._grammar_engine,
         )
 
     def on_sentence_finalized(self, text: str, source: str = "mic"):
@@ -168,7 +176,11 @@ class CorrectionEngine:
         ).start()
 
     def _evaluate_window(self, sentences: list[str]):
-        """Run LLM evaluation for a window of sentences."""
+        """Run evaluation for a window of sentences.
+
+        Grammar corrections are routed to LanguageTool when configured,
+        while fact-checking and content suggestions always use the LLM.
+        """
         if self._stop_event.is_set():
             return
 
@@ -179,6 +191,31 @@ class CorrectionEngine:
             if self._stop_event.is_set():
                 break
 
+            # Route grammar corrections to LanguageTool when configured
+            if ctype == "grammar" and self._lt_client is not None:
+                try:
+                    logger.info(
+                        "[CorrectionEngine] Calling LanguageTool for grammar, "
+                        "transcript: %s",
+                        transcript_block[:100],
+                    )
+                    lt_corrections = self._lt_client.check(
+                        transcript_block, source_sentences=sentences,
+                    )
+                    logger.info(
+                        "[CorrectionEngine] LanguageTool returned %d corrections",
+                        len(lt_corrections),
+                    )
+                    all_corrections.extend(lt_corrections)
+                except Exception as e:
+                    logger.error(
+                        "[CorrectionEngine] LanguageTool call failed: %s",
+                        e,
+                        exc_info=True,
+                    )
+                continue
+
+            # LLM-based correction for all other types (and grammar when engine is "llm")
             prompt_id = _PROMPT_IDS.get(ctype, "")
             system_prompt = _load_prompt_text(self.prompts, prompt_id)
             if not system_prompt:

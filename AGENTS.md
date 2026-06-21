@@ -38,6 +38,13 @@ This application relies on a strictly decoupled architecture:
       signal-based communication. This is the largest single file in the project.
     *   `session_manager.py`: `SessionManager` — chat session persistence, history management, transcription
       file storage.
+    *   `correction_engine.py`: `CorrectionEngine` — real-time speech correction orchestrator. Routes grammar
+      corrections to either the LLM or LanguageTool depending on `realtime_correction_grammar_engine` config.
+    *   `languagetool.py`: `LanguageToolClient` — HTTP client for the LanguageTool API (`/v2/check`). Supports
+      both local server and cloud Premium modes. Automatically maps transcription language codes to
+      LanguageTool regional variants (e.g., `en` → `en-US`). Config keys: `languagetool_mode`,
+      `languagetool_url`, `languagetool_username`, `languagetool_api_key`, `languagetool_language`,
+      `languagetool_level`.
     *   `remote_control_server.py`: WebSocket server for Android remote control — mouse control, app action dispatch,
       UI state synchronization.
 2.  **`ui/`**: PyQt6 dialog and overlay components. Do not mix heavy I/O or LLM requests directly inside UI event

@@ -235,6 +235,25 @@ class ConfigUI(QDialog):
         # Audio source for corrections
         self.realtime_correction_audio_source = QComboBox()
 
+        # LanguageTool widgets
+        self.realtime_correction_grammar_engine = QComboBox()
+        self.languagetool_mode = QComboBox()
+        self.languagetool_url = QLineEdit(
+            self.config.get("languagetool_url", "http://localhost:8081")
+        )
+        self.languagetool_username = QLineEdit(
+            self.config.get("languagetool_username", "")
+        )
+        self.languagetool_api_key = QLineEdit(
+            self.config.get("languagetool_api_key", "")
+        )
+        self.languagetool_language = QComboBox()
+        self.languagetool_level = QComboBox()
+        # Rows that depend on grammar engine selection (for show/hide)
+        self._lt_setting_rows: list[tuple] = []
+        self._lt_local_rows: list[tuple] = []
+        self._lt_cloud_rows: list[tuple] = []
+
         # Profile: correction model
         self.prof_correction_model = QComboBox()
 
@@ -908,22 +927,25 @@ class ConfigUI(QDialog):
     def setup_realtime_analysis_tab(self):
         """Build the Real-time Analysis tab.
 
-        Contains toggles for real-time correction types and window size.
+        Contains toggles for real-time correction types, grammar engine
+        selection (LLM / LanguageTool), and window size.
         """
         layout = QFormLayout(self.realtime_analysis_tab)
 
+        # Row 0: section header
         layout.addRow(QLabel("<b>Real-time Speech Correction</b>"))
 
+        # Row 1: master enable
         self.realtime_correction_enabled.setChecked(
             self.config.get("realtime_correction_enabled", False)
         )
         self.realtime_correction_enabled.setToolTip(
             "When enabled, transcribed speech is analyzed in real-time\n"
-            "by an LLM during recording. Corrections appear in a side panel."
+            "during recording. Corrections appear in a side panel."
         )
         layout.addRow("Enable:", self.realtime_correction_enabled)
 
-        # Audio source selector
+        # Row 2: audio source (advanced)
         self.realtime_correction_audio_source.addItem("Microphone & Loopback (both)", "both")
         self.realtime_correction_audio_source.addItem("Microphone only", "mic")
         self.realtime_correction_audio_source.addItem("System Loopback only", "loopback")
@@ -939,9 +961,10 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Audio Source:", self.realtime_correction_audio_source)
 
-        # Sub-toggles (indented)
+        # Row 3: section header
         layout.addRow(QLabel("<b>Correction Types</b>"))
 
+        # Row 4: fact-checking
         self.realtime_correction_fact_check.setChecked(
             self.config.get("realtime_correction_fact_check", True)
         )
@@ -951,6 +974,7 @@ class ConfigUI(QDialog):
         )
         layout.addRow("    Fact-Checking:", self.realtime_correction_fact_check)
 
+        # Row 5: grammar
         self.realtime_correction_grammar.setChecked(
             self.config.get("realtime_correction_grammar", True)
         )
@@ -960,6 +984,21 @@ class ConfigUI(QDialog):
         )
         layout.addRow("    Grammar:", self.realtime_correction_grammar)
 
+        # Row 6: grammar engine (normal — always visible)
+        self.realtime_correction_grammar_engine.addItem("LLM (AI model)", "llm")
+        self.realtime_correction_grammar_engine.addItem("LanguageTool", "languagetool")
+        current_ge = self.config.get("realtime_correction_grammar_engine", "llm")
+        ge_idx = self.realtime_correction_grammar_engine.findData(current_ge)
+        if ge_idx >= 0:
+            self.realtime_correction_grammar_engine.setCurrentIndex(ge_idx)
+        self.realtime_correction_grammar_engine.setToolTip(
+            "Choose the engine for grammar corrections:\n"
+            "• LLM — uses the profile's correction model (flexible, slower)\n"
+            "• LanguageTool — uses the LanguageTool API (fast, rule-based)"
+        )
+        layout.addRow("    Grammar Engine:", self.realtime_correction_grammar_engine)
+
+        # Row 7: content suggestions
         self.realtime_correction_content_suggestions.setChecked(
             self.config.get("realtime_correction_content_suggestions", False)
         )
@@ -969,20 +1008,109 @@ class ConfigUI(QDialog):
         )
         layout.addRow("    Suggestions:", self.realtime_correction_content_suggestions)
 
-        # Disable sub-toggles when master is off
-        def _on_master_toggled(checked):
-            self.realtime_correction_audio_source.setEnabled(checked)
-            self.realtime_correction_fact_check.setEnabled(checked)
-            self.realtime_correction_grammar.setEnabled(checked)
-            self.realtime_correction_content_suggestions.setEnabled(checked)
-            self.realtime_correction_window_size.setEnabled(checked)
+        # Row 8: spacer (advanced)
+        layout.addRow(QLabel(""))
+        # Row 9: LanguageTool section header (advanced)
+        layout.addRow(QLabel("<b>LanguageTool Settings</b>"))
 
-        self.realtime_correction_enabled.toggled.connect(_on_master_toggled)
-        _on_master_toggled(self.realtime_correction_enabled.isChecked())
+        # Row 10: mode (advanced)
+        self.languagetool_mode.addItem("Local Server", "local")
+        self.languagetool_mode.addItem("Cloud (Premium)", "cloud")
+        current_lt_mode = self.config.get("languagetool_mode", "local")
+        lt_mode_idx = self.languagetool_mode.findData(current_lt_mode)
+        if lt_mode_idx >= 0:
+            self.languagetool_mode.setCurrentIndex(lt_mode_idx)
+        self.languagetool_mode.setToolTip(
+            "Local Server — connect to a self-hosted LanguageTool server\n"
+            "Cloud (Premium) — use the official LanguageTool cloud API\n"
+            "with your Premium username and API key"
+        )
+        layout.addRow("    Mode:", self.languagetool_mode)
 
-        layout.addRow(QLabel(""))  # spacer
+        # Row 11: server URL (advanced, local mode only)
+        self.languagetool_url.setPlaceholderText("http://localhost:8081")
+        self.languagetool_url.setToolTip(
+            "Base URL of your local LanguageTool server.\n"
+            "Default: http://localhost:8081"
+        )
+        layout.addRow("    Server URL:", self.languagetool_url)
+
+        # Row 12: username (advanced, cloud mode only)
+        self.languagetool_username.setPlaceholderText("your@email.com")
+        self.languagetool_username.setToolTip(
+            "Your LanguageTool account email for Premium API access."
+        )
+        layout.addRow("    Username:", self.languagetool_username)
+
+        # Row 13: API key (advanced, cloud mode only)
+        self.languagetool_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.languagetool_api_key.setPlaceholderText("API key from languagetool.org")
+        self.languagetool_api_key.setToolTip(
+            "Your LanguageTool API key from:\n"
+            "https://languagetool.org/editor/settings/access-tokens"
+        )
+        layout.addRow("    API Key:", self.languagetool_api_key)
+
+        # Row 14: language variant (advanced)
+        self.languagetool_language.addItem("Auto (from transcription language)", "auto")
+        lt_languages = [
+            ("English (US)", "en-US"),
+            ("English (GB)", "en-GB"),
+            ("English (Australian)", "en-AU"),
+            ("English (Canadian)", "en-CA"),
+            ("German (Germany)", "de-DE"),
+            ("German (Austria)", "de-AT"),
+            ("German (Swiss)", "de-CH"),
+            ("French", "fr"),
+            ("French (Canada)", "fr-CA"),
+            ("Spanish", "es"),
+            ("Portuguese (Brazil)", "pt-BR"),
+            ("Portuguese (Portugal)", "pt-PT"),
+            ("Dutch", "nl"),
+            ("Dutch (Belgium)", "nl-BE"),
+            ("Italian", "it"),
+            ("Polish", "pl-PL"),
+            ("Russian", "ru-RU"),
+            ("Ukrainian", "uk-UA"),
+            ("Romanian", "ro-RO"),
+            ("Swedish", "sv"),
+            ("Greek", "el-GR"),
+            ("Japanese", "ja-JP"),
+            ("Chinese", "zh-CN"),
+            ("Arabic", "ar"),
+        ]
+        for display, code in lt_languages:
+            self.languagetool_language.addItem(display, code)
+        current_lt_lang = self.config.get("languagetool_language", "auto")
+        lt_lang_idx = self.languagetool_language.findData(current_lt_lang)
+        if lt_lang_idx >= 0:
+            self.languagetool_language.setCurrentIndex(lt_lang_idx)
+        self.languagetool_language.setToolTip(
+            "Language for LanguageTool checks.\n"
+            "'Auto' maps from your transcription language setting.\n"
+            "Set a specific variant to override (e.g. en-GB instead of en-US)."
+        )
+        layout.addRow("    Language:", self.languagetool_language)
+
+        # Row 15: level (advanced)
+        self.languagetool_level.addItem("Default", "default")
+        self.languagetool_level.addItem("Picky (more rules)", "picky")
+        current_lt_level = self.config.get("languagetool_level", "picky")
+        lt_level_idx = self.languagetool_level.findData(current_lt_level)
+        if lt_level_idx >= 0:
+            self.languagetool_level.setCurrentIndex(lt_level_idx)
+        self.languagetool_level.setToolTip(
+            "'Picky' activates additional rules for formal text.\n"
+            "'Default' uses the standard rule set."
+        )
+        layout.addRow("    Level:", self.languagetool_level)
+
+        # Row 16: spacer (advanced)
+        layout.addRow(QLabel(""))
+        # Row 17: Advanced header (advanced)
         layout.addRow(QLabel("<b>Advanced</b>"))
 
+        # Row 18: window size (advanced)
         self.realtime_correction_window_size.setPlaceholderText("e.g. 4")
         self.realtime_correction_window_size.setToolTip(
             "Number of finalized sentences to accumulate before\n"
@@ -992,6 +1120,7 @@ class ConfigUI(QDialog):
         )
         layout.addRow("Window Size (sentences):", self.realtime_correction_window_size)
 
+        # Row 19: hint (advanced)
         hint = QLabel(
             "Real-time correction analyzes your speech during recording\n"
             "and displays fact-checks, grammar fixes, and suggestions\n"
@@ -999,13 +1128,69 @@ class ConfigUI(QDialog):
             "low latency. The correction model is set per-profile\n"
             "in the Profile Settings tab.\n\n"
             "Correction prompts can be customized by editing the\n"
-            "correction_* entries in config/prompts.json."
+            "correction_* entries in config/prompts.json.\n\n"
+            "When using LanguageTool, grammar corrections use the\n"
+            "LanguageTool API instead of the LLM. The language is\n"
+            "automatically mapped from your transcription language."
         )
         hint.setWordWrap(True)
         layout.addRow(hint)
 
+        # --- Visibility signal wiring ---
+
+        # Store row references for LanguageTool-specific rows
+        # so we can show/hide them based on the grammar engine selection.
+        self._lt_setting_rows = [(layout, r) for r in [8, 9, 10, 14, 15]]
+        self._lt_local_rows = [(layout, 11)]
+        self._lt_cloud_rows = [(layout, 12), (layout, 13)]
+
+        def _on_grammar_engine_changed(_index):
+            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            # Only show LT settings rows when in advanced mode AND engine is LT
+            show = is_lt and self._advanced_mode
+            for lt_layout, lt_row in self._lt_setting_rows:
+                self._set_row_visible(lt_layout, lt_row, show)
+            _on_lt_mode_changed(0)  # Refresh local/cloud visibility
+
+        def _on_lt_mode_changed(_index):
+            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            is_local = self.languagetool_mode.currentData() == "local"
+            show = is_lt and self._advanced_mode
+            for lt_layout, lt_row in self._lt_local_rows:
+                self._set_row_visible(lt_layout, lt_row, show and is_local)
+            for lt_layout, lt_row in self._lt_cloud_rows:
+                self._set_row_visible(lt_layout, lt_row, show and not is_local)
+
+        self.realtime_correction_grammar_engine.currentIndexChanged.connect(
+            _on_grammar_engine_changed
+        )
+        self.languagetool_mode.currentIndexChanged.connect(_on_lt_mode_changed)
+
+        # Grammar engine dropdown enabled only when grammar checkbox is on
+        self.realtime_correction_grammar.toggled.connect(
+            self.realtime_correction_grammar_engine.setEnabled
+        )
+        self.realtime_correction_grammar_engine.setEnabled(
+            self.realtime_correction_grammar.isChecked()
+        )
+
+        # Disable sub-toggles when master is off
+        def _on_master_toggled(checked):
+            self.realtime_correction_audio_source.setEnabled(checked)
+            self.realtime_correction_fact_check.setEnabled(checked)
+            self.realtime_correction_grammar.setEnabled(checked)
+            self.realtime_correction_grammar_engine.setEnabled(
+                checked and self.realtime_correction_grammar.isChecked()
+            )
+            self.realtime_correction_content_suggestions.setEnabled(checked)
+            self.realtime_correction_window_size.setEnabled(checked)
+
+        self.realtime_correction_enabled.toggled.connect(_on_master_toggled)
+        _on_master_toggled(self.realtime_correction_enabled.isChecked())
+
         # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
-        for row_idx in [2, 7, 8, 9, 10]:
+        # Row 2=audio source, 8-15=LT settings, 16-19=window size + hints
+        for row_idx in [2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]:
             self._advanced_rows.append((layout, row_idx))
 
     def setup_llm_tab(self):
@@ -1584,6 +1769,19 @@ class ConfigUI(QDialog):
                 "⚙ Hide Advanced" if visible else "⚙ Show Advanced"
             )
 
+        # Re-apply LanguageTool-specific visibility rules:
+        # LT settings rows should only show when advanced is ON *and* engine is LT.
+        if self._lt_setting_rows:
+            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            is_local = self.languagetool_mode.currentData() == "local"
+            show = visible and is_lt
+            for lt_layout, lt_row in self._lt_setting_rows:
+                self._set_row_visible(lt_layout, lt_row, show)
+            for lt_layout, lt_row in self._lt_local_rows:
+                self._set_row_visible(lt_layout, lt_row, show and is_local)
+            for lt_layout, lt_row in self._lt_cloud_rows:
+                self._set_row_visible(lt_layout, lt_row, show and not is_local)
+
     def _set_row_visible(self, layout: QFormLayout, row: int, visible: bool):
         """Show or hide a single row in a QFormLayout."""
         for role in (
@@ -1811,6 +2009,29 @@ class ConfigUI(QDialog):
             self.config["realtime_correction_window_size"] = 4
         self.config["realtime_correction_audio_source"] = (
             self.realtime_correction_audio_source.currentData() or "both"
+        )
+        self.config["realtime_correction_grammar_engine"] = (
+            self.realtime_correction_grammar_engine.currentData() or "llm"
+        )
+
+        # LanguageTool
+        self.config["languagetool_mode"] = (
+            self.languagetool_mode.currentData() or "local"
+        )
+        self.config["languagetool_url"] = (
+            self.languagetool_url.text().strip() or "http://localhost:8081"
+        )
+        self.config["languagetool_username"] = (
+            self.languagetool_username.text().strip()
+        )
+        self.config["languagetool_api_key"] = (
+            self.languagetool_api_key.text().strip()
+        )
+        self.config["languagetool_language"] = (
+            self.languagetool_language.currentData() or "auto"
+        )
+        self.config["languagetool_level"] = (
+            self.languagetool_level.currentData() or "picky"
         )
 
         # Save Profile Settings

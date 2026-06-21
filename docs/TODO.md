@@ -3,7 +3,6 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Session Timeline View**: Screenpipe-inspired visual timeline in the Session Browser with screenshot filmstrip, event markers (audio, OCR, multi-select, text, transcription), draggable playhead, time ruler, and clickable transcription context panel. Clicking transcription lines or event markers navigates the timeline bidirectionally.
 - [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
 - [x] **App & Window Name Tracking**: Records the active foreground application name, process name, and window title alongside each periodic screenshot as a JSON sidecar file. Displayed on the Session Timeline as coloured app spans with hover tooltips. Configurable via `track_active_window`.
 - [x] **MCP Server**: Implemented a Model Context Protocol (MCP) server using FastMCP to expose SnapSolve session history, OCR texts, and transcriptions to external IDEs (Claude Desktop, Cursor).
@@ -13,6 +12,7 @@ This document tracks planned features, enhancements, and known issues that need 
 - [x] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 - [x] **Real-time Speech Correction**: Mid-recording LLM feedback loop with fact-checking, grammar correction, and content suggestions. Configurable per-profile correction model, rolling window size, and editable prompts.
 - [x] **Composable Pipeline Architecture** `[Pipecat]`: Refactored the monolithic `process_pipeline()` into a composable, frame-based pipeline. Defined `Frame` dataclasses (`SourceFrame`, `PromptFrame`, `LLMResponseFrame`, `ErrorFrame`, `CancelledFrame`), a `Processor` ABC with 6 concrete implementations, and a `Pipeline` runner with `build_pipeline()` factory. Backward-compatible — all call sites unchanged.
+- [x] **LanguageTool Grammar Correction**: Integrated LanguageTool Premium as an alternative grammar correction engine for real-time speech correction. Supports both local server and cloud Premium API modes with automatic language mapping from the transcription language. Selectable via a Grammar Engine dropdown in the Real-time Analysis settings tab.
 
 ## Core & Architecture Improvements
 - [ ] **Dynamic Configuration**: Change configs dynamically (especially audio input/output and profile)
