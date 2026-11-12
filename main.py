@@ -1,7 +1,8 @@
 """SnapSolve entry point - delegates to app.startup.main()."""
+
 # FORCE PyQt6 initialization at the VERY FIRST entry point
 try:
-    import PyQt6.QtWebEngineWidgets
+    import PyQt6.QtWebEngineWidgets  # noqa: F401  (must load before QApplication)
 except Exception:
     pass
 

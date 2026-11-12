@@ -24,7 +24,7 @@
   "coordinates": null,
   "background": false,
   "piper_model": "en_US-lessac-medium.onnx",
-  "active_profile_id": "programming",
+  "active_profile_id": "claude",
   "ollama_url": "http://localhost:11434",
   "gemini_api_key": "",
   "openai_api_key": "",

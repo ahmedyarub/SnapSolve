@@ -3,18 +3,19 @@
 Displays fact-check, grammar, and content-suggestion corrections as
 colour-coded cards that slide in during audio recording.
 """
+
 import logging
 import time
 
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.mixins import DraggableWidgetMixin
@@ -65,9 +66,9 @@ def _build_card_widget(correction: dict) -> QWidget:
     card.setObjectName("correctionCard")
     card.setStyleSheet(f"""
         QWidget#correctionCard {{
-            background-color: {style['bg']};
-            border: 1px solid {style['border']};
-            border-left: 4px solid {style['badge_bg']};
+            background-color: {style["bg"]};
+            border: 1px solid {style["border"]};
+            border-left: 4px solid {style["badge_bg"]};
             border-radius: 6px;
             padding: 8px;
             margin: 2px 0;
@@ -85,7 +86,7 @@ def _build_card_widget(correction: dict) -> QWidget:
     badge = QLabel(f"{style['icon']} {style['label']}")
     badge.setStyleSheet(f"""
         QLabel {{
-            background-color: {style['badge_bg']};
+            background-color: {style["badge_bg"]};
             color: white;
             font-size: 11px;
             font-weight: bold;

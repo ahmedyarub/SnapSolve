@@ -1,14 +1,14 @@
 from .base import Source
-from .text import TextSource
+from .manager import get_active_source_instance, set_active_source_instance
 from .screenshot import ScreenshotSource
 from .sound import SoundSource
-from .manager import get_active_source_instance, set_active_source_instance
+from .text import TextSource
 
 __all__ = [
-    "Source",
-    "TextSource",
     "ScreenshotSource",
     "SoundSource",
+    "Source",
+    "TextSource",
     "get_active_source_instance",
     "set_active_source_instance",
 ]

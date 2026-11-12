@@ -1,10 +1,12 @@
-import json
-import urllib.request
-import urllib.error
 import base64
+import json
 import threading
-from .base import LLMEngine
+import urllib.error
+import urllib.request
+
 from core.sinks.base import Sink
+
+from .base import LLMEngine
 
 
 class OllamaEngine(LLMEngine):
@@ -48,8 +50,8 @@ class OllamaEngine(LLMEngine):
             return True
         except Exception as e:
             if status_callback:
-                status_callback(f"Ollama warmup failed: {str(e)}")
-            print(f"Ollama warmup failed: {str(e)}")
+                status_callback(f"Ollama warmup failed: {e!s}")
+            print(f"Ollama warmup failed: {e!s}")
             return False
 
     @property
@@ -63,7 +65,7 @@ class OllamaEngine(LLMEngine):
         payload: dict,
         sink: Sink,
         is_main: bool,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         try:
             if cancel_event and cancel_event.is_set():
@@ -87,8 +89,8 @@ class OllamaEngine(LLMEngine):
             print("Request finished successfully")
             return ans
         except Exception as e:
-            print(f"[OllamaEngine] Error calling Ollama API: {str(e)}")
-            return f"Error calling Ollama API: {str(e)}"
+            print(f"[OllamaEngine] Error calling Ollama API: {e!s}")
+            return f"Error calling Ollama API: {e!s}"
 
     def process_text(
         self,
@@ -97,7 +99,7 @@ class OllamaEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -122,7 +124,7 @@ class OllamaEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -142,6 +144,6 @@ class OllamaEngine(LLMEngine):
                 encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
                 payload["images"] = [encoded_string]
         except Exception as e:
-            return f"Error reading image: {str(e)}"
+            return f"Error reading image: {e!s}"
 
         return self._execute_request(payload, sink, is_main, cancel_event)

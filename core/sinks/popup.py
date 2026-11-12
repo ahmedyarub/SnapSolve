@@ -1,6 +1,8 @@
-from .base import Sink
-from core.output import show_popup
 import threading
+
+from core.output import show_popup
+
+from .base import Sink
 
 
 class PopupSink(Sink):
@@ -10,7 +12,7 @@ class PopupSink(Sink):
         show_headers=False,
         main_model_name="",
         fallback_model_name="",
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ):
         super().__init__(cancel_event)
         self.config = config

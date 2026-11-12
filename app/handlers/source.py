@@ -1,15 +1,16 @@
 """Source cycling and coordinate reselection handlers."""
+
 import threading
 
 import app.state as state
-from app.state import set_processing, _show_status_popup
 from app.handlers.capture import _ensure_ocr_engine
+from app.state import _show_status_popup, set_processing
 from config.settings import save_config
 from core.output import set_active_source_ui
 from core.sources import (
     ScreenshotSource,
-    TextSource,
     SoundSource,
+    TextSource,
     get_active_source_instance,
     set_active_source_instance,
 )

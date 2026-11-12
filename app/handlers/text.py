@@ -1,13 +1,21 @@
 """Text input pipeline handler."""
+
 import app.state as state
+from app.handlers.capture import _process_capture_result, _setup_capture_sinks
 from app.state import _make_status_callback, _run_in_processing_thread, set_processing
-from app.handlers.capture import _setup_capture_sinks, _process_capture_result
 from core.pipeline import process_pipeline
 from core.sources import TextSource
 
 
 def _execute_text_pipeline(
-    config, active_profile, prompt_text, status_update, text=None, image_paths=None, source_name="text", post_action=None
+    config,
+    active_profile,
+    prompt_text,
+    status_update,
+    text=None,
+    image_paths=None,
+    source_name="text",
+    post_action=None,
 ):
     """Execute text pipeline."""
     if text is None:
@@ -18,6 +26,7 @@ def _execute_text_pipeline(
         available, err_msg = state.llm_engine_instance.is_available()
         if not available:
             from app.state import _show_status_popup
+
             _show_status_popup(config, f"⚠️ LLM Unavailable: {err_msg}", auto_close=5000)
             return None
 
@@ -71,7 +80,9 @@ def _execute_text_pipeline(
     return result
 
 
-def handle_text_submit(config, active_profile, text, source_name="text", post_action=None):
+def handle_text_submit(
+    config, active_profile, text, source_name="text", post_action=None
+):
     """Handle text input submission."""
     if state.is_processing:
         return
@@ -83,6 +94,13 @@ def handle_text_submit(config, active_profile, text, source_name="text", post_ac
 
     _run_in_processing_thread(
         config,
-        lambda: _execute_text_pipeline(config, active_profile, text, status_update, source_name=source_name, post_action=post_action),
+        lambda: _execute_text_pipeline(
+            config,
+            active_profile,
+            text,
+            status_update,
+            source_name=source_name,
+            post_action=post_action,
+        ),
         error_label="processing text input",
     )

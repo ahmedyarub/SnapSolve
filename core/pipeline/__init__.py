@@ -1,4 +1,3 @@
-from .pipeline import process_pipeline
 from .frames import (
     CancelledFrame,
     ErrorFrame,
@@ -7,6 +6,7 @@ from .frames import (
     PromptFrame,
     SourceFrame,
 )
+from .pipeline import process_pipeline
 from .processors import (
     ConcurrentLLMProcessor,
     LLMProcessor,
@@ -19,24 +19,24 @@ from .processors import (
 from .runner import Pipeline, build_pipeline
 
 __all__ = [
-    # Legacy entry-point
-    "process_pipeline",
+    "CancelledFrame",
+    "ConcurrentLLMProcessor",
+    "ErrorFrame",
     # Frames
     "Frame",
-    "SourceFrame",
-    "PromptFrame",
-    "LLMResponseFrame",
-    "ErrorFrame",
-    "CancelledFrame",
-    # Processors
-    "Processor",
-    "SourceProcessor",
-    "PromptBuilderProcessor",
     "LLMProcessor",
-    "ConcurrentLLMProcessor",
-    "SinkProcessor",
-    "SessionSaveProcessor",
+    "LLMResponseFrame",
     # Pipeline runner
     "Pipeline",
+    # Processors
+    "Processor",
+    "PromptBuilderProcessor",
+    "PromptFrame",
+    "SessionSaveProcessor",
+    "SinkProcessor",
+    "SourceFrame",
+    "SourceProcessor",
     "build_pipeline",
+    # Legacy entry-point
+    "process_pipeline",
 ]

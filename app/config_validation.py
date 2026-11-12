@@ -1,4 +1,5 @@
 """Configuration validation — model/OCR compatibility checks."""
+
 import json
 import os
 import sys
@@ -10,9 +11,11 @@ def load_models_data():
     """Load the LLM models registry from config/llm_models.json."""
     try:
         models_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "llm_models.json"
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config",
+            "llm_models.json",
         )
-        with open(models_path, "r") as f:
+        with open(models_path) as f:
             return json.load(f)
     except Exception as models_error:
         print(f"Warning: Could not load llm_models.json: {models_error}")
@@ -29,7 +32,7 @@ def _check_model_ocr_support(models, model_id):
 
 def _validate_main_model(active_profile, models_data):
     """Validate main model configuration."""
-    llm_type = active_profile.get("llm_engine", "gemini")
+    llm_type = active_profile.get("llm_engine", "claude-code")
     model_id = active_profile.get("model", DEFAULT_MODEL_NAME)
     ocr_type = active_profile.get("ocr_engine", "none")
 
@@ -46,7 +49,7 @@ def _validate_main_model(active_profile, models_data):
 
 def _validate_fallback_model(active_profile, models_data):
     """Validate fallback model configuration."""
-    llm_type = active_profile.get("llm_engine", "gemini")
+    llm_type = active_profile.get("llm_engine", "claude-code")
     fallback_model_id = active_profile.get("fallback_model", "None")
     ocr_type = active_profile.get("ocr_engine", "none")
 

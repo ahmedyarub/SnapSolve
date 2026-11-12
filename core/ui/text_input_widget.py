@@ -1,4 +1,5 @@
 """TextInputWidget — text entry overlay with prompt history."""
+
 import json
 import logging
 import os
@@ -7,9 +8,9 @@ import threading
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.mixins import DraggableWidgetMixin, _DragHandleBar
@@ -103,7 +104,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
         """Load prompt history from its dedicated JSON file."""
         try:
             if os.path.exists(TextInputWidget._HISTORY_FILE):
-                with open(TextInputWidget._HISTORY_FILE, "r", encoding="utf-8") as f:
+                with open(TextInputWidget._HISTORY_FILE, encoding="utf-8") as f:
                     history = json.load(f)
                 return list(history) if isinstance(history, list) else []
         except Exception:
@@ -128,6 +129,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
         max_items = 100
         try:
             from config.settings import load_config
+
             max_items = load_config().get("max_prompt_history", 100)
         except Exception:
             pass

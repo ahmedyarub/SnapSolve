@@ -3,35 +3,35 @@ import logging
 import os
 import string
 import subprocess
+import sys
 import threading
+import time
 import wave
 
 import numpy as np
 import pyaudio
 import resampy
 import speech_recognition as sr
-import sys
-import time
 
 # Configure basic logging
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+from PyQt6.QtCore import QObject, pyqtSignal  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
     QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
-    QComboBox,
-    QCheckBox,
-    QTextEdit,
-    QPushButton,
+    QMainWindow,
     QProgressBar,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, QObject  # noqa: E402
 
 # Add WhisperLive to path
 whisperlive_path = os.path.join(
@@ -363,7 +363,7 @@ class SoundTestApp(QMainWindow):
             try:
                 import json
 
-                with open(self.settings_file, "r") as f:
+                with open(self.settings_file) as f:
                     data = json.load(f)
 
                 if "out_idx" in data:
@@ -922,7 +922,7 @@ class SoundTestApp(QMainWindow):
         """Send END_OF_AUDIO signal to WhisperLive."""
         self.signals.log_message.emit("Recording stopped. Sending END_OF_AUDIO...")
         try:
-            client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+            client.send_packet_to_server(b"END_OF_AUDIO")
         except Exception as e:
             self.signals.log_message.emit(f"Error sending END_OF_AUDIO: {e}")
 
@@ -953,8 +953,8 @@ class SoundTestApp(QMainWindow):
                     self.signals.log_message.emit(f"Failed to load AudioEnhancer: {e}")
 
             if loop_name:
-                import soundcard as sc
                 import numpy as np
+                import soundcard as sc
 
                 self.signals.log_message.emit(
                     f"Starting loopback recording on {loop_name} for transcription..."
@@ -1126,8 +1126,8 @@ class SoundTestApp(QMainWindow):
         """Monitors volume using loopback if selected, otherwise microphone."""
         if loop_name:
             try:
-                import soundcard as sc
                 import numpy as np
+                import soundcard as sc
 
                 self.signals.log_message.emit(
                     f"Starting loopback monitoring on {loop_name}..."
@@ -1182,8 +1182,8 @@ class SoundTestApp(QMainWindow):
         try:
             r = sr.Recognizer()
             if loop_name:
-                import soundcard as sc
                 import numpy as np
+                import soundcard as sc
 
                 self.signals.log_message.emit(
                     f"Starting loopback recording on {loop_name}..."

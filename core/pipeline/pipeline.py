@@ -1,12 +1,12 @@
-from typing import Optional
 import logging
 import re
 import threading
 import time
-from core.sources.base import Source
-from core.sources.ocr.exceptions import OCRCancelledError
+
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
+from core.sources.base import Source
+from core.sources.ocr.exceptions import OCRCancelledError
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +40,13 @@ def _is_retryable_error(error_text: str) -> bool:
 def _call_llm_with_retry(
     llm: LLMEngine,
     prompt: str,
-    image_path: Optional[str],
+    image_path: str | None,
     is_image: bool,
     status_callback,
     enable_chat_sessions: bool,
     sink: Sink,
     is_main: bool,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> str:
@@ -63,12 +63,23 @@ def _call_llm_with_retry(
 
         try:
             result = _call_llm_with_cancel_check(
-                llm, prompt, image_path, is_image,
-                status_callback, enable_chat_sessions, sink, is_main, cancel_event,
+                llm,
+                prompt,
+                image_path,
+                is_image,
+                status_callback,
+                enable_chat_sessions,
+                sink,
+                is_main,
+                cancel_event,
             )
 
             # Some engines return error strings instead of raising.
-            if isinstance(result, str) and result.startswith("Error") and _is_retryable_error(result):
+            if (
+                isinstance(result, str)
+                and result.startswith("Error")
+                and _is_retryable_error(result)
+            ):
                 raise RuntimeError(result)
 
             return result
@@ -78,11 +89,15 @@ def _call_llm_with_retry(
             if not _is_retryable_error(last_error) or attempt >= max_retries:
                 raise
 
-            delay = base_delay * (2 ** attempt)
+            delay = base_delay * (2**attempt)
             role = "main" if is_main else "fallback"
             logger.warning(
                 "[Pipeline] Retryable error on %s model (attempt %d/%d): %s — retrying in %.0fs",
-                role, attempt + 1, max_retries, last_error, delay,
+                role,
+                attempt + 1,
+                max_retries,
+                last_error,
+                delay,
             )
             if status_callback:
                 status_callback(f"Retrying ({attempt + 1}/{max_retries})...")
@@ -101,7 +116,6 @@ def _call_llm_with_retry(
     return f"Error: retries exhausted — {last_error}"
 
 
-
 class ConcurrentSinkWrapper(Sink):
     def __init__(
         self,
@@ -110,7 +124,7 @@ class ConcurrentSinkWrapper(Sink):
         main_started: list,
         fallback_started: list,
         main_success: list,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ):
         super().__init__(cancel_event)
         self.target_sink = target_sink
@@ -136,12 +150,11 @@ class ConcurrentSinkWrapper(Sink):
                     self.main_started[0] = True
                 self.target_sink.process_chunk(chunk, is_main=True, replace=replace)
             else:
-                if (
-                    not self.main_started[0]
-                    and not self.main_success[0]
-                ):
+                if not self.main_started[0] and not self.main_success[0]:
                     self.fallback_started[0] = True
-                    self.target_sink.process_chunk(chunk, is_main=False, replace=replace)
+                    self.target_sink.process_chunk(
+                        chunk, is_main=False, replace=replace
+                    )
 
     def force_replace(self):
         if self.target_sink and self.fallback_started[0]:
@@ -153,8 +166,8 @@ def _retrieve_data_from_source(
     coords=None,
     text=None,
     status_callback=None,
-    cancel_event: threading.Event = None,
-) -> tuple[Optional[str], Optional[str], bool]:
+    cancel_event: threading.Event | None = None,
+) -> tuple[str | None, str | None, bool]:
     """Retrieve text or image from source."""
     image_path = None
     is_image = False
@@ -172,7 +185,7 @@ def _retrieve_data_from_source(
     except (ValueError, OCRCancelledError) as e:
         return _handle_text_retrieval_error(source, coords, text, cancel_event, str(e))
     except Exception as e:
-        raise RuntimeError(f"Error retrieving data from source: {str(e)}")
+        raise RuntimeError(f"Error retrieving data from source: {e!s}") from e
 
 
 def _get_text_from_source(
@@ -180,7 +193,7 @@ def _get_text_from_source(
     coords=None,
     text=None,
     status_callback=None,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """Get text from source with optional cancel event support."""
     if (
@@ -203,9 +216,9 @@ def _handle_text_retrieval_error(
     source: Source,
     coords=None,
     text=None,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
     error_message: str = "",
-) -> tuple[Optional[str], Optional[str], bool]:
+) -> tuple[str | None, str | None, bool]:
     """Handle text retrieval error by attempting image retrieval."""
     if not (hasattr(source, "supports_images") and source.supports_images):
         raise ValueError(
@@ -222,7 +235,7 @@ def _get_image_from_source(
     source: Source,
     coords=None,
     text=None,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """Get image from source with optional cancel event support."""
     if (
@@ -234,7 +247,7 @@ def _get_image_from_source(
         return source.get_image(coords=coords, text=text)
 
 
-def _build_prompt(prompt_text: str, extracted_text: Optional[str]) -> str:
+def _build_prompt(prompt_text: str, extracted_text: str | None) -> str:
     """Build the final prompt from prompt text and extracted text."""
     if not prompt_text:
         return extracted_text
@@ -244,33 +257,41 @@ def _build_prompt(prompt_text: str, extracted_text: Optional[str]) -> str:
 def _execute_llm_without_fallback(
     llm: LLMEngine,
     prompt: str,
-    image_path: Optional[str],
+    image_path: str | None,
     is_image: bool,
     status_callback=None,
     enable_chat_sessions: bool = True,
     sink: Sink = None,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> str:
     """Execute LLM processing without fallback, with automatic retry."""
     return _call_llm_with_retry(
-        llm, prompt, image_path, is_image,
-        status_callback, enable_chat_sessions, sink, is_main=True,
-        cancel_event=cancel_event, max_retries=max_retries, base_delay=base_delay,
+        llm,
+        prompt,
+        image_path,
+        is_image,
+        status_callback,
+        enable_chat_sessions,
+        sink,
+        is_main=True,
+        cancel_event=cancel_event,
+        max_retries=max_retries,
+        base_delay=base_delay,
     )
 
 
 def _call_llm_with_cancel_check(
     llm: LLMEngine,
     prompt: str,
-    image_path: Optional[str],
+    image_path: str | None,
     is_image: bool,
     status_callback,
     enable_chat_sessions: bool,
     sink: Sink,
     is_main: bool,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """Call LLM with cancel event support check."""
     if is_image:
@@ -346,7 +367,7 @@ def _store_llm_error(
 def _run_llm_thread(
     llm: LLMEngine,
     prompt: str,
-    image_path: Optional[str],
+    image_path: str | None,
     is_image: bool,
     status_callback,
     enable_chat_sessions: bool,
@@ -356,7 +377,7 @@ def _run_llm_thread(
     lock: threading.Lock,
     main_success: list,
     main_finished: threading.Event,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ):
@@ -407,9 +428,9 @@ def _determine_final_result(
 def _save_to_session(
     session_manager,
     prompt: str,
-    image_path: Optional[str | list[str]],
+    image_path: str | list[str] | None,
     final_result: str,
-    extracted_text: Optional[str],
+    extracted_text: str | None,
     source_name: str,
 ):
     """Save the interaction to session manager."""
@@ -438,7 +459,7 @@ def process_pipeline(
     coords=None,
     text=None,
     image_paths=None,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> str:

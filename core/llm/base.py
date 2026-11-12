@@ -21,7 +21,6 @@ class LLMEngine(abc.ABC):
     @abc.abstractmethod
     def warmup(self, status_callback=None) -> bool:
         """Warms up the engine. Returns True if successful."""
-        pass
 
     def is_available(self) -> tuple[bool, str]:
         """Check if this engine's backend service is reachable.
@@ -42,7 +41,7 @@ class LLMEngine(abc.ABC):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         """Processes a text prompt and returns the generated answer."""
         return "Error: process_text is not implemented for this engine."
@@ -56,7 +55,7 @@ class LLMEngine(abc.ABC):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         """Processes an image with a text prompt and returns the generated answer."""
         return "Error: process_image is not implemented for this engine."
@@ -65,11 +64,11 @@ class LLMEngine(abc.ABC):
         full_prompt = prompt
         if self.session_manager and enable_chat_sessions:
             history = self.session_manager.get_history()
-            
+
             ctx = self.session_manager.get_context_config()
             include_q = ctx.get("include_previous_questions", True)
             include_a = ctx.get("include_previous_answers", True)
-            
+
             if history and (include_q or include_a):
                 history_text = "Previous conversation:\n"
                 for h in history:

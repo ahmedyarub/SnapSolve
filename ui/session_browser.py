@@ -1,37 +1,42 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut, QDesktopServices
+from PyQt6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QHBoxLayout,
-    QVBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
     QSplitter,
+    QStatusBar,
+    QTextBrowser,
     QTreeWidget,
     QTreeWidgetItem,
-    QTextEdit,
-    QTextBrowser,
-    QLineEdit,
-    QLabel,
-    QMenu,
-    QInputDialog,
-    QMessageBox,
-    QStatusBar,
+    QVBoxLayout,
     QWidget,
-    QApplication,
-    QAbstractItemView,
-    QPushButton,
 )
 
 from core.output import _PopupWebPage
 from core.session_manager import SessionManager
 from ui.timeline_widget import SessionTimelineWidget
-
 
 _PANE_HEADER_HEIGHT = 28
 
@@ -48,7 +53,7 @@ class _CollapsiblePane(QWidget):
         title: str,
         color: str,
         content_widget: QWidget,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._content_widget = content_widget
@@ -112,11 +117,11 @@ class _ImageLabel(QLabel):
     """A QLabel that correctly scales its pixmap while maintaining aspect ratio,
     without artificially forcing the layout to grow."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumSize(1, 1)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._pixmap: Optional[QPixmap] = None
+        self._pixmap: QPixmap | None = None
 
     def setPixmap(self, p: QPixmap) -> None:
         self._pixmap = p
@@ -127,13 +132,13 @@ class _ImageLabel(QLabel):
         if self._pixmap and not self._pixmap.isNull():
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            
+
             scaled = self._pixmap.scaled(
                 self.size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            
+
             x = (self.width() - scaled.width()) // 2
             y = (self.height() - scaled.height()) // 2
             painter.drawPixmap(x, y, scaled)
@@ -141,25 +146,17 @@ class _ImageLabel(QLabel):
             super().paintEvent(event)
 
 
-# --- Tag badge colors (cycled for variety) ---
-_TAG_COLORS = [
-    "#e06c75", "#61afef", "#98c379", "#d19a66", "#c678dd",
-    "#56b6c2", "#e5c07b", "#be5046", "#7ec8e3", "#c3e88d",
-]
-
-
-def _tag_color(tag: str) -> str:
-    """Deterministic color for a tag string."""
-    return _TAG_COLORS[hash(tag) % len(_TAG_COLORS)]
-
-
 class SessionBrowserDialog(QDialog):
     """Maximized dialog for browsing past sessions, prompts, and formatted responses."""
 
-    def __init__(self, parent: Optional[QWidget] = None, selection_mode: bool = False):
+    def __init__(self, parent: QWidget | None = None, selection_mode: bool = False):
         super().__init__(parent)
         self.selection_mode = selection_mode
-        title = "Select Session — SnapSolve" if selection_mode else "Session Browser — SnapSolve"
+        title = (
+            "Select Session — SnapSolve"
+            if selection_mode
+            else "Session Browser — SnapSolve"
+        )
         self.setWindowTitle(title)
 
         # Standard window with minimize/maximize/close + always on top
@@ -180,11 +177,11 @@ class SessionBrowserDialog(QDialog):
         # Instance attributes
         self._sessions_meta: list[dict] = []
         self._loaded_sessions: dict[str, dict] = {}
-        self._current_session_id: Optional[str] = None
+        self._current_session_id: str | None = None
         self._response_loaded = False
         self._pending_response_js: list = []
         self._response_page: _PopupWebPage | None = None
-        self.selected_session_id: Optional[str] = None
+        self.selected_session_id: str | None = None
         self._empty_count: int = 0
         self.btn_delete_empty: QPushButton | None = None
         self.timeline: SessionTimelineWidget | None = None
@@ -195,12 +192,12 @@ class SessionBrowserDialog(QDialog):
         self._search_matches: list[dict] = []
         self._current_match_idx: int = -1
         self.search_types = {
-            "prompt": True, 
-            "response": True, 
-            "transcription": True, 
-            "app_name": True, 
+            "prompt": True,
+            "response": True,
+            "transcription": True,
+            "app_name": True,
             "summary": True,
-            "tag": True
+            "tag": True,
         }
 
         # Build UI
@@ -228,7 +225,7 @@ class SessionBrowserDialog(QDialog):
         self.filter_input.textChanged.connect(self._apply_filter)
         filter_bar.addWidget(filter_icon)
         filter_bar.addWidget(self.filter_input)
-        
+
         self.btn_prev_search = QPushButton("<")
         self.btn_next_search = QPushButton(">")
         self.btn_prev_search.setToolTip("Previous match")
@@ -240,7 +237,7 @@ class SessionBrowserDialog(QDialog):
         self.btn_search_settings = QPushButton("⚙️")
         self.btn_search_settings.setToolTip("Search Configuration")
         self.btn_search_settings.clicked.connect(self._open_search_settings)
-        
+
         filter_bar.addWidget(self.btn_prev_search)
         filter_bar.addWidget(self.btn_next_search)
         filter_bar.addWidget(self.btn_search_settings)
@@ -297,7 +294,7 @@ class SessionBrowserDialog(QDialog):
         self.screenshot_label.setWordWrap(True)
         self.screenshot_label.setText(
             '<span style="color:#636d83; font-style:italic;">'
-            'Select a screenshot from the timeline</span>'
+            "Select a screenshot from the timeline</span>"
         )
         self.screenshot_pane = _CollapsiblePane(
             "📸 Screenshot", "#d19a66", self.screenshot_label
@@ -309,9 +306,7 @@ class SessionBrowserDialog(QDialog):
         self.prompt_view.setOpenLinks(False)
         self.prompt_view.anchorClicked.connect(QDesktopServices.openUrl)
         self.prompt_view.setReadOnly(True)
-        self.prompt_pane = _CollapsiblePane(
-            "📝 Prompt", "#61afef", self.prompt_view
-        )
+        self.prompt_pane = _CollapsiblePane("📝 Prompt", "#61afef", self.prompt_view)
         self.v_splitter.addWidget(self.prompt_pane)
 
         # ── Response pane ──
@@ -350,20 +345,22 @@ class SessionBrowserDialog(QDialog):
         # Timeline widget (fixed height, not inside the splitter)
         self.timeline = SessionTimelineWidget()
         self.timeline.screenshotSelected.connect(self._on_timeline_screenshot_selected)
-        self.timeline.interactionSelected.connect(self._on_timeline_interaction_selected)
+        self.timeline.interactionSelected.connect(
+            self._on_timeline_interaction_selected
+        )
         root_layout.addWidget(self.timeline)
 
         # --- Status bar and Optional Select Button ---
         bottom_layout = QHBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.status_bar = QStatusBar()
         self.status_bar.setStyleSheet(
             "QStatusBar { background: #21252b; color: #636d83; font-size: 12px;"
             " border-top: 1px solid #333840; padding: 2px 8px; }"
         )
         bottom_layout.addWidget(self.status_bar, stretch=1)
-        
+
         self.btn_webhook = QPushButton("🚀 Trigger Webhook")
         self.btn_webhook.setStyleSheet("""
             QPushButton {
@@ -377,7 +374,7 @@ class SessionBrowserDialog(QDialog):
         self.btn_webhook.clicked.connect(self._handle_trigger_webhook)
         self.btn_webhook.setToolTip("Send this session to the configured webhook URL")
         bottom_layout.addWidget(self.btn_webhook)
-        
+
         if self.selection_mode:
             self.btn_select = QPushButton("✔️ Select Session")
             self.btn_select.setStyleSheet("""
@@ -406,37 +403,47 @@ class SessionBrowserDialog(QDialog):
             QMenu::item { padding: 4px 20px 4px 24px; }
             QMenu::indicator { width: 13px; height: 13px; }
         """)
-        
+
         for key, display in [
             ("prompt", "Search Prompts"),
             ("response", "Search Responses"),
             ("transcription", "Search Transcriptions"),
             ("app_name", "Search App Names"),
             ("summary", "Search Summaries"),
-            ("tag", "Search Tags")
+            ("tag", "Search Tags"),
         ]:
             action = menu.addAction(display)
             action.setCheckable(True)
             action.setChecked(self.search_types.get(key, True))
-            action.triggered.connect(lambda checked, k=key: self._toggle_search_type(k, checked))
-            
-        menu.exec(self.btn_search_settings.mapToGlobal(self.btn_search_settings.rect().bottomLeft()))
+            action.triggered.connect(
+                lambda checked, k=key: self._toggle_search_type(k, checked)
+            )
+
+        menu.exec(
+            self.btn_search_settings.mapToGlobal(
+                self.btn_search_settings.rect().bottomLeft()
+            )
+        )
 
     def _handle_trigger_webhook(self):
         if not self._current_session_id:
             return
-            
+
         import app.state as state
-        from core.webhook import trigger_webhook
         from config.settings import load_config
-        
+        from core.webhook import trigger_webhook
+
         config = load_config()
         webhook_url = config.get("webhook_url", "").strip()
-        
+
         if not webhook_url:
-            QMessageBox.warning(self, "Webhook Not Configured", "Please configure a Webhook URL in the application settings first.")
+            QMessageBox.warning(
+                self,
+                "Webhook Not Configured",
+                "Please configure a Webhook URL in the application settings first.",
+            )
             return
-            
+
         if state.session_manager:
             trigger_webhook(config, state.session_manager, self._current_session_id)
             self.status_bar.showMessage("Webhook triggered manually.", 3000)
@@ -546,13 +553,14 @@ class SessionBrowserDialog(QDialog):
 
         total_prompts = 0
         visible_sessions = 0
-        
+
         self._search_matches = []
         self._current_match_idx = -1
         matching_session_ids = set()
-        
+
         if filter_lower:
             import app.state as state
+
             manager = state.session_manager
             if manager:
                 allowed_types = {k for k, v in self.search_types.items() if v}
@@ -569,18 +577,20 @@ class SessionBrowserDialog(QDialog):
             s_id = meta.get("id")
             # Filter logic: match on name, title, or tags
             if filter_lower:
-                searchable = " ".join([
-                    meta.get("name") or "",
-                    meta.get("title") or "",
-                    " ".join(meta.get("tags", [])),
-                ]).lower()
-                
+                searchable = " ".join(
+                    [
+                        meta.get("name") or "",
+                        meta.get("title") or "",
+                        " ".join(meta.get("tags", [])),
+                    ]
+                ).lower()
+
                 match_meta = filter_lower in searchable
                 match_chunks = s_id in matching_session_ids
-                
+
                 if not match_meta and not match_chunks:
                     continue
-                
+
                 if match_meta and not match_chunks:
                     self._search_matches.append({"session_id": s_id, "type": "meta"})
 
@@ -612,15 +622,9 @@ class SessionBrowserDialog(QDialog):
                 for t in tags:
                     tag_parts.append(f"[{t}]")
                 root_item.setText(0, root_text + "  " + " ".join(tag_parts))
+                # QTreeWidgetItem has no rich text, so tags are shown in brackets
+                # with the full list in the tooltip.
                 root_item.setToolTip(0, "Tags: " + ", ".join(tags))
-
-                # Color the tag text
-                for t in tags:
-                    color = _tag_color(t)
-                    # We'll use the foreground of the item for tag visualization
-                    # Since QTreeWidgetItem doesn't support rich text natively,
-                    # tags are shown in brackets. Use tooltip for full info.
-                    root_item.setToolTip(0, "Tags: " + ", ".join(tags))
 
             self.tree.addTopLevelItem(root_item)
 
@@ -638,18 +642,22 @@ class SessionBrowserDialog(QDialog):
         )
         if self.btn_delete_empty is not None:
             self.btn_delete_empty.setEnabled(self._empty_count > 0)
-            
+
         if self._search_matches:
             self._current_match_idx = 0
-            
+
         self._update_search_navigation()
 
     def _update_search_navigation(self):
         has_matches = len(self._search_matches) > 0
         self.btn_prev_search.setEnabled(has_matches and self._current_match_idx > 0)
-        self.btn_next_search.setEnabled(has_matches and self._current_match_idx < len(self._search_matches) - 1)
+        self.btn_next_search.setEnabled(
+            has_matches and self._current_match_idx < len(self._search_matches) - 1
+        )
         if has_matches:
-            self.filter_input.setToolTip(f"Match {self._current_match_idx + 1} of {len(self._search_matches)}")
+            self.filter_input.setToolTip(
+                f"Match {self._current_match_idx + 1} of {len(self._search_matches)}"
+            )
         else:
             self.filter_input.setToolTip("")
 
@@ -667,15 +675,19 @@ class SessionBrowserDialog(QDialog):
         if 0 <= self._current_match_idx < len(self._search_matches):
             match_data = self._search_matches[self._current_match_idx]
             session_id = match_data.get("session_id")
-            
+
             for i in range(self.tree.topLevelItemCount()):
                 item = self.tree.topLevelItem(i)
                 if item.data(0, Qt.ItemDataRole.UserRole) == session_id:
                     self.tree.setCurrentItem(item)
-                    
+
                     idx = match_data.get("index")
                     mtype = match_data.get("type")
-                    if idx is not None and mtype in ("prompt", "response") and self.timeline:
+                    if (
+                        idx is not None
+                        and mtype in ("prompt", "response")
+                        and self.timeline
+                    ):
                         self.timeline.navigate_to_interaction(idx)
                     break
         self._update_search_navigation()
@@ -697,7 +709,7 @@ class SessionBrowserDialog(QDialog):
 
             # Source type icon
             source = interaction.get("source", "text")
-            
+
             # Retroactive fix for old sessions
             images = interaction.get("image", [])
             if isinstance(images, str):
@@ -714,6 +726,7 @@ class SessionBrowserDialog(QDialog):
                 source = "image_multi"
 
             from ui.timeline_widget import _EVENT_ICONS
+
             icon = _EVENT_ICONS.get(source, "💬")
 
             child = QTreeWidgetItem([f"{icon}  {excerpt}"])
@@ -728,7 +741,7 @@ class SessionBrowserDialog(QDialog):
 
             root_item.addChild(child)
 
-    def _get_session_data(self, session_id: str) -> Optional[dict]:
+    def _get_session_data(self, session_id: str) -> dict | None:
         """Get session data, using cache."""
         if session_id not in self._loaded_sessions:
             data = SessionManager.load_session_data(session_id)
@@ -751,48 +764,59 @@ class SessionBrowserDialog(QDialog):
             if session_id and self.timeline:
                 self._current_session_id = session_id
                 self.timeline.load_session(session_id)
-                if hasattr(self, 'btn_webhook'):
+                if hasattr(self, "btn_webhook"):
                     self.btn_webhook.setEnabled(True)
-                
+
             # Show transcription if it exists for the root session
             data = self._get_session_data(session_id)
             if data:
                 transcription_file = data.get("transcription_file")
                 if transcription_file:
-                    import os, html
+                    import html
+                    import os
+
                     from core.session_manager import _session_dir
-                    abs_trans_path = os.path.abspath(os.path.join(_session_dir(session_id), transcription_file))
+
+                    abs_trans_path = os.path.abspath(
+                        os.path.join(_session_dir(session_id), transcription_file)
+                    )
                     if os.path.exists(abs_trans_path):
                         try:
-                            with open(abs_trans_path, 'r', encoding='utf-8') as tf:
+                            with open(abs_trans_path, encoding="utf-8") as tf:
                                 trans_text = tf.read()
                             if trans_text:
                                 import re
+
                                 # Highlight speakers: lines starting with [Speaker]
-                                trans_text = re.sub(r"^\[(.*?)\]", r'<span style="color:#98c379;font-weight:bold;">[\1]</span>', html.escape(trans_text), flags=re.MULTILINE)
+                                trans_text = re.sub(
+                                    r"^\[(.*?)\]",
+                                    r'<span style="color:#98c379;font-weight:bold;">[\1]</span>',
+                                    html.escape(trans_text),
+                                    flags=re.MULTILINE,
+                                )
                                 trans_html = trans_text.replace("\n", "<br>")
-                                full_prompt = f'''
+                                full_prompt = f"""
                                 <div style="margin-top: 16px; border-top: 1px dashed #555; padding-top: 8px;">
                                     <b style="color: #98c379;">Transcription Context:</b><br><br>
                                     {trans_html}
                                 </div>
-                                '''
+                                """
                                 self.prompt_view.setHtml(full_prompt)
                                 self._highlight_prompt_search()
                                 self._render_response("")
                                 return
                         except Exception:
                             pass
-                            
+
             self.prompt_view.clear()
             self._render_response("")
             return
 
         session_id = current.data(0, Qt.ItemDataRole.UserRole)
         prompt_index = current.data(0, Qt.ItemDataRole.UserRole + 2)
-        
+
         self._current_session_id = session_id
-        if hasattr(self, 'btn_webhook'):
+        if hasattr(self, "btn_webhook"):
             self.btn_webhook.setEnabled(True)
 
         data = self._get_session_data(session_id)
@@ -809,9 +833,10 @@ class SessionBrowserDialog(QDialog):
         speaker = interaction.get("speaker_name", "")
         prompt_text = interaction.get("prompt", "")
 
-        import os
-        from core.session_manager import _session_dir
         import html
+        import os
+
+        from core.session_manager import _session_dir
 
         # Build prompt display with metadata
         display_parts = []
@@ -827,20 +852,28 @@ class SessionBrowserDialog(QDialog):
             images_data = [images_data] if images_data else []
 
         for img in images_data:
-            abs_image_path = os.path.abspath(os.path.join(_session_dir(session_id), img))
-            abs_image_path_fwd = abs_image_path.replace(os.sep, '/')
+            abs_image_path = os.path.abspath(
+                os.path.join(_session_dir(session_id), img)
+            )
+            abs_image_path_fwd = abs_image_path.replace(os.sep, "/")
             file_url = f"file:///{abs_image_path_fwd}"
-            display_parts.append(f"📎 <a href='{file_url}' style='color: #61afef;'>{html.escape(img)}</a>")
+            display_parts.append(
+                f"📎 <a href='{file_url}' style='color: #61afef;'>{html.escape(img)}</a>"
+            )
 
         transcription_file = data.get("transcription_file")
         transcription_text = ""
         if transcription_file:
-            abs_trans_path = os.path.abspath(os.path.join(_session_dir(session_id), transcription_file))
+            abs_trans_path = os.path.abspath(
+                os.path.join(_session_dir(session_id), transcription_file)
+            )
             if os.path.exists(abs_trans_path):
                 trans_url = f"file:///{abs_trans_path.replace(os.sep, '/')}"
-                display_parts.append(f"📝 <a href='{trans_url}' style='color: #98c379;'>{html.escape(transcription_file)}</a>")
+                display_parts.append(
+                    f"📝 <a href='{trans_url}' style='color: #98c379;'>{html.escape(transcription_file)}</a>"
+                )
                 try:
-                    with open(abs_trans_path, 'r', encoding='utf-8') as tf:
+                    with open(abs_trans_path, encoding="utf-8") as tf:
                         transcription_text = tf.read()
                 except Exception:
                     pass
@@ -848,38 +881,47 @@ class SessionBrowserDialog(QDialog):
         header = "  ".join(display_parts)
         prompt_html = html.escape(prompt_text).replace("\n", "<br>")
 
-        full_prompt = f'''
+        full_prompt = (
+            f"""
         <div style="font-family: monospace; font-size: 13px;">
             <div style="margin-bottom: 8px;">{header}</div>
             <div style="border-top: 1px solid #555; margin-bottom: 8px;"></div>
             <div>{prompt_html}</div>
         </div>
-        ''' if header else f'<div style="font-family: monospace; font-size: 13px;">{prompt_html}</div>'
+        """
+            if header
+            else f'<div style="font-family: monospace; font-size: 13px;">{prompt_html}</div>'
+        )
 
         for img in images_data:
-            abs_image_path = os.path.abspath(os.path.join(_session_dir(session_id), img))
-            abs_image_path_fwd = abs_image_path.replace(os.sep, '/')
-            
+            abs_image_path = os.path.abspath(
+                os.path.join(_session_dir(session_id), img)
+            )
+            abs_image_path_fwd = abs_image_path.replace(os.sep, "/")
+
             from PyQt6.QtGui import QImageReader
+
             reader = QImageReader(abs_image_path)
             size = reader.size()
-            
+
             # Default to a reasonable width if read fails
             img_w = size.width() if size.width() > 0 else 800
-            
+
             # Scale down to fit the panel nicely, but keep it large ("expanded")
-            display_width = min(img_w, 750) 
-            
-            full_prompt += f"<br><br><img src='{abs_image_path_fwd}' width='{display_width}'>"
-            
+            display_width = min(img_w, 750)
+
+            full_prompt += (
+                f"<br><br><img src='{abs_image_path_fwd}' width='{display_width}'>"
+            )
+
         if transcription_text:
             trans_html = html.escape(transcription_text).replace("\n", "<br>")
-            full_prompt += f'''
+            full_prompt += f"""
             <div style="margin-top: 16px; border-top: 1px dashed #555; padding-top: 8px;">
                 <b style="color: #98c379;">Transcription Context:</b><br><br>
                 {trans_html}
             </div>
-            '''
+            """
 
         self.prompt_view.setHtml(full_prompt)
         self._highlight_prompt_search()
@@ -898,20 +940,23 @@ class SessionBrowserDialog(QDialog):
     def _highlight_prompt_search(self):
         # Highlight search term if active
         search_term = self.filter_input.text().strip()
-        
+
         if self.timeline:
             self.timeline.highlight_search_term(search_term)
-            
+
         if search_term:
-            from PyQt6.QtGui import QTextCharFormat, QColor, QTextDocument
             from PyQt6.QtCore import QRegularExpression
+            from PyQt6.QtGui import QColor, QTextCharFormat
+
             fmt = QTextCharFormat()
             fmt.setBackground(QColor("#e5c07b"))
             fmt.setForeground(QColor("#282c34"))
-            
+
             doc = self.prompt_view.document()
-            
-            regex = QRegularExpression(search_term, QRegularExpression.PatternOption.CaseInsensitiveOption)
+
+            regex = QRegularExpression(
+                search_term, QRegularExpression.PatternOption.CaseInsensitiveOption
+            )
             cursor = doc.find(regex)
             first_cursor = None
             while not cursor.isNull():
@@ -919,7 +964,7 @@ class SessionBrowserDialog(QDialog):
                     first_cursor = cursor
                 cursor.mergeCharFormat(fmt)
                 cursor = doc.find(regex, cursor)
-            
+
             # Scroll to first match
             if first_cursor:
                 self.prompt_view.setTextCursor(first_cursor)
@@ -928,13 +973,12 @@ class SessionBrowserDialog(QDialog):
     def _on_tree_double_click(self, item: QTreeWidgetItem, column: int):
         if not self.selection_mode:
             return
-            
-        item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+
         session_id = item.data(0, Qt.ItemDataRole.UserRole)
         if session_id:
             self.selected_session_id = session_id
             self.accept()
-            
+
     def _accept_selection(self):
         current = self.tree.currentItem()
         if current:
@@ -1167,7 +1211,7 @@ class SessionBrowserDialog(QDialog):
             name = ""
             if data:
                 name = data.get("name") or data.get("title") or session_ids[0][:8]
-            msg = f"Delete session \"{name}\" and all its contents?\n\nThis action cannot be undone."
+            msg = f'Delete session "{name}" and all its contents?\n\nThis action cannot be undone.'
         else:
             msg = f"Delete {count} selected sessions and all their contents?\n\nThis action cannot be undone."
 
@@ -1240,12 +1284,13 @@ class SessionBrowserDialog(QDialog):
             self.showMaximized()
 
 
-def open_session_browser(parent: Optional[QWidget] = None):
+def open_session_browser(parent: QWidget | None = None):
     """Create and show the session browser dialog."""
     dialog = SessionBrowserDialog(parent)
     dialog.exec()
 
-def select_session(parent: Optional[QWidget] = None) -> Optional[str]:
+
+def select_session(parent: QWidget | None = None) -> str | None:
     """Open the browser in selection mode and return the selected session ID."""
     dialog = SessionBrowserDialog(parent, selection_mode=True)
     if dialog.exec() == QDialog.DialogCode.Accepted:

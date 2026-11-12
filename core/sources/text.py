@@ -1,5 +1,6 @@
-from .base import Source
 import threading
+
+from .base import Source
 
 
 class TextSource(Source):
@@ -11,7 +12,11 @@ class TextSource(Source):
         return getattr(self, "_source_name", "text")
 
     def get_text(
-        self, text: str = None, cancel_event: threading.Event = None, *args, **kwargs
+        self,
+        text: str | None = None,
+        cancel_event: threading.Event | None = None,
+        *args,
+        **kwargs,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError("Cancelled.")

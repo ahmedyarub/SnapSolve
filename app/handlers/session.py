@@ -1,4 +1,5 @@
 """Chat session handlers — new session and toggle."""
+
 import app.state as state
 from app.state import _show_status_popup
 from config.settings import load_profiles

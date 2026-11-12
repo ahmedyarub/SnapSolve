@@ -9,6 +9,7 @@ Creates:
 
 import os
 import sys
+
 from PIL import Image
 
 # Paths
@@ -100,11 +101,15 @@ def create_adaptive_foreground(source_img, res_dir):
         resized = resized.resize((icon_size, icon_size), Image.LANCZOS)
 
         # Paste centered
-        canvas.paste(resized, (padding, padding), resized if resized.mode == "RGBA" else None)
+        canvas.paste(
+            resized, (padding, padding), resized if resized.mode == "RGBA" else None
+        )
 
         out_path = os.path.join(out_dir, "ic_launcher_foreground.png")
         canvas.save(out_path, format="PNG", optimize=True)
-        print(f"  Created: {out_path} ({canvas_size}x{canvas_size}, icon {icon_size}x{icon_size})")
+        print(
+            f"  Created: {out_path} ({canvas_size}x{canvas_size}, icon {icon_size}x{icon_size})"
+        )
 
 
 def create_adaptive_icon_xml(res_dir):
@@ -113,19 +118,19 @@ def create_adaptive_icon_xml(res_dir):
     anydpi_dir = os.path.join(res_dir, "mipmap-anydpi-v26")
     os.makedirs(anydpi_dir, exist_ok=True)
 
-    ic_launcher_xml = '''<?xml version="1.0" encoding="utf-8"?>
+    ic_launcher_xml = """<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background"/>
     <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
-'''
+"""
 
-    ic_launcher_round_xml = '''<?xml version="1.0" encoding="utf-8"?>
+    ic_launcher_round_xml = """<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background"/>
     <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
-'''
+"""
 
     launcher_path = os.path.join(anydpi_dir, "ic_launcher.xml")
     with open(launcher_path, "w", encoding="utf-8") as f:
@@ -140,11 +145,11 @@ def create_adaptive_icon_xml(res_dir):
     # Add background color to colors.xml (or create ic_launcher_background.xml)
     values_dir = os.path.join(res_dir, "values")
     colors_path = os.path.join(values_dir, "ic_launcher_background.xml")
-    background_xml = '''<?xml version="1.0" encoding="utf-8"?>
+    background_xml = """<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1E1E1E</color>
 </resources>
-'''
+"""
     with open(colors_path, "w", encoding="utf-8") as f:
         f.write(background_xml)
     print(f"  Created: {colors_path}")

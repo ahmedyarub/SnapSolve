@@ -1,8 +1,17 @@
+from .antigravity import AntigravityEngine
 from .base import LLMEngine
-from .ollama import OllamaEngine
+from .claude_code import ClaudeCodeEngine
 from .gemini_cli import GeminiCLIEngine
 from .google_genai import GoogleGenAIEngine
-from .antigravity import AntigravityEngine
 from .litellm import LiteLLMEngine
+from .ollama import OllamaEngine
 
-__all__ = ["LLMEngine", "OllamaEngine", "GeminiCLIEngine", "GoogleGenAIEngine", "AntigravityEngine", "LiteLLMEngine"]
+__all__ = [
+    "AntigravityEngine",
+    "ClaudeCodeEngine",
+    "GeminiCLIEngine",
+    "GoogleGenAIEngine",
+    "LLMEngine",
+    "LiteLLMEngine",
+    "OllamaEngine",
+]

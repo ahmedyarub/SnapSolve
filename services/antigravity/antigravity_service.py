@@ -12,12 +12,10 @@ import base64
 import json
 import logging
 import os
-
 import signal
 import sys
 import tempfile
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
@@ -25,21 +23,23 @@ from fastapi.responses import StreamingResponse
 from google.antigravity import Agent, LocalAgentConfig
 from pydantic import BaseModel
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("antigravity_service")
 
 # ---------------------------------------------------------------------------
 # Agent session management
 # ---------------------------------------------------------------------------
 
-_agent: Optional[Agent] = None
+_agent: Agent | None = None
 _agent_lock = asyncio.Lock()
 
 
 async def _get_or_create_agent(
-    model: Optional[str] = None,
-    system_instructions: Optional[str] = None,
-    cwd: Optional[str] = None,
+    model: str | None = None,
+    system_instructions: str | None = None,
+    cwd: str | None = None,
 ) -> Agent:
     """Get the existing agent or create a new one."""
     global _agent
@@ -71,10 +71,10 @@ async def _close_agent():
             logger.info("Agent closed.")
 
 
-
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -90,12 +90,12 @@ app = FastAPI(title="Antigravity SDK Service", lifespan=lifespan)
 
 class ChatRequest(BaseModel):
     prompt: str
-    model: Optional[str] = None
-    cwd: Optional[str] = None
-    system_instructions: Optional[str] = None
+    model: str | None = None
+    cwd: str | None = None
+    system_instructions: str | None = None
     new_session: bool = False
-    image_base64: Optional[str] = None
-    image_mime_type: Optional[str] = None
+    image_base64: str | None = None
+    image_mime_type: str | None = None
 
 
 @app.get("/health")
@@ -131,11 +131,8 @@ async def chat(request: ChatRequest):
             if request.image_base64:
                 image_bytes = base64.b64decode(request.image_base64)
                 ext = (request.image_mime_type or "image/png").split("/")[-1]
-                tmp = tempfile.NamedTemporaryFile(
-                    suffix=f".{ext}", delete=False
-                )
-                tmp.write(image_bytes)
-                tmp.close()
+                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(image_bytes)
                 logger.info("Image saved to temp file: %s", tmp.name)
                 # Pass image path + text prompt together
                 chat_input = f"[Image: {tmp.name}]\n{request.prompt}"

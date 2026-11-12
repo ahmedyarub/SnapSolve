@@ -1,47 +1,64 @@
 # Stop execution on any error
 $ErrorActionPreference = "Stop"
 
+# Run from the repository root no matter where the script is started from;
+# WSL maps this directory to /mnt/<drive>/... for the Qodana and Docker steps.
+Set-Location (Join-Path $PSScriptRoot "..")
+
 Write-Host "🔍 Starting Static Analysis & Verification Loop..." -ForegroundColor Cyan
 
 try
 {
-    # 1. Python: Ruff
+    # 1. Python: Ruff (settings, rules and excludes live in ruff.toml)
     Write-Host "Running Python Checks (Ruff)..." -ForegroundColor Yellow
-    ruff check . --exclude "services/whisperlive"
+    ruff check .
     if ($LASTEXITCODE -ne 0)
     {
         throw "Ruff check failed."
     }
-    ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build" --exclude "android_remote_control/app/build" --exclude "android_remote_control/gradle"
+    ruff format --check .
     if ($LASTEXITCODE -ne 0)
     {
-        throw "Ruff format check failed."
+        throw "Ruff format check failed. Run 'ruff format .' to fix it."
     }
 
-    # 2. JetBrains Qodana
+    # 2. Unit tests (pytest.ini selects the suite)
+    Write-Host "Running unit tests (pytest)..." -ForegroundColor Yellow
+    # The app runs on Python 3.12; plain `python` may be a newer interpreter.
+    py -3.12 -m pytest -q
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Unit tests failed."
+    }
+
+    # 3. JetBrains Qodana, in WSL Docker.
+    # QODANA_PYTHON_PATH points Qodana at the venv that scripts/qodana_bootstrap.sh
+    # builds; without it Qodana analyses against an empty interpreter and reports
+    # valid code as broken. No --apply-fixes: verification must not edit code.
     Write-Host "Running IDE Inspections (Qodana via WSL)..." -ForegroundColor Yellow
-
-    # Execute the Linux Qodana CLI inside WSL, passing the environment variable inline.
-    # WSL automatically maps your current E:\ drive path to /mnt/e/
-    wsl bash -c "NONINTERACTIVE=true qodana scan --fail-threshold 0 --print-problems --apply-fixes"
-
-    # Capture the exit code from the WSL process to halt the AI if issues are found
+    wsl bash -lc "NONINTERACTIVE=true qodana scan --fail-threshold 0 --print-problems -e QODANA_PYTHON_PATH=/data/cache/snapsolve-venv/bin/python"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Qodana inspection failed."
     }
 
-    # 3. SonarQube Scanner
+    # 4. SonarQube
     Write-Host "Running SonarQube Scanner..." -ForegroundColor Yellow
 
-    # Populate SonarToken from environment variable
+    # The scanner reads the token from SONAR_TOKEN; it is never stored in the repo.
     $SonarToken = $env:SONAR_TOKEN
+    if (-not $SonarToken)
+    {
+        throw "SONAR_TOKEN is not set. Create a token at http://localhost:9000 and set it as a user environment variable."
+    }
 
-    # 1. Run the container
-    wsl bash -c "docker start sonarqube"
+    wsl bash scripts/sonarqube_up.sh
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "SonarQube server is not available."
+    }
 
-    # 2. Run the scanner
-    sonar-scanner.bat "-Dsonar.qualitygate.wait=true" "-Dsonar.python.version=3"
+    sonar-scanner.bat "-Dsonar.qualitygate.wait=true"
     $sonarExitCode = $LASTEXITCODE
 
     # 3. Fetch the issues directly from the SonarQube API

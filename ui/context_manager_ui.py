@@ -1,20 +1,33 @@
 import json
 import os
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
-    QPushButton, QLineEdit, QFileDialog, QGroupBox, QMessageBox, QCompleter
-)
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QCompleter,
+    QDialog,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
+
 from ui.session_browser import select_session
 
-_RECENT_FOLDERS_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "recent_folders.json")
+_RECENT_FOLDERS_FILE = os.path.join(
+    os.path.dirname(__file__), "..", "config", "recent_folders.json"
+)
 _MAX_RECENT_FOLDERS = 20
 
 
 def _load_recent_folders() -> list[str]:
     """Load recent project folder paths from disk."""
     try:
-        with open(_RECENT_FOLDERS_FILE, "r", encoding="utf-8") as f:
+        with open(_RECENT_FOLDERS_FILE, encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, list):
                 return data[:_MAX_RECENT_FOLDERS]
@@ -75,11 +88,15 @@ class ContextManagerDialog(QDialog):
         cat_layout = QVBoxLayout(cat_group)
 
         self.cb_transcribed = QCheckBox("Include Transcribed Text")
-        self.cb_transcribed.setChecked(self.config.get("include_transcribed_text", False))
+        self.cb_transcribed.setChecked(
+            self.config.get("include_transcribed_text", False)
+        )
         cat_layout.addWidget(self.cb_transcribed)
 
         self.cb_questions = QCheckBox("Include Previous Questions")
-        self.cb_questions.setChecked(self.config.get("include_previous_questions", False))
+        self.cb_questions.setChecked(
+            self.config.get("include_previous_questions", False)
+        )
         cat_layout.addWidget(self.cb_questions)
 
         self.cb_answers = QCheckBox("Include Previous Answers")
@@ -111,7 +128,9 @@ class ContextManagerDialog(QDialog):
         # Import
         import_group = QGroupBox("Import Context")
         import_layout = QVBoxLayout(import_group)
-        import_label = QLabel("Select a previous session to import the checked categories above.")
+        import_label = QLabel(
+            "Select a previous session to import the checked categories above."
+        )
         import_label.setWordWrap(True)
         import_label.setStyleSheet("color: #8b95a7;")
         import_layout.addWidget(import_label)
@@ -126,7 +145,9 @@ class ContextManagerDialog(QDialog):
         btn_layout.addStretch()
         self.btn_save = QPushButton("Save")
         self.btn_save.setAutoDefault(False)
-        self.btn_save.setStyleSheet("background-color: #61afef; color: #282c34; font-weight: bold;")
+        self.btn_save.setStyleSheet(
+            "background-color: #61afef; color: #282c34; font-weight: bold;"
+        )
         self.btn_save.clicked.connect(self._save_and_close)
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.setAutoDefault(False)
@@ -137,7 +158,9 @@ class ContextManagerDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _browse_folder(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Project Folder", self.folder_input.text())
+        dir_path = QFileDialog.getExistingDirectory(
+            self, "Select Project Folder", self.folder_input.text()
+        )
         if dir_path:
             self.folder_input.setText(dir_path)
 
@@ -158,9 +181,11 @@ class ContextManagerDialog(QDialog):
             source_session_id=session_id,
             import_transcribed_text=import_trans,
             import_questions=import_q,
-            import_answers=import_a
+            import_answers=import_a,
         )
-        QMessageBox.information(self, "Success", "Context successfully imported from session.")
+        QMessageBox.information(
+            self, "Success", "Context successfully imported from session."
+        )
 
     def _save_and_close(self):
         self.config["include_transcribed_text"] = self.cb_transcribed.isChecked()
@@ -175,7 +200,7 @@ class ContextManagerDialog(QDialog):
         self.accept()
 
     def _apply_dark_theme(self):
-        self.setStyleSheet('''
+        self.setStyleSheet("""
             QDialog { background-color: #282c34; color: #abb2bf; }
             QGroupBox { border: 1px solid #3e4451; border-radius: 6px; margin-top: 1ex; padding: 10px; font-weight: bold; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; color: #61afef; }
@@ -185,4 +210,4 @@ class ContextManagerDialog(QDialog):
             QCheckBox { color: #abb2bf; spacing: 8px; font-size: 13px; }
             QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #3e4451; border-radius: 3px; background-color: #1e2127; }
             QCheckBox::indicator:checked { background-color: #61afef; border-color: #61afef; image: url(none); }
-        ''')
+        """)

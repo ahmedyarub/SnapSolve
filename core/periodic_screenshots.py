@@ -4,6 +4,7 @@ Captures full-screen screenshots during active sessions at a configurable
 interval and/or on keyboard/mouse activity.  Screenshots are saved to
 ``sessions/<session_id>/screenshots/`` with timestamped filenames.
 """
+
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PIL import ImageGrab, ImageChops
+from PIL import ImageChops, ImageGrab
 
 if TYPE_CHECKING:
     from core.session_manager import SessionManager
@@ -150,7 +151,7 @@ class PeriodicScreenshotService:
             return  # Already installed
 
         try:
-            import keyboard as kb  # noqa: PLC0415
+            import keyboard as kb
 
             self._keyboard_hook = kb.hook(self._on_keyboard_activity, suppress=False)
             logger.debug("Keyboard activity hook installed")
@@ -158,7 +159,7 @@ class PeriodicScreenshotService:
             logger.warning("Failed to install keyboard activity hook: %s", exc)
 
         try:
-            import mouse  # noqa: PLC0415
+            import mouse
 
             self._mouse_hook = mouse.hook(self._on_mouse_activity)
             logger.debug("Mouse activity hook installed")
@@ -169,7 +170,7 @@ class PeriodicScreenshotService:
         """Remove keyboard and mouse hooks."""
         if self._keyboard_hook is not None:
             try:
-                import keyboard as kb  # noqa: PLC0415
+                import keyboard as kb
 
                 kb.unhook(self._keyboard_hook)
             except Exception as exc:
@@ -178,7 +179,7 @@ class PeriodicScreenshotService:
 
         if self._mouse_hook is not None:
             try:
-                import mouse  # noqa: PLC0415
+                import mouse
 
                 mouse.unhook(self._mouse_hook)
             except Exception as exc:
@@ -226,7 +227,7 @@ class PeriodicScreenshotService:
         session_id = self._session_manager.current_session_id
         if not session_id:
             return None
-        from core.session_manager import _session_screenshots_dir  # noqa: PLC0415
+        from core.session_manager import _session_screenshots_dir
 
         screenshots_dir = _session_screenshots_dir(session_id)
         os.makedirs(screenshots_dir, exist_ok=True)
@@ -243,10 +244,15 @@ class PeriodicScreenshotService:
             img = ImageGrab.grab()
 
             if self._last_image is not None:
-                if img.size == self._last_image.size and img.mode == self._last_image.mode:
+                if (
+                    img.size == self._last_image.size
+                    and img.mode == self._last_image.mode
+                ):
                     diff = ImageChops.difference(img, self._last_image)
                     if diff.getbbox() is None:
-                        logger.debug("Screenshot identical to previous, skipping capture")
+                        logger.debug(
+                            "Screenshot identical to previous, skipping capture"
+                        )
                         return
 
             self._last_image = img
@@ -271,7 +277,7 @@ class PeriodicScreenshotService:
     def _write_window_sidecar(self, save_dir: str, timestamp: str) -> None:
         """Write a JSON sidecar file with the active window's metadata."""
         try:
-            from core.active_window import get_active_window_info  # noqa: PLC0415
+            from core.active_window import get_active_window_info
 
             info = get_active_window_info()
             if info is None:

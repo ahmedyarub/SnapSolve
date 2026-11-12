@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import ctypes
 import ctypes.wintypes
-import json
 import logging
-import os
 import platform
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import keyboard
 import pyautogui
@@ -65,14 +62,14 @@ class MouseBlocker:
     """
 
     def __init__(self) -> None:
-        self._hook_handle: Optional[int] = None
-        self._thread: Optional[threading.Thread] = None
+        self._hook_handle: int | None = None
+        self._thread: threading.Thread | None = None
         self._is_blocking = False
         self._lock = threading.Lock()
         # Must keep a reference to prevent garbage collection while the hook
         # is installed.
-        self._hook_proc: Optional[_HOOKPROC] = None
-        self._idle_timer: Optional[threading.Timer] = None
+        self._hook_proc: _HOOKPROC | None = None
+        self._idle_timer: threading.Timer | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -111,7 +108,10 @@ class MouseBlocker:
             thread_id = self._thread.ident
             if thread_id:
                 ctypes.windll.user32.PostThreadMessageW(
-                    thread_id, 0x0012, 0, 0  # WM_QUIT
+                    thread_id,
+                    0x0012,
+                    0,
+                    0,  # WM_QUIT
                 )
             self._thread.join(timeout=3)
 
@@ -223,7 +223,7 @@ ui_state: dict[str, dict[str, bool]] = {}
 _android_client_connected: bool = False
 
 # Latest response image path for sharing with Android
-_response_image_path: Optional[str] = None
+_response_image_path: str | None = None
 _has_new_response_image: bool = False
 _response_image_lock = threading.Lock()
 
@@ -234,6 +234,7 @@ def set_ui_state(state: dict[str, dict[str, bool]]) -> None:
     ui_state = state
     # Push state to connected WebSocket client
     from core.api_server import api_server_instance
+
     if api_server_instance and api_server_instance.is_running:
         api_server_instance.schedule_push_state(state)
 
@@ -252,6 +253,7 @@ def set_response_image_path(path: str) -> None:
     logger.info("Response image available for Android: %s", path)
     # Notify the connected client via a state_update push
     from core.api_server import api_server_instance
+
     if api_server_instance and api_server_instance.is_running:
         api_server_instance.schedule_push_state(ui_state)
 
@@ -259,6 +261,7 @@ def set_response_image_path(path: str) -> None:
 # ---------------------------------------------------------------------------
 # WebSocket message handlers
 # ---------------------------------------------------------------------------
+
 
 def _refresh_idle_timer(app_config: dict[str, Any]) -> None:
     """Refresh the idle timer for the mouse blocker."""
@@ -292,7 +295,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         return {"type": "error", "message": "Action parameter is required"}
 
     # Import inside the function to avoid circular-import issues at module load.
-    from app.handlers import (  # noqa: PLC0415
+    from app.handlers import (
         handle_cancel,
         handle_capture,
         handle_cycle_source,
@@ -300,17 +303,17 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         handle_multi_capture,
         handle_new_chat_session,
         handle_reselect,
-        handle_toggle_panel,
         handle_toggle_chat_sessions,
+        handle_toggle_panel,
         handle_toggle_periodic_screenshots,
     )
-    from config.settings import load_profiles, load_prompts  # noqa: PLC0415
+    from config.settings import load_profiles, load_prompts
 
     try:
         profiles = load_profiles()
         prompts = load_prompts()
 
-        active_profile_id = app_config.get("active_profile_id", "prof1")
+        active_profile_id = app_config.get("active_profile_id", "claude")
         active_profile = next(
             (p for p in profiles if p.get("id") == active_profile_id),
             profiles[0] if profiles else {},
@@ -341,7 +344,9 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
             "cycle_source": lambda: handle_cycle_source(app_config, active_profile),
             "toggle_panel": handle_toggle_panel,
             "new_chat_session": lambda: handle_new_chat_session(app_config),
-            "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(app_config),
+            "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(
+                app_config
+            ),
         }
 
         fn = action_map.get(action)
@@ -357,7 +362,7 @@ def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
         return {"type": "error", "message": f"Error executing action: {exc}"}
 
 
-def _handle_mouse_move(data: dict, app_config: dict[str, Any]) -> Optional[dict]:
+def _handle_mouse_move(data: dict, app_config: dict[str, Any]) -> dict | None:
     """Move the cursor by relative coordinates.
 
     Returns ``None`` on success (no response sent) to avoid doubling
@@ -395,7 +400,12 @@ def _handle_mouse_click(data: dict, app_config: dict[str, Any]) -> dict:
             pyautogui.middleClick()
         else:
             return {"type": "error", "message": f"Unknown button: {button}"}
-        return {"type": "response", "status": "success", "action": "click", "button": button}
+        return {
+            "type": "response",
+            "status": "success",
+            "action": "click",
+            "button": button,
+        }
 
     except Exception as exc:
         logger.error("Error clicking mouse: %s", exc)
@@ -417,7 +427,12 @@ def _handle_mouse_double_click(data: dict, app_config: dict[str, Any]) -> dict:
             pyautogui.middleClick()
         else:
             return {"type": "error", "message": f"Unknown button: {button}"}
-        return {"type": "response", "status": "success", "action": "double_click", "button": button}
+        return {
+            "type": "response",
+            "status": "success",
+            "action": "double_click",
+            "button": button,
+        }
 
     except Exception as exc:
         logger.error("Error double-clicking mouse: %s", exc)
@@ -455,7 +470,12 @@ def _handle_mouse_scroll(data: dict, app_config: dict[str, Any]) -> dict:
         delta = data.get("delta", 1)
         # MOUSEEVENTF_WHEEL = 0x0800, WHEEL_DELTA = 120
         ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(delta) * 120, 0)
-        return {"type": "response", "status": "success", "action": "scroll", "delta": delta}
+        return {
+            "type": "response",
+            "status": "success",
+            "action": "scroll",
+            "delta": delta,
+        }
 
     except Exception as exc:
         logger.error("Error scrolling mouse: %s", exc)
@@ -492,15 +512,22 @@ def _handle_set_transcription_language(data: dict, app_config: dict[str, Any]) -
     lang = data.get("language", "en")
     app_config["transcription_language"] = lang
     try:
-        from config.settings import save_config  # noqa: PLC0415
+        from config.settings import save_config
+
         save_config(app_config)
     except Exception as exc:
         logger.error("Failed to save config after language change: %s", exc)
     # Also update the panel combo on the main thread
-    from core.output import ui_signals  # noqa: PLC0415
+    from core.output import ui_signals
+
     ui_signals.set_transcription_language.emit(lang)
     logger.info("Transcription language set to '%s' via remote control", lang)
-    return {"type": "response", "status": "success", "action": "set_transcription_language", "language": lang}
+    return {
+        "type": "response",
+        "status": "success",
+        "action": "set_transcription_language",
+        "language": lang,
+    }
 
 
 # The websocket server implementation has been moved to api_server.py

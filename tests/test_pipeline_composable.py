@@ -3,6 +3,7 @@
 Tests the Frame types, Processor implementations, Pipeline runner, and
 the backward-compatible ``process_pipeline()`` adapter.
 """
+
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
@@ -384,7 +385,7 @@ class TestBuildPipeline(unittest.TestCase):
 # process_pipeline adapter tests
 # ===========================================================================
 class TestProcessPipelineAdapter(unittest.TestCase):
-    @patch("core.pipeline.pipeline.build_pipeline")
+    @patch("core.pipeline.runner.build_pipeline")
     def test_returns_llm_result(self, mock_build):
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = LLMResponseFrame(
@@ -403,7 +404,7 @@ class TestProcessPipelineAdapter(unittest.TestCase):
         )
         self.assertEqual(result, "Answer text")
 
-    @patch("core.pipeline.pipeline.build_pipeline")
+    @patch("core.pipeline.runner.build_pipeline")
     def test_returns_error(self, mock_build):
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = ErrorFrame(
@@ -421,7 +422,7 @@ class TestProcessPipelineAdapter(unittest.TestCase):
         )
         self.assertEqual(result, "Something went wrong")
 
-    @patch("core.pipeline.pipeline.build_pipeline")
+    @patch("core.pipeline.runner.build_pipeline")
     def test_returns_cancelled(self, mock_build):
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = CancelledFrame(
@@ -429,7 +430,7 @@ class TestProcessPipelineAdapter(unittest.TestCase):
         )
         mock_build.return_value = mock_pipeline
 
-        from core.pipeline.pipeline import process_pipeline, PIPELINE_CANCELLED_MSG
+        from core.pipeline.pipeline import PIPELINE_CANCELLED_MSG, process_pipeline
 
         result = process_pipeline(
             source=MagicMock(),

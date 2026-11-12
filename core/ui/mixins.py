@@ -1,15 +1,17 @@
 """Mixins for frameless window interaction — drag-to-move, resize handles, and drag handle bar."""
-from PyQt6.QtCore import Qt, QPoint, QSize, QRect
+
+from typing import ClassVar
+
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QCursor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
-    QWidget,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QTextEdit,
-    QLabel,
+    QWidget,
 )
-
 
 _RESIZE_MARGIN = 8  # Pixels from edge to trigger resize
 
@@ -78,7 +80,9 @@ class _DragHandleBar(QWidget):
         bar_layout.setContentsMargins(8, 2, 4, 2)
 
         grip_label = QLabel("⠿")
-        grip_label.setStyleSheet("color: #888; font-size: 18px; background: rgba(0, 0, 0, 1);")
+        grip_label.setStyleSheet(
+            "color: #888; font-size: 18px; background: rgba(0, 0, 0, 1);"
+        )
         bar_layout.addWidget(grip_label)
         bar_layout.addStretch()
 
@@ -137,7 +141,7 @@ class ResizableWidgetMixin:
     _EDGE_TOP = 4
     _EDGE_BOTTOM = 8
 
-    _CURSOR_MAP = {
+    _CURSOR_MAP: ClassVar[dict[int, Qt.CursorShape]] = {
         _EDGE_LEFT: Qt.CursorShape.SizeHorCursor,
         _EDGE_RIGHT: Qt.CursorShape.SizeHorCursor,
         _EDGE_TOP: Qt.CursorShape.SizeVerCursor,

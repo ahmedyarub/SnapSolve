@@ -7,14 +7,14 @@ sequentially, passing frames through until a terminal frame is reached.
 → SessionSave`` chain from the same arguments accepted by the legacy
 ``process_pipeline()`` function.
 """
+
 import logging
 import threading
-import time
-from typing import Optional
 
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 from core.sources.base import Source
+
 from .frames import CancelledFrame, ErrorFrame, Frame
 from .processors import (
     ConcurrentLLMProcessor,
@@ -22,7 +22,6 @@ from .processors import (
     Processor,
     PromptBuilderProcessor,
     SessionSaveProcessor,
-    SinkProcessor,
     SourceProcessor,
 )
 
@@ -55,12 +54,12 @@ def build_pipeline(
     status_callback=None,
     session_manager=None,
     enable_chat_sessions: bool = True,
-    sink: Optional[Sink] = None,
-    fallback_llm: Optional[LLMEngine] = None,
+    sink: Sink | None = None,
+    fallback_llm: LLMEngine | None = None,
     coords=None,
-    text: Optional[str] = None,
-    image_paths: Optional[list[str]] = None,
-    cancel_event: Optional[threading.Event] = None,
+    text: str | None = None,
+    image_paths: list[str] | None = None,
+    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> Pipeline:

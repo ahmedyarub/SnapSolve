@@ -1,5 +1,6 @@
 """Navigation-related handlers — panel, widget, URL, and dialog toggles."""
-from core.output import toggle_control_panel, toggle_all_widgets
+
+from core.output import toggle_all_widgets, toggle_control_panel
 
 
 def handle_toggle_panel():

@@ -9,7 +9,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from core.sources.sound import start_whisperlive_service, is_whisperlive_service_online
+from core.sources.sound import is_whisperlive_service_online, start_whisperlive_service
 
 
 def generate_audio_piper(text, output_wav, piper_model="en_US-lessac-medium.onnx"):
@@ -56,7 +56,7 @@ def _get_piper_model():
     """Get Piper model from config or use default."""
     piper_model = "en_US-lessac-medium.onnx"
     try:
-        with open("config/config.json", "r") as f:
+        with open("config/config.json") as f:
             config = json.load(f)
             piper_model = config.get("piper_model", piper_model)
     except Exception:
@@ -104,8 +104,8 @@ def _wait_for_client_ready(client, timeout=15):
 
 def _send_audio_to_client(client, test_wav):
     """Send audio file to WhisperLive client."""
-    import resampy
     import numpy as np
+    import resampy
 
     c = client.client
     print("Sending audio file...")
@@ -128,7 +128,7 @@ def _send_audio_to_client(client, test_wav):
             data = wf.readframes(chunk_size)
 
     print("Finished sending audio. Waiting for final transcription...")
-    c.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+    c.send_packet_to_server(b"END_OF_AUDIO")
     time.sleep(5)  # Wait for final transcription
     c.close_websocket()
 

@@ -3,11 +3,12 @@
 Every module in the ``app`` package reads/writes these module-level variables
 via ``import app.state as state`` so that mutations are visible everywhere.
 """
+
 import os
 import threading
 
-from core.output import show_popup, set_app_processing_state
 from core.api_server import stop_api_server
+from core.output import set_app_processing_state, show_popup
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -30,7 +31,7 @@ multi_capture_texts: list[str] = []
 multi_capture_images: list[str] = []
 
 # Default model name
-DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
+DEFAULT_MODEL_NAME = "claude-opus-5-5"
 
 
 # ---------------------------------------------------------------------------

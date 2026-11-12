@@ -92,7 +92,7 @@ def launch_app(main_script_path, main_script_args, working_dir):
             print(f"Error: The directory '{working_dir}' does not exist.")
             return None
 
-        command_list = [sys.executable, main_script_path] + main_script_args
+        command_list = [sys.executable, main_script_path, *main_script_args]
 
         launched_process = subprocess.Popen(
             command_list,

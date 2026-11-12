@@ -30,7 +30,7 @@ if results:
                 texts = data["res"]["rec_texts"]
                 scores = data["res"]["rec_scores"]
 
-                for text, score in zip(texts, scores):
+                for text, score in zip(texts, scores, strict=False):
                     if score >= 0.5:
                         print(f"Text: {text:<20} | Confidence: {score:.4f}")
 

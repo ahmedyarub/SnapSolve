@@ -1,14 +1,15 @@
 """Keyboard shortcut registration."""
+
 import keyboard
 
-from app.handlers.capture import handle_capture
 from app.handlers.cancel import handle_cancel
-from app.handlers.multi_capture import handle_multi_capture, handle_end_multi_capture
+from app.handlers.capture import handle_capture
+from app.handlers.multi_capture import handle_end_multi_capture, handle_multi_capture
 from app.handlers.navigation import (
-    handle_toggle_panel,
-    handle_toggle_all_widgets,
-    handle_open_url,
     handle_open_session_browser,
+    handle_open_url,
+    handle_toggle_all_widgets,
+    handle_toggle_panel,
 )
 from app.handlers.session import handle_new_chat_session, handle_toggle_chat_sessions
 from app.handlers.source import handle_cycle_source, handle_reselect
@@ -22,6 +23,7 @@ def _register_test_hotkeys(config, active_profile):
 
     def handle_test_transcription():
         import secrets
+
         from core.output import show_subtitle
 
         test_text = (

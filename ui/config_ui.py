@@ -28,36 +28,37 @@ except Exception:
 # Add parent directory to path so imports work when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
     QDialog,
-    QVBoxLayout,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
     QHBoxLayout,
-    QTabWidget,
-    QWidget,
     QLabel,
     QLineEdit,
-    QComboBox,
-    QMessageBox,
-    QCheckBox,
-    QFormLayout,
-    QScrollArea,
-    QDialogButtonBox,
-    QApplication,
-    QPushButton,
-    QFileDialog,
-    QSlider,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, QTimer
+
 from config.settings import get_audio_devices
 
 
 def load_json(path, default):
     try:
         if os.path.exists(path):
-            with open(path, "r") as f:
+            with open(path) as f:
                 return json.load(f)
     except Exception as e:
         print(f"Error loading {path}: {e}")
@@ -338,16 +339,19 @@ class ConfigUI(QDialog):
         self.log_file_path = QLineEdit(
             self.config.get("log_file", "logs/snapsolve.log")
         )
-        self.log_rotation = QLineEdit(
-            self.config.get("log_rotation", "10 MB")
-        )
-        self.log_retention = QLineEdit(
-            self.config.get("log_retention", "7 days")
-        )
+        self.log_rotation = QLineEdit(self.config.get("log_rotation", "10 MB"))
+        self.log_retention = QLineEdit(self.config.get("log_retention", "7 days"))
         # Per-dependency log level combos
         self._dep_log_combos: dict[str, QComboBox] = {}
         dep_defaults = self.config.get("log_levels", {})
-        for dep_name in ["urllib3", "PIL", "google", "httpx", "soundcard", "matplotlib"]:
+        for dep_name in [
+            "urllib3",
+            "PIL",
+            "google",
+            "httpx",
+            "soundcard",
+            "matplotlib",
+        ]:
             combo = QComboBox()
             for level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
                 combo.addItem(level, level)
@@ -365,14 +369,14 @@ class ConfigUI(QDialog):
         )
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-            
+
         screen = QApplication.primaryScreen()
         max_height = 500
         if screen:
             screen_geometry = screen.availableGeometry()
             max_height = int(screen_geometry.height() * 0.8)
             self.setMaximumHeight(max_height)
-            
+
         self.resize(600, min(650, max_height))
 
         self.init_ui()
@@ -385,7 +389,7 @@ class ConfigUI(QDialog):
         self.tts_output_device_combo.clear()
         self.tts_output_device_combo.addItem("Default System Output", None)
         try:
-            from config.settings import get_audio_devices  # noqa: PLC0415
+            from config.settings import get_audio_devices
 
             for device in get_audio_devices():
                 self.tts_output_device_combo.addItem(device["name"], device["name"])
@@ -395,7 +399,7 @@ class ConfigUI(QDialog):
         self.audio_input_device_combo.clear()
         self.audio_input_device_combo.addItem("Default System Input", None)
         try:
-            from config.settings import get_audio_input_devices  # noqa: PLC0415
+            from config.settings import get_audio_input_devices
 
             for device in get_audio_input_devices():
                 self.audio_input_device_combo.addItem(device["name"], device["name"])
@@ -405,7 +409,7 @@ class ConfigUI(QDialog):
         self.audio_loopback_device_combo.clear()
         self.audio_loopback_device_combo.addItem("(Use input device instead)", None)
         try:
-            from config.settings import get_audio_loopback_devices  # noqa: PLC0415
+            from config.settings import get_audio_loopback_devices
 
             for device in get_audio_loopback_devices():
                 self.audio_loopback_device_combo.addItem(device["name"], device["name"])
@@ -433,11 +437,11 @@ class ConfigUI(QDialog):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setStyleSheet("QScrollArea { border: none; }")
-        
+
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
 
@@ -694,7 +698,6 @@ class ConfigUI(QDialog):
         for row_idx in [2, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18]:
             self._advanced_rows.append((layout, row_idx))
 
-
     def setup_audio_tab(self):
         """Build the Audio & Speech tab.
 
@@ -760,7 +763,7 @@ class ConfigUI(QDialog):
         self.audio_input_device_combo.addItem("Default System Input", None)
 
         try:
-            from config.settings import get_audio_input_devices  # noqa: PLC0415
+            from config.settings import get_audio_input_devices
 
             input_audio_devices = get_audio_input_devices()
             for device in input_audio_devices:
@@ -780,7 +783,7 @@ class ConfigUI(QDialog):
         self.audio_loopback_device_combo.addItem("(Use input device instead)", None)
 
         try:
-            from config.settings import get_audio_loopback_devices  # noqa: PLC0415
+            from config.settings import get_audio_loopback_devices
 
             loopback_audio_devices = get_audio_loopback_devices()
             for device in loopback_audio_devices:
@@ -946,9 +949,13 @@ class ConfigUI(QDialog):
         layout.addRow("Enable:", self.realtime_correction_enabled)
 
         # Row 2: audio source (advanced)
-        self.realtime_correction_audio_source.addItem("Microphone & Loopback (both)", "both")
+        self.realtime_correction_audio_source.addItem(
+            "Microphone & Loopback (both)", "both"
+        )
         self.realtime_correction_audio_source.addItem("Microphone only", "mic")
-        self.realtime_correction_audio_source.addItem("System Loopback only", "loopback")
+        self.realtime_correction_audio_source.addItem(
+            "System Loopback only", "loopback"
+        )
         current_audio_src = self.config.get("realtime_correction_audio_source", "both")
         src_idx = self.realtime_correction_audio_source.findData(current_audio_src)
         if src_idx >= 0:
@@ -1145,7 +1152,9 @@ class ConfigUI(QDialog):
         self._lt_cloud_rows = [(layout, 12), (layout, 13)]
 
         def _on_grammar_engine_changed(_index):
-            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            is_lt = (
+                self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            )
             # Only show LT settings rows when in advanced mode AND engine is LT
             show = is_lt and self._advanced_mode
             for lt_layout, lt_row in self._lt_setting_rows:
@@ -1153,7 +1162,9 @@ class ConfigUI(QDialog):
             _on_lt_mode_changed(0)  # Refresh local/cloud visibility
 
         def _on_lt_mode_changed(_index):
-            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            is_lt = (
+                self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            )
             is_local = self.languagetool_mode.currentData() == "local"
             show = is_lt and self._advanced_mode
             for lt_layout, lt_row in self._lt_local_rows:
@@ -1264,7 +1275,14 @@ class ConfigUI(QDialog):
         form_layout.addRow("Profile Name:", self.prof_name)
 
         self.prof_llm_engine.addItems(
-            ["gemini", "ollama", "google-genai", "antigravity", "litellm"]
+            [
+                "claude-code",
+                "gemini",
+                "ollama",
+                "google-genai",
+                "antigravity",
+                "litellm",
+            ]
         )
         self.prof_llm_engine.currentTextChanged.connect(self.update_model_dropdowns)
         form_layout.addRow("LLM Engine:", self.prof_llm_engine)
@@ -1352,7 +1370,7 @@ class ConfigUI(QDialog):
 
         self.prof_name.setText(profile.get("name", ""))
 
-        engine = profile.get("llm_engine", "gemini")
+        engine = profile.get("llm_engine", "claude-code")
         self.prof_llm_engine.setCurrentText(engine)
         self.update_model_dropdowns(engine)
 
@@ -1375,8 +1393,13 @@ class ConfigUI(QDialog):
         profile = self.profiles[index]
         profile["name"] = self.prof_name.text()
         profile["llm_engine"] = self.prof_llm_engine.currentText()
-        profile["model"] = self.prof_model.currentData() or self.prof_model.currentText()
-        profile["fallback_model"] = self.prof_fallback_model.currentData() or self.prof_fallback_model.currentText()
+        profile["model"] = (
+            self.prof_model.currentData() or self.prof_model.currentText()
+        )
+        profile["fallback_model"] = (
+            self.prof_fallback_model.currentData()
+            or self.prof_fallback_model.currentText()
+        )
         profile["ocr_engine"] = self.prof_ocr_engine.currentText()
         profile["prompt_id"] = self.prof_prompt.currentData()
         profile["correction_model"] = self.prof_correction_model.currentData()
@@ -1519,8 +1542,7 @@ class ConfigUI(QDialog):
 
         self.log_rotation.setPlaceholderText("e.g. 10 MB")
         self.log_rotation.setToolTip(
-            "Log file rotation policy.\n"
-            "Examples: '10 MB', '1 day', '100 MB'"
+            "Log file rotation policy.\nExamples: '10 MB', '1 day', '100 MB'"
         )
         layout.addRow("Log Rotation:", self.log_rotation)
 
@@ -1679,8 +1701,8 @@ class ConfigUI(QDialog):
 
     def _start_blink(self, widget: QWidget):
         """Start a blink animation on the target widget (4 on/off cycles)."""
-        from PyQt6.QtWidgets import QGraphicsColorizeEffect
         from PyQt6.QtGui import QColor
+        from PyQt6.QtWidgets import QGraphicsColorizeEffect
 
         self._stop_blink()  # Clean up any previous blink
         self._highlighted_widget = widget
@@ -1772,7 +1794,9 @@ class ConfigUI(QDialog):
         # Re-apply LanguageTool-specific visibility rules:
         # LT settings rows should only show when advanced is ON *and* engine is LT.
         if self._lt_setting_rows:
-            is_lt = self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            is_lt = (
+                self.realtime_correction_grammar_engine.currentData() == "languagetool"
+            )
             is_local = self.languagetool_mode.currentData() == "local"
             show = visible and is_lt
             for lt_layout, lt_row in self._lt_setting_rows:
@@ -2021,12 +2045,8 @@ class ConfigUI(QDialog):
         self.config["languagetool_url"] = (
             self.languagetool_url.text().strip() or "http://localhost:8081"
         )
-        self.config["languagetool_username"] = (
-            self.languagetool_username.text().strip()
-        )
-        self.config["languagetool_api_key"] = (
-            self.languagetool_api_key.text().strip()
-        )
+        self.config["languagetool_username"] = self.languagetool_username.text().strip()
+        self.config["languagetool_api_key"] = self.languagetool_api_key.text().strip()
         self.config["languagetool_language"] = (
             self.languagetool_language.currentData() or "auto"
         )
@@ -2070,10 +2090,10 @@ class ConfigUI(QDialog):
             self.config["embedding_engine"] = self.embedding_engine_combo.currentData()
             self.config["gemini_api_key"] = self.gemini_api_key.text()
 
-            from core.session_manager import SessionManager
-            from PyQt6.QtWidgets import QProgressDialog
             from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtWidgets import QApplication, QProgressDialog
+
+            from core.session_manager import SessionManager
 
             manager = SessionManager(self.config)
             sessions = manager.list_all_sessions()

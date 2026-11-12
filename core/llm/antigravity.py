@@ -2,13 +2,12 @@ import base64
 import json
 import logging
 import mimetypes
-
 import threading
-from typing import Optional
 
 import requests
 
 from core.sinks.base import Sink
+
 from .base import LLMEngine
 
 logger = logging.getLogger(__name__)
@@ -62,20 +61,18 @@ class AntigravityEngine(LLMEngine):
             status_callback(f"Antigravity service not reachable at {self.service_url}")
         return False
 
-
-
     def _stream_chat(
         self,
         prompt: str,
         status_callback,
-        sink: Optional[Sink],
+        sink: Sink | None,
         is_main: bool,
-        cancel_event: Optional[threading.Event] = None,
-        cwd: Optional[str] = None,
+        cancel_event: threading.Event | None = None,
+        cwd: str | None = None,
         new_session: bool = False,
-        system_instructions: Optional[str] = None,
-        image_base64: Optional[str] = None,
-        image_mime_type: Optional[str] = None,
+        system_instructions: str | None = None,
+        image_base64: str | None = None,
+        image_mime_type: str | None = None,
     ) -> str:
         """Send a chat request and stream SSE tokens to the sink."""
         if cancel_event and cancel_event.is_set():
@@ -109,7 +106,7 @@ class AntigravityEngine(LLMEngine):
         except requests.HTTPError as e:
             return f"Error: Antigravity service returned {e.response.status_code}"
         except Exception as e:
-            return f"Error: {str(e)}"
+            return f"Error: {e!s}"
 
         result_chunks = []
         for line in resp.iter_lines(decode_unicode=True):
@@ -149,7 +146,7 @@ class AntigravityEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -185,7 +182,7 @@ class AntigravityEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"

@@ -85,6 +85,7 @@ from PIL import Image
 
 app = Flask(__name__)
 
+
 def generate_frames():
     with mss.mss() as sct:
         monitor = sct.monitors[1]
@@ -92,16 +93,22 @@ def generate_frames():
             sct_img = sct.grab(monitor)
             img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
             img_io = io.BytesIO()
-            img.save(img_io, 'JPEG', quality=50)
+            img.save(img_io, "JPEG", quality=50)
             img_io.seek(0)
-            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + img_io.read() + b'\r\n')
+            yield (
+                b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + img_io.read() + b"\r\n"
+            )
 
-@app.route('/')
+
+@app.route("/")
 def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(
+        generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
 ```
 3. Open `http://<MAC_IP>:5000` in a web browser on Windows.
 

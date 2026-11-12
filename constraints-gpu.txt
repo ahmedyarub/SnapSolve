@@ -1,0 +1,31 @@
+# Versions of the CUDA-sensitive packages verified on an RTX 3060 (sm_86),
+# NVIDIA driver 621.14, Python 3.12, on 2026-11-12.
+#
+# Use as a constraints file so upgrades of anything else cannot drag these along:
+#   pip install -r requirements.txt -c constraints-gpu.txt
+# To move one of them, change its pin here, reinstall, and run
+#   python scripts/check_gpu.py
+# before committing the new pin.
+
+# PaddleOCR on the GPU (CUDA 12.9 / cuDNN 9.9 wheels)
+paddlepaddle-gpu==3.3.1
+paddleocr==3.6.0
+paddlex==3.6.1
+nvidia-cublas-cu12==12.9.0.13
+nvidia-cuda-runtime-cu12==12.9.37
+nvidia-cudnn-cu12==9.9.0.52
+nvidia-cufft-cu12==11.4.0.6
+nvidia-curand-cu12==10.3.10.19
+nvidia-cusolver-cu12==11.7.4.40
+nvidia-cusparse-cu12==12.5.9.5
+nvidia-nvjitlink-cu12==12.9.86
+
+# faster-whisper / CTranslate2 (CUDA 12, float16 on sm_86)
+ctranslate2==4.7.1
+faster-whisper==1.2.1
+
+# Shared numeric / vision stack the GPU packages are built against
+numpy==2.3.5
+opencv-python==4.13.0.92
+onnxruntime==1.26.0
+torch==2.12.0

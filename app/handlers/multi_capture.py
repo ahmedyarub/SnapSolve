@@ -1,14 +1,15 @@
 """Multi-capture handlers — accumulate multiple screen captures before sending to LLM."""
+
 import threading
 
 import app.state as state
+from app.handlers.capture import _ensure_ocr_engine
 from app.state import (
-    _show_status_popup,
     _make_status_callback,
     _run_in_processing_thread,
+    _show_status_popup,
     set_processing,
 )
-from app.handlers.capture import _ensure_ocr_engine
 from core.output import update_multi_state
 from core.sources import ScreenshotSource, get_active_source_instance
 from ui.selector import get_coordinates
@@ -53,7 +54,7 @@ def _perform_multi_capture_ocr(active_profile, coords, status_update):
         if hasattr(temp_source, "_temp_files") and temp_source._temp_files:
             image_path = temp_source._temp_files[-1]
     except Exception as ocr_error:
-        status_update(f"Error during OCR: {str(ocr_error)}")
+        status_update(f"Error during OCR: {ocr_error!s}")
     finally:
         temp_source.cleanup_all()
 
@@ -68,7 +69,9 @@ def _handle_multi_capture_ocr(active_profile, coords, config):
 
     status_update("Capturing screen...")
 
-    extracted_text, image_path = _perform_multi_capture_ocr(active_profile, coords, status_update)
+    extracted_text, image_path = _perform_multi_capture_ocr(
+        active_profile, coords, status_update
+    )
 
     if state.cancel_event.is_set():
         print("Multi-capture OCR was cancelled.")
@@ -79,6 +82,7 @@ def _handle_multi_capture_ocr(active_profile, coords, config):
             state.multi_capture_texts.append(extracted_text)
             # When Autosubmit is OFF, incrementally send OCR text to the text box
             from core.output import is_autosubmit_enabled, send_ocr_text_to_input
+
             if not is_autosubmit_enabled():
                 send_ocr_text_to_input(extracted_text)
         if image_path:
@@ -187,7 +191,9 @@ def handle_end_multi_capture(config, active_profile, active_prompt_text):
                 active_prompt_text,
                 status_update,
                 text=combined_text,
-                image_paths=state.multi_capture_images if state.multi_capture_images else None,
+                image_paths=state.multi_capture_images
+                if state.multi_capture_images
+                else None,
                 source_name="image",
             )
 

@@ -1,4 +1,5 @@
 """RecordButton — push-to-talk / toggle record button with long-press support."""
+
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QPushButton
 

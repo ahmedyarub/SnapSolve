@@ -1,4 +1,5 @@
 """SubtitleLabel and SubtitleWidget — real-time transcription subtitle overlay."""
+
 import logging
 import threading
 import time
@@ -6,9 +7,9 @@ import time
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QLabel,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.mixins import DraggableWidgetMixin
@@ -78,27 +79,27 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         screen = QApplication.primaryScreen().size()
         w = int(screen.width() * 0.6)
         self.setFixedWidth(w)
-        
+
         # Calculate correct height manually to avoid layout caching delays
         # This prevents the widget from "jumping" when new text is added
         margins = self.layout.contentsMargins()
         h = margins.top() + margins.bottom()
         label_w = w - margins.left() - margins.right()
-        
+
         for label in self.subtitle_labels:
             if label.hasHeightForWidth():
                 h += label.heightForWidth(label_w)
             else:
                 h += label.sizeHint().height()
-                
+
         # Add spacing between labels
         if self.subtitle_labels:
             h += self.layout.spacing() * (len(self.subtitle_labels) - 1)
-            
+
         # Ensure a minimum height if empty
         if h == 0:
             h = 50
-            
+
         x = (screen.width() - w) // 2
         y = screen.height() - h - 50
         self.setGeometry(x, y, w, h)

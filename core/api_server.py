@@ -3,28 +3,35 @@ import json
 import logging
 import os
 import threading
-from typing import Any, Optional, Dict
+from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import core.remote_control_server as rc_server
 from core.remote_control_server import (
     _handle_action,
-    _handle_mouse_move,
-    _handle_mouse_click,
-    _handle_mouse_double_click,
-    _handle_mouse_drag_start,
-    _handle_mouse_drag_end,
-    _handle_mouse_scroll,
-    _handle_keyboard_type,
-    _handle_set_transcription_language,
-    mouse_blocker,
     _handle_connect,
     _handle_disconnect,
-    _response_image_lock
+    _handle_keyboard_type,
+    _handle_mouse_click,
+    _handle_mouse_double_click,
+    _handle_mouse_drag_end,
+    _handle_mouse_drag_start,
+    _handle_mouse_move,
+    _handle_mouse_scroll,
+    _handle_set_transcription_language,
+    _response_image_lock,
+    mouse_blocker,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,11 +39,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="SnapSolve API Server", docs_url="/")
 
 # Application config dependency
-_app_config: Dict[str, Any] = {}
+_app_config: dict[str, Any] = {}
 _api_key: str = ""
 
 
-def verify_api_key(x_api_key: Optional[str] = Header(None, alias="Authorization")):
+def verify_api_key(x_api_key: str | None = Header(None, alias="Authorization")):
     if _api_key:
         if not x_api_key or x_api_key != _api_key:
             raise HTTPException(status_code=401, detail="Invalid API Key")
@@ -44,9 +51,12 @@ def verify_api_key(x_api_key: Optional[str] = Header(None, alias="Authorization"
 
 
 @app.get("/health", dependencies=[Depends(verify_api_key)])
-async def health_check():
-    import app.state as state
+def health_check():
+    # Plain def: FastAPI runs it in a worker thread, so the blocking HTTP probe
+    # below does not stall the event loop that serves the remote-control socket.
     import requests
+
+    import app.state as state
     from core.sources.sound import is_whisperlive_service_online
 
     ocr_status = "None"
@@ -68,18 +78,26 @@ async def health_check():
         "downstream_services": {
             "ocr": ocr_status,
             "whisperlive": whisperlive_status,
-            "antigravity": antigravity_status
-        }
+            "antigravity": antigravity_status,
+        },
     }
 
 
 @app.get("/config", dependencies=[Depends(verify_api_key)])
 async def get_config():
     import copy
+
     redacted_config = copy.deepcopy(_app_config)
-    for key in ["api_server_key", "google_api_key", "gemini_api_key", "ollama_api_key", "groq_api_key",
-                "anthropic_api_key", "openai_api_key"]:
-        if key in redacted_config and redacted_config[key]:
+    for key in [
+        "api_server_key",
+        "google_api_key",
+        "gemini_api_key",
+        "ollama_api_key",
+        "groq_api_key",
+        "anthropic_api_key",
+        "openai_api_key",
+    ]:
+        if redacted_config.get(key):
             redacted_config[key] = "***REDACTED***"
     return redacted_config
 
@@ -91,13 +109,15 @@ async def status():
 
 
 @app.get("/response_image")
-async def get_response_image():
+def get_response_image():
     # Legacy endpoint for Android client
     with _response_image_lock:
         image_path = rc_server._response_image_path
 
     if not image_path or not os.path.exists(image_path):
-        return JSONResponse(status_code=404, content={"error": "No response image available"})
+        return JSONResponse(
+            status_code=404, content={"error": "No response image available"}
+        )
     return FileResponse(image_path, media_type="image/png")
 
 
@@ -210,39 +230,40 @@ async def set_transcription_language(req: SetTranscriptionLanguageRequest):
 # Screenpipe-like endpoints
 @app.get("/search", dependencies=[Depends(verify_api_key)])
 async def search_sessions(
-    q: Optional[str] = None, 
-    limit: int = 20, 
+    q: str | None = None,
+    limit: int = 20,
     offset: int = 0,
     semantic: bool = False,
-    types: Optional[str] = None
+    types: str | None = None,
 ):
     import app.state as state
+
     manager = state.session_manager
     if not manager:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
 
-    allowed_types = set(types.split(",")) if types else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
-    
+    allowed_types = (
+        set(types.split(","))
+        if types
+        else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
+    )
+
     if not semantic or not q:
         # Standard text search across chunks
         all_chunks = manager.get_all_embeddings()
-        
+
         results_map = {}
         q_lower = q.lower() if q else ""
-        
+
         for c in all_chunks:
             if c.get("type") in allowed_types:
                 if q_lower and q_lower not in c.get("text", "").lower():
                     continue
-                    
+
                 s_id = c.get("session_id")
                 if s_id not in results_map:
-                    results_map[s_id] = {
-                        "id": s_id,
-                        "timestamp": 0,
-                        "tags": []
-                    }
-        
+                    results_map[s_id] = {"id": s_id, "timestamp": 0, "tags": []}
+
         # Populate session metadata
         sessions = manager.list_all_sessions()
         final_results = []
@@ -250,84 +271,97 @@ async def search_sessions(
             s_id = s.get("id")
             if not q_lower:
                 # If no query, return all sessions
-                final_results.append({
-                    "id": s_id,
-                    "name": s.get("name") or s.get("title") or s_id,
-                    "timestamp": s.get("updated_at", 0),
-                    "tags": s.get("tags", [])
-                })
+                final_results.append(
+                    {
+                        "id": s_id,
+                        "name": s.get("name") or s.get("title") or s_id,
+                        "timestamp": s.get("updated_at", 0),
+                        "tags": s.get("tags", []),
+                    }
+                )
             elif s_id in results_map:
                 res = results_map[s_id]
                 res["name"] = s.get("name") or s.get("title") or s_id
                 res["timestamp"] = s.get("updated_at", 0)
                 res["tags"] = s.get("tags", [])
                 final_results.append(res)
-                
+
         final_results.sort(key=lambda x: x["timestamp"], reverse=True)
-        return {"data": final_results[offset:offset + limit], "total": len(final_results)}
+        return {
+            "data": final_results[offset : offset + limit],
+            "total": len(final_results),
+        }
 
     # Semantic search logic
     try:
-        from core.llm.embeddings import get_embedding_engine
         import numpy as np
+
+        from core.llm.embeddings import get_embedding_engine
+
         engine = get_embedding_engine(_app_config)
         query_embedding = engine.embed_texts([q])[0]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
-        
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}") from e
+
     all_chunks = manager.get_all_embeddings()
     if not all_chunks:
         return {"data": [], "total": 0}
-        
-    allowed_types = set(types.split(",")) if types else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
-    
+
+    allowed_types = (
+        set(types.split(","))
+        if types
+        else {"prompt", "response", "transcription", "app_name", "summary", "tag"}
+    )
+
     filtered_chunks = []
     chunk_embeddings = []
-    
+
     for c in all_chunks:
         if c.get("type") in allowed_types:
             emb = c.get("embedding")
             if emb:
                 filtered_chunks.append(c)
                 chunk_embeddings.append(emb)
-                
+
     if not filtered_chunks:
         return {"data": [], "total": 0}
-        
+
     chunk_embeddings_np = np.array(chunk_embeddings, dtype=np.float32)
     norms = np.linalg.norm(chunk_embeddings_np, axis=1)
     q_norm = np.linalg.norm(query_embedding)
-    
+
     norms[norms == 0] = 1.0
     if q_norm == 0:
         q_norm = 1.0
-        
+
     similarities = np.dot(chunk_embeddings_np, query_embedding) / (norms * q_norm)
     top_indices = np.argsort(similarities)[::-1]
-    
+
     results = []
     for idx in top_indices:
         sim = float(similarities[idx])
         if sim < 0.15:  # lower threshold to allow more results
             continue
-            
-        c = filtered_chunks[idx]
-        results.append({
-            "session_id": c["session_id"],
-            "type": c["type"],
-            "index": c["index"],
-            "text": c["text"],
-            "score": sim
-        })
-        
-    sliced_results = results[offset:offset + limit]
-    return {"data": sliced_results, "total": len(results)}
 
+        c = filtered_chunks[idx]
+        results.append(
+            {
+                "session_id": c["session_id"],
+                "type": c["type"],
+                "index": c["index"],
+                "text": c["text"],
+                "score": sim,
+            }
+        )
+
+    sliced_results = results[offset : offset + limit]
+    return {"data": sliced_results, "total": len(results)}
 
 
 @app.get("/tags", dependencies=[Depends(verify_api_key)])
 async def get_tags():
     import app.state as state
+
     manager = state.session_manager
     if not manager:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
@@ -344,20 +378,29 @@ async def get_tags():
 @app.get("/sessions", dependencies=[Depends(verify_api_key)])
 async def get_sessions(limit: int = 20, offset: int = 0):
     import app.state as state
+
     manager = state.session_manager
     if not manager:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
 
     sessions = manager.list_all_sessions()
     sessions.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
-    results = [{"id": s.get("id"), "name": s.get("name") or s.get("title") or "", "timestamp": s.get("updated_at"),
-                "tags": s.get("tags", [])} for s in sessions[offset:offset + limit]]
+    results = [
+        {
+            "id": s.get("id"),
+            "name": s.get("name") or s.get("title") or "",
+            "timestamp": s.get("updated_at"),
+            "tags": s.get("tags", []),
+        }
+        for s in sessions[offset : offset + limit]
+    ]
     return {"data": results, "total": len(sessions)}
 
 
 @app.get("/sessions/{session_id}", dependencies=[Depends(verify_api_key)])
 async def get_session(session_id: str):
     import app.state as state
+
     manager = state.session_manager
     if not manager:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
@@ -371,7 +414,9 @@ async def get_session(session_id: str):
         "id": session_id,
         "name": session_data.get("name") or session_data.get("title") or "",
         "tags": session_data.get("tags", []),
-        "history": [msg if isinstance(msg, dict) else msg.model_dump_json() for msg in history]
+        "history": [
+            msg if isinstance(msg, dict) else msg.model_dump_json() for msg in history
+        ],
     }
 
 
@@ -394,30 +439,50 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 data = json.loads(data_str)
             except json.JSONDecodeError as exc:
-                await websocket.send_text(json.dumps({"type": "error", "message": f"Invalid JSON: {exc}"}))
+                await websocket.send_text(
+                    json.dumps({"type": "error", "message": f"Invalid JSON: {exc}"})
+                )
                 continue
 
             msg_type = data.get("type")
             if not msg_type:
-                await websocket.send_text(json.dumps({"type": "error", "message": "Missing 'type' field"}))
+                await websocket.send_text(
+                    json.dumps({"type": "error", "message": "Missing 'type' field"})
+                )
                 continue
 
+            # Called within this iteration; d=data binds the current message explicitly.
             handlers = {
-                "action": lambda: _handle_action(data, _app_config),
-                "mouse_move": lambda: _handle_mouse_move(data, _app_config),
-                "mouse_click": lambda: _handle_mouse_click(data, _app_config),
-                "mouse_double_click": lambda: _handle_mouse_double_click(data, _app_config),
-                "mouse_drag_start": lambda: _handle_mouse_drag_start(_app_config),
-                "mouse_drag_end": lambda: _handle_mouse_drag_end(_app_config),
-                "mouse_scroll": lambda: _handle_mouse_scroll(data, _app_config),
-                "keyboard_type": lambda: _handle_keyboard_type(data, _app_config),
-                "response_image_ack": lambda: rc_server._handle_response_image_ack(),
-                "set_transcription_language": lambda: _handle_set_transcription_language(data, _app_config),
+                "action": lambda d=data: _handle_action(d, _app_config),
+                "mouse_move": lambda d=data: _handle_mouse_move(d, _app_config),
+                "mouse_click": lambda d=data: _handle_mouse_click(d, _app_config),
+                "mouse_double_click": lambda d=data: _handle_mouse_double_click(
+                    d, _app_config
+                ),
+                "mouse_drag_start": lambda d=data: _handle_mouse_drag_start(
+                    _app_config
+                ),
+                "mouse_drag_end": lambda d=data: _handle_mouse_drag_end(_app_config),
+                "mouse_scroll": lambda d=data: _handle_mouse_scroll(d, _app_config),
+                "keyboard_type": lambda d=data: _handle_keyboard_type(d, _app_config),
+                "response_image_ack": lambda d=data: (
+                    rc_server._handle_response_image_ack()
+                ),
+                "set_transcription_language": lambda d=data: (
+                    _handle_set_transcription_language(d, _app_config)
+                ),
             }
 
             handler = handlers.get(msg_type)
             if handler is None:
-                await websocket.send_text(json.dumps({"type": "error", "message": f"Unknown message type: {msg_type}"}))
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "message": f"Unknown message type: {msg_type}",
+                        }
+                    )
+                )
                 continue
 
             response = handler()
@@ -438,13 +503,17 @@ async def broadcast_state(state: dict[str, dict[str, bool]]):
     with _response_image_lock:
         has_image = rc_server._has_new_response_image
 
-    message = json.dumps({
-        "type": "state_update",
-        "buttons": state,
-        "has_new_response_image": has_image,
-        "transcription_language": _app_config.get("transcription_language", "en"),
-        "periodic_screenshots_enabled": _app_config.get("periodic_screenshots_enabled", False),
-    })
+    message = json.dumps(
+        {
+            "type": "state_update",
+            "buttons": state,
+            "has_new_response_image": has_image,
+            "transcription_language": _app_config.get("transcription_language", "en"),
+            "periodic_screenshots_enabled": _app_config.get(
+                "periodic_screenshots_enabled", False
+            ),
+        }
+    )
 
     for ws in _active_websockets:
         try:
@@ -454,23 +523,27 @@ async def broadcast_state(state: dict[str, dict[str, bool]]):
 
 
 class APIServer:
-    def __init__(self, host: str = "0.0.0.0", port: int = 3031, config: Optional[dict] = None):
+    def __init__(
+        self, host: str = "0.0.0.0", port: int = 3031, config: dict | None = None
+    ):
         self.host = host
         self.port = port
         global _app_config, _api_key
         _app_config = config or {}
         _api_key = _app_config.get("api_server_key", "")
         self.is_running = False
-        self._server_thread: Optional[threading.Thread] = None
-        self._uvicorn_server: Optional[uvicorn.Server] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._server_thread: threading.Thread | None = None
+        self._uvicorn_server: uvicorn.Server | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def start(self):
         if self.is_running:
             return
 
         self.is_running = True
-        self._server_thread = threading.Thread(target=self._run_server, daemon=True, name="APIServer")
+        self._server_thread = threading.Thread(
+            target=self._run_server, daemon=True, name="APIServer"
+        )
         self._server_thread.start()
         logger.info("API server starting on http://%s:%s", self.host, self.port)
 
@@ -478,7 +551,9 @@ class APIServer:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
-        config = uvicorn.Config(app=app, host=self.host, port=self.port, log_level="warning")
+        config = uvicorn.Config(
+            app=app, host=self.host, port=self.port, log_level="warning"
+        )
         self._uvicorn_server = uvicorn.Server(config)
 
         try:
@@ -508,10 +583,12 @@ class APIServer:
         logger.info("API server stopped")
 
 
-api_server_instance: Optional[APIServer] = None
+api_server_instance: APIServer | None = None
 
 
-def start_api_server(host: str = "0.0.0.0", port: int = 3031, config: Optional[dict] = None) -> APIServer:
+def start_api_server(
+    host: str = "0.0.0.0", port: int = 3031, config: dict | None = None
+) -> APIServer:
     global api_server_instance
     if api_server_instance is None:
         api_server_instance = APIServer(host, port, config)

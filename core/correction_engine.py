@@ -5,13 +5,14 @@ periodically sends them to an LLM for fact-checking, grammar correction,
 and/or content suggestions.  Results are emitted via UISignals so the
 CorrectionPanelWidget can display them without blocking the recording thread.
 """
+
 import hashlib
 import json
 import logging
 import threading
 import time
-from typing import Optional
 
+from core.languagetool import LanguageToolClient
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 
@@ -28,6 +29,7 @@ class _NullSink(Sink):
 
     def process_chunk(self, chunk: str, is_main: bool = True, replace: bool = False):
         pass
+
 
 # Prompt IDs in prompts.json for each correction type
 _PROMPT_IDS: dict[str, str] = {
@@ -69,7 +71,7 @@ def _parse_corrections(raw_text: str) -> list[dict]:
     if start == -1 or end == -1:
         return []
     try:
-        return json.loads(text[start:end + 1])
+        return json.loads(text[start : end + 1])
     except (json.JSONDecodeError, ValueError):
         logger.warning("[CorrectionEngine] Failed to parse LLM response as JSON")
         return []
@@ -101,10 +103,11 @@ class CorrectionEngine:
         self._audio_source: str = config.get("realtime_correction_audio_source", "both")
 
         # Grammar engine: "llm" (default) or "languagetool"
-        self._grammar_engine: str = config.get("realtime_correction_grammar_engine", "llm")
-        self._lt_client: "LanguageToolClient | None" = None
+        self._grammar_engine: str = config.get(
+            "realtime_correction_grammar_engine", "llm"
+        )
+        self._lt_client: LanguageToolClient | None = None
         if self._grammar_engine == "languagetool":
-            from core.languagetool import LanguageToolClient  # noqa: PLC0415
             self._lt_client = LanguageToolClient(config)
 
         # Determine which correction types are enabled
@@ -127,7 +130,8 @@ class CorrectionEngine:
         if not text.strip() or not self._enabled_types:
             logger.debug(
                 "[CorrectionEngine] Skipping: text=%r, enabled_types=%s",
-                text.strip()[:50], self._enabled_types,
+                text.strip()[:50],
+                self._enabled_types,
             )
             return
 
@@ -135,13 +139,15 @@ class CorrectionEngine:
         if self._audio_source != "both" and source != self._audio_source:
             logger.debug(
                 "[CorrectionEngine] Ignoring source '%s' (configured for '%s' only)",
-                source, self._audio_source,
+                source,
+                self._audio_source,
             )
             return
 
         logger.info(
             "[CorrectionEngine] Sentence finalized (%s): %s",
-            source, text.strip()[:80],
+            source,
+            text.strip()[:80],
         )
 
         window = None
@@ -149,7 +155,8 @@ class CorrectionEngine:
             self._sentence_buffer.append(text.strip())
             logger.info(
                 "[CorrectionEngine] Buffer size: %d / %d",
-                len(self._sentence_buffer), self._window_size,
+                len(self._sentence_buffer),
+                self._window_size,
             )
 
             if len(self._sentence_buffer) >= self._window_size:
@@ -167,7 +174,8 @@ class CorrectionEngine:
 
         # Fire background evaluation — don't block the recording thread
         logger.info(
-            "[CorrectionEngine] Evaluating window of %d sentences", len(window),
+            "[CorrectionEngine] Evaluating window of %d sentences",
+            len(window),
         )
         threading.Thread(
             target=self._evaluate_window,
@@ -200,7 +208,8 @@ class CorrectionEngine:
                         transcript_block[:100],
                     )
                     lt_corrections = self._lt_client.check(
-                        transcript_block, source_sentences=sentences,
+                        transcript_block,
+                        source_sentences=sentences,
                     )
                     logger.info(
                         "[CorrectionEngine] LanguageTool returned %d corrections",
@@ -226,12 +235,13 @@ class CorrectionEngine:
                 )
                 continue
 
-            full_prompt = f"{system_prompt}\n\nTranscript:\n\"{transcript_block}\""
+            full_prompt = f'{system_prompt}\n\nTranscript:\n"{transcript_block}"'
 
             try:
                 logger.info(
                     "[CorrectionEngine] Calling LLM for type '%s', transcript: %s",
-                    ctype, transcript_block[:100],
+                    ctype,
+                    transcript_block[:100],
                 )
                 raw_response = self.llm_engine.process_text(
                     full_prompt,
@@ -243,13 +253,15 @@ class CorrectionEngine:
 
                 logger.info(
                     "[CorrectionEngine] LLM response for '%s': %s",
-                    ctype, (raw_response or "")[:200],
+                    ctype,
+                    (raw_response or "")[:200],
                 )
 
                 parsed = _parse_corrections(raw_response)
                 logger.info(
                     "[CorrectionEngine] Parsed %d corrections for '%s'",
-                    len(parsed), ctype,
+                    len(parsed),
+                    ctype,
                 )
                 for item in parsed:
                     correction = {
@@ -281,6 +293,7 @@ class CorrectionEngine:
         # Emit each correction to the UI via signals
         try:
             from core.ui.signals import ui_signals
+
             for correction in all_corrections:
                 ui_signals.show_correction.emit(correction)
         except Exception as e:

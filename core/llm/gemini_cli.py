@@ -2,10 +2,12 @@ import json
 import os
 import shutil
 import subprocess
-import time
 import threading
-from .base import LLMEngine
+import time
+
 from core.sinks.base import Sink
+
+from .base import LLMEngine
 
 
 def _execute_request(
@@ -13,7 +15,7 @@ def _execute_request(
     status_callback,
     sink: Sink,
     is_main: bool,
-    cancel_event: threading.Event = None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     if cancel_event and cancel_event.is_set():
         return "Cancelled"
@@ -56,7 +58,7 @@ def _execute_request(
     except subprocess.CalledProcessError as e:
         return f"CLI Error: {e.stderr}"
     except Exception as e:
-        return f"Error executing CLI: {str(e)}"
+        return f"Error executing CLI: {e!s}"
 
 
 class GeminiCLIEngine(LLMEngine):
@@ -77,7 +79,7 @@ class GeminiCLIEngine(LLMEngine):
             return True
         except Exception as e:
             if status_callback:
-                status_callback(f"Gemini CLI warmup failed: {str(e)}")
+                status_callback(f"Gemini CLI warmup failed: {e!s}")
             return False
 
     @property
@@ -91,7 +93,7 @@ class GeminiCLIEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -117,7 +119,7 @@ class GeminiCLIEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"

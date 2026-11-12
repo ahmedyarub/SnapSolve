@@ -3,12 +3,12 @@
 Shows periodic screenshots as a filmstrip, event markers for different
 interaction types, a draggable playhead, and contextual transcription display.
 """
+
 import logging
 import os
 from datetime import datetime
-from typing import Optional
 
-from PyQt6.QtCore import QEvent, Qt, QRect, QRectF, QSize, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QBrush,
     QColor,
@@ -25,15 +25,13 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QTextBrowser,
     QToolTip,
     QVBoxLayout,
     QWidget,
-    QTextBrowser,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,9 +93,21 @@ _ZOOM_STEP = 0.15
 
 # Colour palette for app name spans — index 0 (red) is reserved for SnapSolve
 _APP_COLORS = [
-    "#e06c75", "#61afef", "#98c379", "#d19a66", "#c678dd",
-    "#56b6c2", "#e5c07b", "#be5046", "#7ec8e3", "#c3e88d",
-    "#ff75a0", "#8da0cb", "#a1d99b", "#fdae6b", "#bcbddc",
+    "#e06c75",
+    "#61afef",
+    "#98c379",
+    "#d19a66",
+    "#c678dd",
+    "#56b6c2",
+    "#e5c07b",
+    "#be5046",
+    "#7ec8e3",
+    "#c3e88d",
+    "#ff75a0",
+    "#8da0cb",
+    "#a1d99b",
+    "#fdae6b",
+    "#bcbddc",
 ]
 _SNAPSOLVE_COLOR = _APP_COLORS[0]  # red — always reserved for SnapSolve
 _OTHER_APP_COLORS = _APP_COLORS[1:]  # palette for all other apps
@@ -111,7 +121,7 @@ class _ThumbnailCache:
         self._order: list[str] = []
         self._max_size = max_size
 
-    def get(self, path: str) -> Optional[QPixmap]:
+    def get(self, path: str) -> QPixmap | None:
         if path in self._cache:
             # Move to end (most-recently-used)
             self._order.remove(path)
@@ -143,7 +153,7 @@ class _FilmstripWidget(QWidget):
 
     thumbnailClicked = pyqtSignal(int)  # index into screenshot events
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._screenshots: list[dict] = []  # list of event dicts (type="screenshot")
         self._time_start: float = 0.0
@@ -198,7 +208,8 @@ class _FilmstripWidget(QWidget):
             pix.fill(QColor(_BG_DARK))
         else:
             pix = pix.scaled(
-                _THUMB_WIDTH, _THUMB_HEIGHT,
+                _THUMB_WIDTH,
+                _THUMB_HEIGHT,
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -220,7 +231,6 @@ class _FilmstripWidget(QWidget):
 
         font = QFont("Segoe UI", 8)
         painter.setFont(font)
-        fm = QFontMetrics(font)
 
         for i, ss in enumerate(self._screenshots):
             rect = self._thumb_rect(i)
@@ -243,7 +253,9 @@ class _FilmstripWidget(QWidget):
                 glow_color.setAlpha(60 if is_selected else 35)
                 glow_rect = rect.adjusted(-3, -3, 3, 3)
                 glow_path = QPainterPath()
-                glow_path.addRoundedRect(QRectF(glow_rect), _THUMB_RADIUS + 2, _THUMB_RADIUS + 2)
+                glow_path.addRoundedRect(
+                    QRectF(glow_rect), _THUMB_RADIUS + 2, _THUMB_RADIUS + 2
+                )
                 painter.fillPath(glow_path, glow_color)
 
             # Thumbnail with rounded corners
@@ -254,10 +266,14 @@ class _FilmstripWidget(QWidget):
             painter.drawPixmap(rect, pix)
 
             # Dark gradient overlay at bottom for timestamp legibility
-            gradient = QLinearGradient(rect.left(), rect.bottom() - 24, rect.left(), rect.bottom())
+            gradient = QLinearGradient(
+                rect.left(), rect.bottom() - 24, rect.left(), rect.bottom()
+            )
             gradient.setColorAt(0.0, QColor(0, 0, 0, 0))
             gradient.setColorAt(1.0, QColor(0, 0, 0, 160))
-            painter.fillRect(QRect(rect.left(), rect.bottom() - 24, rect.width(), 24), gradient)
+            painter.fillRect(
+                QRect(rect.left(), rect.bottom() - 24, rect.width(), 24), gradient
+            )
             painter.restore()
 
             # Border
@@ -272,7 +288,9 @@ class _FilmstripWidget(QWidget):
             ts = ss["timestamp"]
             time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
             painter.setPen(QColor(255, 255, 255, 200))
-            label_rect = QRect(rect.left() + 4, rect.bottom() - 18, rect.width() - 8, 16)
+            label_rect = QRect(
+                rect.left() + 4, rect.bottom() - 18, rect.width() - 8, 16
+            )
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, time_str)
 
         painter.end()
@@ -342,7 +360,9 @@ class _AppIconCache:
         self._provider = QFileIconProvider()
         os.makedirs(self._CACHE_DIR, exist_ok=True)
 
-    def get_icon(self, process_name: str, exe_path: str, size: int = _ICON_SIZE) -> Optional[QPixmap]:
+    def get_icon(
+        self, process_name: str, exe_path: str, size: int = _ICON_SIZE
+    ) -> QPixmap | None:
         """Return a *size×size* ``QPixmap`` for *process_name*, or ``None``."""
         if not process_name:
             return None
@@ -358,7 +378,8 @@ class _AppIconCache:
             pm = QPixmap(self._SNAPSOLVE_ICON)
             if not pm.isNull():
                 scaled = pm.scaled(
-                    size, size,
+                    size,
+                    size,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -371,7 +392,8 @@ class _AppIconCache:
             pm = QPixmap(disk_path)
             if not pm.isNull():
                 scaled = pm.scaled(
-                    size, size,
+                    size,
+                    size,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -381,7 +403,7 @@ class _AppIconCache:
         # 4. Extract from exe path
         if exe_path and os.path.isfile(exe_path):
             try:
-                from PyQt6.QtCore import QFileInfo  # noqa: PLC0415
+                from PyQt6.QtCore import QFileInfo
 
                 file_info = QFileInfo(exe_path)
                 icon = self._provider.icon(file_info)
@@ -391,12 +413,15 @@ class _AppIconCache:
                         # Save to disk cache
                         pm.save(disk_path, "PNG")
                         scaled = pm.scaled(
-                            size, size,
+                            size,
+                            size,
                             Qt.AspectRatioMode.KeepAspectRatio,
                             Qt.TransformationMode.SmoothTransformation,
                         )
                         self._memory[key] = scaled
-                        logger.debug("Cached icon for %s -> %s", process_name, disk_path)
+                        logger.debug(
+                            "Cached icon for %s -> %s", process_name, disk_path
+                        )
                         return scaled
             except Exception as exc:
                 logger.debug("Failed to extract icon for %s: %s", process_name, exc)
@@ -407,8 +432,14 @@ class _AppIconCache:
 class _AppSpan:
     """A contiguous time span where the same application was focused."""
 
-    def __init__(self, app_name: str, start_ts: float, end_ts: float,
-                 window_title: str, exe_path: str) -> None:
+    def __init__(
+        self,
+        app_name: str,
+        start_ts: float,
+        end_ts: float,
+        window_title: str,
+        exe_path: str,
+    ) -> None:
         self.app_name = app_name
         self.start_ts = start_ts
         self.end_ts = end_ts
@@ -419,7 +450,7 @@ class _AppSpan:
 class _AppTrackWidget(QWidget):
     """Horizontal track showing coloured spans for each active application."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._spans: list[_AppSpan] = []
         self._time_start: float = 0.0
@@ -427,7 +458,7 @@ class _AppTrackWidget(QWidget):
         self._total_width: int = _MIN_FILMSTRIP_WIDTH
         self._hovered_index: int = -1
         self._icon_cache = _AppIconCache()
-        self._icons: dict[str, Optional[QPixmap]] = {}  # app_name -> resolved pixmap
+        self._icons: dict[str, QPixmap | None] = {}  # app_name -> resolved pixmap
         self._app_colors: dict[str, str] = {}  # app_name -> hex colour
         self.setMouseTracking(True)
         self.setFixedHeight(_APP_TRACK_HEIGHT)
@@ -564,8 +595,14 @@ class _AppTrackWidget(QWidget):
             painter.setPen(text_color)
             text_rect = rect.adjusted(text_x_offset, 0, -4, 0)
             if text_rect.width() > 8:  # only draw text if there's room
-                elided = fm.elidedText(span.app_name, Qt.TextElideMode.ElideRight, text_rect.width())
-                painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
+                elided = fm.elidedText(
+                    span.app_name, Qt.TextElideMode.ElideRight, text_rect.width()
+                )
+                painter.drawText(
+                    text_rect,
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    elided,
+                )
 
         painter.end()
 
@@ -613,7 +650,7 @@ class _EventTrackWidget(QWidget):
 
     eventClicked = pyqtSignal(dict)  # the event dict
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._events: list[dict] = []  # non-screenshot events
         self._time_start: float = 0.0
@@ -624,7 +661,9 @@ class _EventTrackWidget(QWidget):
         self.setFixedHeight(_MARKER_TRACK_HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_events(self, events: list[dict], time_start: float, time_end: float, total_width: int) -> None:
+    def set_events(
+        self, events: list[dict], time_start: float, time_end: float, total_width: int
+    ) -> None:
         self._events = events
         self._time_start = time_start
         self._time_end = time_end
@@ -701,7 +740,9 @@ class _EventTrackWidget(QWidget):
             # Marker circle
             painter.setBrush(QBrush(color_with_alpha))
             painter.setPen(QPen(QColor(_BG_DARK), 1.5))
-            painter.drawEllipse(x - dot_radius, y_mid - dot_radius, dot_radius * 2, dot_radius * 2)
+            painter.drawEllipse(
+                x - dot_radius, y_mid - dot_radius, dot_radius * 2, dot_radius * 2
+            )
 
             # Icon above marker
             icon_rect = QRect(x - 10, 1, 20, 16)
@@ -729,8 +770,12 @@ class _EventTrackWidget(QWidget):
                 if len(excerpt) > 60:
                     mid = excerpt.rfind(" ", 0, 60)
                     if mid > 20:
-                        excerpt = excerpt[:mid] + "\n" + excerpt[mid + 1:]
-                tip = f"{icon}  {src.capitalize()} prompt  [{ts}]\n\n{excerpt}" if excerpt else f"{icon}  {src.capitalize()} [{ts}]"
+                        excerpt = excerpt[:mid] + "\n" + excerpt[mid + 1 :]
+                tip = (
+                    f"{icon}  {src.capitalize()} prompt  [{ts}]\n\n{excerpt}"
+                    if excerpt
+                    else f"{icon}  {src.capitalize()} [{ts}]"
+                )
             elif ev_type == "transcription_separator":
                 line = ev["data"].get("line", "")
                 tip = f"📜  Transcription  [{ts}]\n{line}"
@@ -772,7 +817,7 @@ class _TimeRulerWidget(QWidget):
 
     playheadMoved = pyqtSignal(float)  # timestamp
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._time_start: float = 0.0
         self._time_end: float = 1.0
@@ -782,7 +827,9 @@ class _TimeRulerWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def set_time_range(self, time_start: float, time_end: float, total_width: int) -> None:
+    def set_time_range(
+        self, time_start: float, time_end: float, total_width: int
+    ) -> None:
         self._time_start = time_start
         self._time_end = time_end
         self._total_width = max(_MIN_FILMSTRIP_WIDTH, total_width)
@@ -895,7 +942,7 @@ class _TranscriptionPanel(QFrame):
 
     lineClicked = pyqtSignal(float)  # timestamp of the clicked line
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._transcription_lines: list[tuple[float, str]] = []  # (timestamp, text)
         self._current_time: float = 0.0
@@ -917,7 +964,7 @@ class _TranscriptionPanel(QFrame):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         lbl = QLabel("📜 Transcription Context  (click a line to jump)")
         lbl.setStyleSheet(f"""
             QLabel {{
@@ -931,7 +978,7 @@ class _TranscriptionPanel(QFrame):
         """)
         h_layout.addWidget(lbl)
         h_layout.addStretch()
-        
+
         self._toggle_btn = QPushButton("▼")
         self._toggle_btn.setFixedSize(20, 20)
         self._toggle_btn.setToolTip("Collapse / Expand")
@@ -949,12 +996,14 @@ class _TranscriptionPanel(QFrame):
         """)
         self._toggle_btn.clicked.connect(self._toggle_collapse)
         h_layout.addWidget(self._toggle_btn)
-        
+
         layout.addWidget(header)
 
         self._text_browser = QTextBrowser()
         self._text_browser.setOpenLinks(False)
-        self._text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._text_browser.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self._text_browser.setStyleSheet(f"""
             QTextBrowser {{
                 background-color: {_BG_DARK};
@@ -982,17 +1031,20 @@ class _TranscriptionPanel(QFrame):
         # Reset previous formats (simplest way is to just let the HTML re-render, but we only have text)
         # Actually, to clear previous highlights, we can just re-set the HTML!
         self._render_html()
-        
+
         if not self._search_term:
             return
-            
-        from PyQt6.QtGui import QTextCharFormat, QColor
+
         from PyQt6.QtCore import QRegularExpression
+        from PyQt6.QtGui import QColor, QTextCharFormat
+
         fmt = QTextCharFormat()
         fmt.setBackground(QColor("#e5c07b"))
         fmt.setForeground(QColor("#282c34"))
-        
-        regex = QRegularExpression(self._search_term, QRegularExpression.PatternOption.CaseInsensitiveOption)
+
+        regex = QRegularExpression(
+            self._search_term, QRegularExpression.PatternOption.CaseInsensitiveOption
+        )
         cursor = doc.find(regex)
         while not cursor.isNull():
             cursor.mergeCharFormat(fmt)
@@ -1020,6 +1072,7 @@ class _TranscriptionPanel(QFrame):
     def _render_html(self) -> None:
         import html
         import re
+
         if not self._transcription_lines:
             self._text_browser.setHtml("No transcription data available.")
             return
@@ -1028,7 +1081,7 @@ class _TranscriptionPanel(QFrame):
         speaker_re = re.compile(r"^\[(.*?)\]\s*(.*)$")
         for ts, text in self._transcription_lines:
             time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-            
+
             match = speaker_re.match(text)
             if match:
                 speaker = html.escape(match.group(1))
@@ -1036,10 +1089,12 @@ class _TranscriptionPanel(QFrame):
                 content_html = f'<span style="color:{_ACCENT_GREEN};font-weight:bold;">[{speaker}]</span> {rest}'
             else:
                 content_html = html.escape(text)
-                
+
             # Use anchor for navigation
-            lines_html.append(f'<a name="{ts}"></a><a href="{ts}" style="text-decoration:none; color:{_TEXT_BRIGHT};">[{time_str}]  {content_html}</a><br>')
-        
+            lines_html.append(
+                f'<a name="{ts}"></a><a href="{ts}" style="text-decoration:none; color:{_TEXT_BRIGHT};">[{time_str}]  {content_html}</a><br>'
+            )
+
         self._text_browser.setHtml("".join(lines_html))
 
     def set_transcription_lines_with_timestamps(
@@ -1060,16 +1115,16 @@ class _TranscriptionPanel(QFrame):
         # Find closest previous sentence
         best_idx = 0
         best_ts = self._transcription_lines[0][0]
-        for i, (ts, text) in enumerate(self._transcription_lines):
+        for i, (ts, _text) in enumerate(self._transcription_lines):
             if ts <= timestamp:
                 best_idx = i
                 best_ts = ts
             else:
                 break
-        
+
+        from PyQt6.QtGui import QColor, QTextCursor, QTextFormat
         from PyQt6.QtWidgets import QTextEdit
-        from PyQt6.QtGui import QTextCursor, QColor, QTextFormat
-        
+
         doc = self._text_browser.document()
         block = doc.findBlockByNumber(best_idx)
         if block.isValid():
@@ -1079,7 +1134,7 @@ class _TranscriptionPanel(QFrame):
             selection.format.setForeground(QColor(_ACCENT_GREEN))
             selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
             selection.cursor = cursor
-            
+
             self._text_browser.setExtraSelections([selection])
             self._text_browser.scrollToAnchor(str(best_ts))
 
@@ -1096,7 +1151,7 @@ class _PlayheadOverlay(QWidget):
     event track). The ruler handles click-to-seek / drag.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._time_start: float = 0.0
         self._time_end: float = 1.0
@@ -1177,12 +1232,12 @@ class SessionTimelineWidget(QWidget):
     """Screenpipe-inspired session timeline with filmstrip, event markers,
     time ruler, and transcription context."""
 
-    screenshotSelected = pyqtSignal(str)     # absolute path to full-res screenshot
-    interactionSelected = pyqtSignal(int)    # interaction index in history
+    screenshotSelected = pyqtSignal(str)  # absolute path to full-res screenshot
+    interactionSelected = pyqtSignal(int)  # interaction index in history
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._session_id: Optional[str] = None
+        self._session_id: str | None = None
         self._all_events: list[dict] = []
         self._screenshot_events: list[dict] = []
         self._marker_events: list[dict] = []
@@ -1323,14 +1378,18 @@ class SessionTimelineWidget(QWidget):
 
         # Transcription context panel (fixed height, no splitter)
         self._transcription_panel = _TranscriptionPanel()
-        self._transcription_panel.lineClicked.connect(self._on_transcription_line_clicked)
+        self._transcription_panel.lineClicked.connect(
+            self._on_transcription_line_clicked
+        )
         self._transcription_panel.setFixedHeight(_TRANSCRIPTION_HEIGHT)
         content_layout.addWidget(self._transcription_panel)
 
         root.addWidget(self._content)
 
         # Placeholder for empty state
-        self._placeholder = QLabel("No timeline data — enable periodic screenshots to build a visual history")
+        self._placeholder = QLabel(
+            "No timeline data — enable periodic screenshots to build a visual history"
+        )
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet(f"""
             QLabel {{
@@ -1348,11 +1407,19 @@ class SessionTimelineWidget(QWidget):
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress:
             if getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
-                if obj in (self._tracks_container, self._filmstrip, self._app_track, self._event_track, self._ruler):
+                if obj in (
+                    self._tracks_container,
+                    self._filmstrip,
+                    self._app_track,
+                    self._event_track,
+                    self._ruler,
+                ):
                     pos = event.position().toPoint()
                     if obj != self._tracks_container:
                         pos = obj.mapTo(self._tracks_container, pos)
-                    playhead_x = self._playhead._time_to_x(self._playhead._playhead_time)
+                    playhead_x = self._playhead._time_to_x(
+                        self._playhead._playhead_time
+                    )
                     if abs(pos.x() - playhead_x) <= 12:
                         self._dragging_playhead = True
                         return True
@@ -1394,7 +1461,9 @@ class SessionTimelineWidget(QWidget):
         self._session_id = session_id
         self._all_events = SessionManager.get_timeline_events(session_id)
 
-        self._screenshot_events = [e for e in self._all_events if e["type"] == "screenshot"]
+        self._screenshot_events = [
+            e for e in self._all_events if e["type"] == "screenshot"
+        ]
         self._marker_events = [e for e in self._all_events if e["type"] != "screenshot"]
 
         if not self._all_events:
@@ -1483,7 +1552,9 @@ class SessionTimelineWidget(QWidget):
 
     def _resize_playhead(self) -> None:
         """Resize the playhead overlay to match the tracks container."""
-        self._playhead.setGeometry(0, 0, self._tracks_container.width(), self._tracks_container.height())
+        self._playhead.setGeometry(
+            0, 0, self._tracks_container.width(), self._tracks_container.height()
+        )
 
     def _toggle_collapse(self) -> None:
         self._collapsed = not self._collapsed
@@ -1508,21 +1579,19 @@ class SessionTimelineWidget(QWidget):
             return
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 raw_lines = f.readlines()
-        except IOError:
+        except OSError:
             self._transcription_panel.set_transcription_lines_with_timestamps([])
             return
 
-        # We need to assign timestamps to each line.
-        # Strategy: distribute transcription lines proportionally between
-        # the session start/end time, using interaction timestamps as anchors.
-        interaction_ts = [
-            e["timestamp"] for e in self._all_events if e["type"] == "interaction"
-        ]
+        # Assign timestamps by distributing transcription lines proportionally
+        # between the session start and end time.
 
         lines_with_ts: list[tuple[float, str]] = []
-        non_empty_lines = [(i, line.strip()) for i, line in enumerate(raw_lines) if line.strip()]
+        non_empty_lines = [
+            (i, line.strip()) for i, line in enumerate(raw_lines) if line.strip()
+        ]
 
         if not non_empty_lines:
             self._transcription_panel.set_transcription_lines_with_timestamps([])
@@ -1532,7 +1601,7 @@ class SessionTimelineWidget(QWidget):
         t_start = self._time_start
         t_end = self._time_end
 
-        for seq_idx, (line_idx, text) in enumerate(non_empty_lines):
+        for seq_idx, (_line_idx, text) in enumerate(non_empty_lines):
             # Linear interpolation across the session's time range
             frac = seq_idx / max(total_lines - 1, 1)
             ts = t_start + frac * (t_end - t_start)
@@ -1574,7 +1643,9 @@ class SessionTimelineWidget(QWidget):
         nearest_idx = self._find_nearest_screenshot(ts)
         if nearest_idx >= 0:
             self._filmstrip.set_selected_index(nearest_idx)
-            self.screenshotSelected.emit(self._screenshot_events[nearest_idx]["data"]["path"])
+            self.screenshotSelected.emit(
+                self._screenshot_events[nearest_idx]["data"]["path"]
+            )
 
     def _find_nearest_screenshot(self, ts: float) -> int:
         if not self._screenshot_events:
@@ -1594,7 +1665,9 @@ class SessionTimelineWidget(QWidget):
         if nearest_idx < 0:
             return
 
-        target_x = self._playhead._time_to_x(self._screenshot_events[nearest_idx]["timestamp"])
+        target_x = self._playhead._time_to_x(
+            self._screenshot_events[nearest_idx]["timestamp"]
+        )
         viewport_w = self._scroll.viewport().width()
         # Centre the thumbnail in the viewport
         scroll_to = max(0, int(target_x - viewport_w / 2))

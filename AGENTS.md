@@ -23,6 +23,9 @@ This application relies on a strictly decoupled architecture:
     *   `llm/`: LLM Engine implementations.
         *   `google_genai.py`: `GoogleGenAIEngine` — Google GenAI SDK with streaming and multi-turn history.
         *   `ollama.py`: `OllamaEngine` — Ollama REST API with base64 image encoding.
+        *   `claude_code.py`: `ClaudeCodeEngine` — default engine (`claude-code`). Runs the `claude` CLI headless
+          (`-p`, stream-json, no tools) so requests use the user's Claude subscription; strips
+          `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the child environment.
         *   `gemini_cli.py`: `GeminiCLIEngine` — wraps the `gemini` CLI tool via subprocess.
         *   `antigravity.py`: `AntigravityEngine` — HTTP+SSE client to the Antigravity SDK service.
           Streams tokens in real-time to the sink.
@@ -74,7 +77,9 @@ This application relies on a strictly decoupled architecture:
       Don't run or modify the files inside without understanding the full test infrastructure.
     *   `sanity/`: Standalone sanity check scripts (OCR, audio, WhisperLive warmup) for component verification.
 7.  **`scripts/`**: Verification scripts.
-    *   `verify.ps1` / `verify.sh`: Linting (Ruff), formatting, Qodana, SonarQube, and Kotlin/Android lint.
+    *   `verify.ps1` / `verify.sh`: Ruff lint + format (`ruff.toml`), pytest (`pytest.ini`), Qodana (`qodana.yaml`,
+        interpreter built by `qodana_bootstrap.sh`), and SonarQube (`sonar-project.properties`, server started by
+        `sonarqube_up.sh`, token from `SONAR_TOKEN`). The Android app is not linted by these scripts.
 8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via WebSocket.
 9.  **`docs/`**: Additional documentation (architecture, features, setup guides, roadmap).
 10. **`main.py`**: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI,
@@ -243,3 +248,19 @@ This application relies on a strictly decoupled architecture:
 * Sanity tests should be self-contained and not depend on the main application logic.
 * Audio tests require proper device configuration and may need specific test files (e.g., `test_sound.wav`).
 * Always test audio components with appropriate device configurations and error handling.
+
+## NVIDIA GPU stack
+
+The target machine is an RTX 3060 (sm_86). PaddleOCR (`paddlepaddle-gpu`, CUDA 12.9) runs in the main process;
+WhisperLive and the diarization service run faster-whisper on CUDA in their own `.venv`s.
+
+* Pin changes to CUDA-sensitive packages in `constraints-gpu.txt`, and run `python scripts/check_gpu.py` after any
+  install or upgrade. It must exit 0.
+* Import order matters on Windows (measured 2026-11-12):
+  * Without Qt loaded, importing `paddle` first makes a later `import torch` or `import ctranslate2` fail with
+    `OSError: [WinError 127]`.
+  * With PyQt6 WebEngine loaded, `import torch` **before** `paddleocr` segfaults the process.
+  * The working order is the app's: `PyQt6.QtWebEngineWidgets` first (see `main.py`), then PaddleOCR, then torch
+    (lazily, for local embeddings). Keep the early `import PyQt6.QtWebEngineWidgets  # noqa: F401` lines; do not
+    preload torch.
+* `pytest-qt` breaks `QtWebEngineCore` loading, so `pytest.ini` disables it.

@@ -1,4 +1,5 @@
 """Periodic screenshot handlers — toggle and configuration updates."""
+
 import app.state as state
 from app.state import _show_status_popup
 from config.settings import save_config
@@ -39,7 +40,9 @@ def handle_set_periodic_screenshots_config(config, **kwargs):
     if "on_activity" in kwargs:
         config["periodic_screenshots_on_activity"] = bool(kwargs["on_activity"])
     if "activity_min_delay" in kwargs:
-        config["periodic_screenshots_activity_min_delay"] = int(kwargs["activity_min_delay"])
+        config["periodic_screenshots_activity_min_delay"] = int(
+            kwargs["activity_min_delay"]
+        )
 
     save_config(config)
 

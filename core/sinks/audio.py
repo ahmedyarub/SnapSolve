@@ -60,7 +60,7 @@ class AudioSink(Sink):
     A Sink that plays audio using the piper-tts Python package.
     """
 
-    def __init__(self, config, cancel_event: threading.Event = None):
+    def __init__(self, config, cancel_event: threading.Event | None = None):
         super().__init__(cancel_event)
         self.config = config
         self.enabled = "audio" in self.config.get("output_mode", ["popup"])
@@ -142,55 +142,57 @@ class AudioSink(Sink):
             logger.warning(f"Audio file {wav_file} not found.")
             return
 
-        wf = wave.open(wav_file, "rb")
-        p = pyaudio.PyAudio()
+        # wf and the PyAudio instance are released even if both output
+        # devices fail to open.
+        with wave.open(wav_file, "rb") as wf:
+            p = pyaudio.PyAudio()
+            try:
+                target_device_index = self._find_audio_device_index(p)
 
-        target_device_index = self._find_audio_device_index(p)
+                try:
+                    stream = p.open(
+                        format=p.get_format_from_width(wf.getsampwidth()),
+                        channels=wf.getnchannels(),
+                        rate=wf.getframerate(),
+                        output=True,
+                        output_device_index=target_device_index,
+                    )
+                    device_name = (
+                        self.tts_output_device_name
+                        if target_device_index is not None
+                        else "Default Device"
+                    )
+                    logger.info(f"Playing audio on {device_name}")
 
-        try:
-            stream = p.open(
-                format=p.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True,
-                output_device_index=target_device_index,
-            )
-            device_name = (
-                self.tts_output_device_name
-                if target_device_index is not None
-                else "Default Device"
-            )
-            logger.info(f"Playing audio on {device_name}")
+                except Exception as e:
+                    device_name = (
+                        self.tts_output_device_name
+                        if target_device_index is not None
+                        else "Default Device"
+                    )
+                    logger.error(
+                        f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
+                        exc_info=True,
+                    )
+                    target_device_index = None
+                    stream = p.open(
+                        format=p.get_format_from_width(wf.getsampwidth()),
+                        channels=wf.getnchannels(),
+                        rate=wf.getframerate(),
+                        output=True,
+                        output_device_index=target_device_index,
+                    )
+                    logger.info("Playing audio on default output device.")
 
-        except Exception as e:
-            device_name = (
-                self.tts_output_device_name
-                if target_device_index is not None
-                else "Default Device"
-            )
-            logger.error(
-                f"Failed to open audio stream on configured device {device_name}: {e}. Falling back to default output device.",
-                exc_info=True,
-            )
-            target_device_index = None
-            stream = p.open(
-                format=p.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True,
-                output_device_index=target_device_index,
-            )
-            logger.info("Playing audio on default output device.")
+                data = wf.readframes(1024)
+                while data:
+                    stream.write(data)
+                    data = wf.readframes(1024)
 
-        data = wf.readframes(1024)
-        while data:
-            stream.write(data)
-            data = wf.readframes(1024)
-
-        stream.stop_stream()
-        stream.close()
-        wf.close()
-        p.terminate()
+                stream.stop_stream()
+                stream.close()
+            finally:
+                p.terminate()
 
         logger.info(f"Playback of {wav_file} completed.")
 

@@ -1,11 +1,19 @@
 """Engine initialization — LLM, OCR, audio, and WhisperLive warmup."""
+
 import os
 import subprocess
 import sys
 import threading
 
 from app.state import DEFAULT_MODEL_NAME
-from core.llm import OllamaEngine, GeminiCLIEngine, GoogleGenAIEngine, AntigravityEngine, LiteLLMEngine
+from core.llm import (
+    AntigravityEngine,
+    ClaudeCodeEngine,
+    GeminiCLIEngine,
+    GoogleGenAIEngine,
+    LiteLLMEngine,
+    OllamaEngine,
+)
 from core.sinks import AudioSink
 from core.sources import SoundSource
 from core.sources.ocr import LocalPaddleOCREngine, NoOCREngine, RemotePaddleOCREngine
@@ -38,75 +46,50 @@ def _initialize_ocr_engine(active_profile, config):
 # ---------------------------------------------------------------------------
 # LLM engines
 # ---------------------------------------------------------------------------
+DEFAULT_LLM_ENGINE = "claude-code"
+
+
+def create_llm_engine(llm_type, model, config, session_manager):
+    """Build one LLM engine instance for ``llm_type``.
+
+    Unknown types fall back to the Claude subscription engine.
+    """
+    if llm_type == "ollama":
+        return OllamaEngine(
+            model,
+            config.get("ollama_url", "http://localhost:11434"),
+            session_manager=session_manager,
+        )
+    if llm_type == "google-genai":
+        return GoogleGenAIEngine(
+            model, config.get("gemini_api_key", ""), session_manager=session_manager
+        )
+    if llm_type == "antigravity":
+        return AntigravityEngine(
+            model,
+            config.get("antigravity_service_url", "http://localhost:8200"),
+            session_manager=session_manager,
+        )
+    if llm_type == "litellm":
+        return LiteLLMEngine(model, config, session_manager=session_manager)
+    if llm_type == "gemini":
+        return GeminiCLIEngine(model, session_manager=session_manager)
+    return ClaudeCodeEngine(model, config, session_manager=session_manager)
+
+
 def _initialize_llm_engines(active_profile, config, manager):
-    """Initialize LLM engines based on profile configuration."""
-    llm_type = active_profile.get("llm_engine", "gemini")
+    """Initialize the main and (optional) fallback LLM engines for the profile."""
+    llm_type = active_profile.get("llm_engine", DEFAULT_LLM_ENGINE)
     model = active_profile.get("model", DEFAULT_MODEL_NAME)
     fallback_model = active_profile.get("fallback_model", "None")
 
-    # noinspection PyUnusedLocal
-    llm_engine = None
+    print(f"Initializing {llm_type} engine...")
+    llm_engine = create_llm_engine(llm_type, model, config, manager)
     fallback_llm_engine = None
-
-    if llm_type == "ollama":
-        print("Initializing Ollama Engine...")
-        llm_engine = OllamaEngine(
-            model,
-            config.get("ollama_url", "http://localhost:11434"),
-            session_manager=manager,
+    if fallback_model and fallback_model != "None":
+        fallback_llm_engine = create_llm_engine(
+            llm_type, fallback_model, config, manager
         )
-        if fallback_model and fallback_model != "None":
-            print("Initializing Fallback Ollama Engine (with warmup)...")
-            fallback_llm_engine = OllamaEngine(
-                fallback_model,
-                config.get("ollama_url", "http://localhost:11434"),
-                session_manager=manager,
-            )
-    elif llm_type == "google-genai":
-        llm_engine = GoogleGenAIEngine(
-            model,
-            config.get("gemini_api_key", ""),
-            session_manager=manager,
-        )
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine = GoogleGenAIEngine(
-                fallback_model,
-                config.get("gemini_api_key", ""),
-                session_manager=manager,
-            )
-    elif llm_type == "antigravity":
-        llm_engine = AntigravityEngine(
-            model,
-            config.get("antigravity_service_url", "http://localhost:8200"),
-            session_manager=manager,
-        )
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine = AntigravityEngine(
-                fallback_model,
-                config.get("antigravity_service_url", "http://localhost:8200"),
-                session_manager=manager,
-            )
-    elif llm_type == "litellm":
-        llm_engine = LiteLLMEngine(
-            model,
-            config,
-            session_manager=manager,
-        )
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine = LiteLLMEngine(
-                fallback_model,
-                config,
-                session_manager=manager,
-            )
-    else:
-        llm_engine = GeminiCLIEngine(model, session_manager=manager)
-        if fallback_model and fallback_model != "None":
-            fallback_llm_engine = GeminiCLIEngine(
-                fallback_model, session_manager=manager
-            )
-
-    # Use variables to avoid "unused" warnings
-    _ = llm_engine, fallback_llm_engine
     return llm_engine, fallback_llm_engine
 
 
@@ -124,39 +107,17 @@ def _initialize_correction_engine(active_profile, config, manager, prompts):
         # Fall back to the profile's main model
         correction_model = active_profile.get("model", DEFAULT_MODEL_NAME)
 
-    llm_type = active_profile.get("llm_engine", "google-genai")
+    llm_type = active_profile.get("llm_engine", DEFAULT_LLM_ENGINE)
 
-    # Create a lightweight LLM engine instance dedicated to corrections
-    if llm_type == "ollama":
-        correction_llm = OllamaEngine(
-            correction_model,
-            config.get("ollama_url", "http://localhost:11434"),
-            session_manager=None,  # corrections don't need session history
-        )
-    elif llm_type == "google-genai":
-        correction_llm = GoogleGenAIEngine(
-            correction_model,
-            config.get("gemini_api_key", ""),
-            session_manager=None,
-        )
-    elif llm_type == "antigravity":
-        correction_llm = AntigravityEngine(
-            correction_model,
-            config.get("antigravity_service_url", "http://localhost:8200"),
-            session_manager=None,
-        )
-    elif llm_type == "litellm":
-        correction_llm = LiteLLMEngine(
-            correction_model,
-            config,
-            session_manager=None,
-        )
-    else:
-        correction_llm = GeminiCLIEngine(correction_model, session_manager=None)
+    # Dedicated instance; corrections don't need session history
+    correction_llm = create_llm_engine(llm_type, correction_model, config, None)
 
     from core.correction_engine import CorrectionEngine
+
     engine = CorrectionEngine(config, correction_llm, prompts, session_manager=manager)
-    print(f"[CorrectionEngine] Initialized with model={correction_model}, engine={llm_type}")
+    print(
+        f"[CorrectionEngine] Initialized with model={correction_model}, engine={llm_type}"
+    )
     return engine
 
 

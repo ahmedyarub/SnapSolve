@@ -13,7 +13,7 @@ PROMPTS_FILE = os.path.join("config", "prompts.json")
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
         try:
-            with open(PROFILES_FILE, "r") as f:
+            with open(PROFILES_FILE) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             print(
@@ -21,10 +21,10 @@ def load_profiles():
             )
     return [
         {
-            "id": "prof1",
-            "name": "Default Profile",
-            "llm_engine": "gemini",
-            "model": "gemini-2.5-flash-lite",
+            "id": "claude",
+            "name": "Claude (subscription)",
+            "llm_engine": "claude-code",
+            "model": "claude-opus-5-5",
             "ocr_engine": "none",
             "prompt_id": "default",
             "enable_chat_sessions": True,
@@ -40,7 +40,7 @@ def save_profiles(profiles):
 def load_prompts():
     if os.path.exists(PROMPTS_FILE):
         try:
-            with open(PROMPTS_FILE, "r") as f:
+            with open(PROMPTS_FILE) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             print(f"Warning: {PROMPTS_FILE} is not a valid JSON.")
@@ -163,7 +163,7 @@ def _get_default_config():
         "coordinates": None,
         "background": False,
         "piper_model": "en_US-lessac-medium.onnx",
-        "active_profile_id": "prof1",
+        "active_profile_id": "claude",
         "ollama_url": "http://localhost:11434",
         "gemini_api_key": "",
         "auto_close_results": False,
@@ -276,7 +276,7 @@ def _load_config_from_file():
         return {}
 
     try:
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_FILE) as f:
             file_config = json.load(f)
 
         _migrate_hotkey_format(file_config)

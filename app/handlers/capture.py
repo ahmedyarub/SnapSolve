@@ -3,17 +3,18 @@
 Also contains ``_handle_audio_source_capture`` (kept here rather than in
 ``audio.py`` to avoid a circular import: capture → audio → text → capture).
 """
+
 import app.state as state
 from app.state import (
-    _show_status_popup,
     _make_status_callback,
     _run_in_processing_thread,
+    _show_status_popup,
     set_processing,
 )
 from core.output import output_result, share_response_screenshot
 from core.pipeline import process_pipeline
 from core.remote_control_server import is_android_connected
-from core.sinks import PopupSink, CompositeSink
+from core.sinks import CompositeSink, PopupSink
 from core.sources import get_active_source_instance
 
 

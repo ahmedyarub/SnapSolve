@@ -8,8 +8,20 @@ import keyboard
 import pyautogui
 import pyperclip
 import speech_recognition as sr
-
 from audio_utils import get_microphone_index, record_audio_in_background, speak
+from network_utils import check_port_in_use, poll_port
+from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
+from ui_utils import (
+    click_button,
+    cycle_until,
+    find_text,
+    minimize_all_windows,
+    mouse_down_button,
+    mouse_up_button,
+    poll_button,
+    restore_all_windows,
+)
+
 from config import (
     BASIC_QUESTION,
     CANCEL_SOURCE,
@@ -24,28 +36,16 @@ from config import (
     PROGRAMMING_QUESTION2,
     PROMPT_X,
     PROMPT_Y,
+    RECORD_BUTTON,
     RESELECT_SOURCE,
     SERVICE_SCRIPT_PATH,
     START_MULTISELECT_SOURCE,
+    STOP_RECORD_BUTTON,
     TARGET_WORD_BASIC,
     TARGET_WORD_PROGRAMMING,
     TTS_LOOPBACK_DEVICE_NAME,
-    WORKING_DIR,
-    RECORD_BUTTON,
     TTS_OUTPUT_DEVICE_NAME,
-    STOP_RECORD_BUTTON,
-)
-from network_utils import check_port_in_use, poll_port
-from process_utils import cleanup, init_tests, launch_app, launch_service, show_test_ui
-from ui_utils import (
-    click_button,
-    cycle_until,
-    find_text,
-    minimize_all_windows,
-    poll_button,
-    mouse_down_button,
-    mouse_up_button,
-    restore_all_windows,
+    WORKING_DIR,
 )
 
 # --- Global variables for background recording ---
@@ -378,7 +378,9 @@ def test_audio_recording():
 
     with _step("test_audio_record", "Find response text"):
         if find_text(TARGET_WORD_BASIC, POPUP_X, POPUP_Y):
-            print(f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the audio!")
+            print(
+                f"\n✅ SUCCESS: The word '{TARGET_WORD_BASIC}' was found in the audio!"
+            )
             test_results["test_audio_record"] = "PASSED"
         else:
             print(
@@ -419,7 +421,9 @@ def test_capture():
     test_results["test_capture"] = "FAILED"
 
     with _step("test_capture", "Show test UI"):
-        ui_process = show_test_ui(ui_data=[{"text": BASIC_QUESTION, "x": 500, "y": 300}])
+        ui_process = show_test_ui(
+            ui_data=[{"text": BASIC_QUESTION, "x": 500, "y": 300}]
+        )
         time.sleep(2)
 
     with _step("test_capture", "Click reselect"):

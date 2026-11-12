@@ -1,18 +1,21 @@
+import builtins
 import logging
 import os
 import sys
-import builtins
-from typing import Optional
 
 # Monkey-patch print to write to stderr, preventing accidental output (like SessionManager's prints)
 # from corrupting the MCP stdio JSON-RPC protocol
 _original_print = builtins.print
+
+
 def _stderr_print(*args, **kwargs):
-    kwargs['file'] = sys.stderr
+    kwargs["file"] = sys.stderr
     _original_print(*args, **kwargs)
+
+
 builtins.print = _stderr_print
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 # Ensure the parent directory (SnapSolve root) is in the path
 # This allows importing from core and config
@@ -20,8 +23,8 @@ root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, root_dir)
 os.chdir(root_dir)
 
-from core.session_manager import SessionManager
-from config.settings import get_config
+from config.settings import get_config  # noqa: E402
+from core.session_manager import SessionManager  # noqa: E402
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +34,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("SnapSolve MCP Server")
 
 # Global SessionManager instance
-_session_manager: Optional[SessionManager] = None
+_session_manager: SessionManager | None = None
 
 
 def get_session_manager() -> SessionManager:
@@ -51,11 +54,11 @@ def get_session_manager() -> SessionManager:
 def list_sessions(limit: int = 20, offset: int = 0) -> str:
     """
     List lightweight metadata for recent SnapSolve sessions.
-    
+
     Args:
         limit: Maximum number of sessions to return.
         offset: Number of sessions to skip.
-        
+
     Returns:
         A formatted string detailing the recent sessions.
     """
@@ -63,7 +66,7 @@ def list_sessions(limit: int = 20, offset: int = 0) -> str:
     sessions = manager.list_all_sessions()
     sessions.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
 
-    results = sessions[offset:offset + limit]
+    results = sessions[offset : offset + limit]
     if not results:
         return "No sessions found."
 
@@ -86,10 +89,10 @@ def list_sessions(limit: int = 20, offset: int = 0) -> str:
 def get_session(session_id: str) -> str:
     """
     Get full details and interaction history of a specific SnapSolve session.
-    
+
     Args:
         session_id: The UUID of the session to retrieve.
-        
+
     Returns:
         A formatted string containing the session's history and details.
     """
@@ -103,7 +106,13 @@ def get_session(session_id: str) -> str:
     tags = ", ".join(session_data.get("tags", []))
     history = session_data.get("history", [])
 
-    output = [f"Session: {name}", f"ID: {session_id}", f"Tags: {tags if tags else 'None'}", "", "History:"]
+    output = [
+        f"Session: {name}",
+        f"ID: {session_id}",
+        f"Tags: {tags if tags else 'None'}",
+        "",
+        "History:",
+    ]
 
     if not history:
         output.append("No interactions in this session.")
@@ -136,11 +145,11 @@ def get_session(session_id: str) -> str:
 def search_sessions(query: str, limit: int = 10) -> str:
     """
     Search for SnapSolve sessions containing the given text query.
-    
+
     Args:
         query: The text to search for within prompts, responses, or transcriptions.
         limit: Maximum number of matching sessions to return.
-        
+
     Returns:
         A formatted string of matching sessions.
     """
@@ -165,7 +174,9 @@ def search_sessions(query: str, limit: int = 10) -> str:
 
         # Check name and tags
         name = session_data.get("name") or session_data.get("title") or ""
-        if q_lower in name.lower() or any(q_lower in tag.lower() for tag in session_data.get("tags", [])):
+        if q_lower in name.lower() or any(
+            q_lower in tag.lower() for tag in session_data.get("tags", [])
+        ):
             found = True
 
         # Check history
@@ -175,8 +186,11 @@ def search_sessions(query: str, limit: int = 10) -> str:
                 response = interaction.get("response", "")
                 extracted = interaction.get("extracted_text", "")
 
-                if q_lower in prompt.lower() or q_lower in response.lower() or (
-                        extracted and q_lower in extracted.lower()):
+                if (
+                    q_lower in prompt.lower()
+                    or q_lower in response.lower()
+                    or (extracted and q_lower in extracted.lower())
+                ):
                     found = True
                     break
 
@@ -210,7 +224,7 @@ def search_sessions(query: str, limit: int = 10) -> str:
 def get_tags() -> str:
     """
     Get a list of all unique tags used across SnapSolve sessions.
-    
+
     Returns:
         A comma-separated list of tags.
     """
@@ -225,7 +239,7 @@ def get_tags() -> str:
     if not all_tags:
         return "No tags found."
 
-    return "Available tags: " + ", ".join(sorted(list(all_tags)))
+    return "Available tags: " + ", ".join(sorted(all_tags))
 
 
 if __name__ == "__main__":

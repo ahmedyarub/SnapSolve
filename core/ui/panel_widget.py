@@ -1,14 +1,15 @@
 """PanelWidget — floating control panel with action buttons."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
-    QPushButton,
     QCheckBox,
     QComboBox,
     QLabel,
     QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.mixins import DraggableWidgetMixin, _DragHandleBar
@@ -99,7 +100,9 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
 
         self.btn_sessions = QPushButton("📋 Sessions")
         self.btn_sessions.setStyleSheet(btn_style)
-        self.btn_sessions.clicked.connect(lambda: ui_signals.open_session_browser.emit())
+        self.btn_sessions.clicked.connect(
+            lambda: ui_signals.open_session_browser.emit()
+        )
         self.layout.addWidget(self.btn_sessions)
         self.buttons["sessions"] = self.btn_sessions
 
@@ -119,7 +122,8 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         )
 
         # Transcription language selector (visible only in audio mode)
-        from ui.config_ui import TRANSCRIPTION_LANGUAGES  # noqa: PLC0415
+        from ui.config_ui import TRANSCRIPTION_LANGUAGES
+
         lang_combo_style = (
             "QComboBox { background-color: rgba(45, 45, 45, 180); color: white;"
             " border: none; padding: 4px; border-radius: 4px; font-size: 12px;}"
@@ -255,7 +259,8 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
     def update_translation_label(self, lang_code: str):
         """Update the translation status label to reflect the current setting."""
         if lang_code:
-            from ui.config_ui import TRANSCRIPTION_LANGUAGES  # noqa: PLC0415
+            from ui.config_ui import TRANSCRIPTION_LANGUAGES
+
             # Look up the display name
             display = lang_code
             for display_name, code in TRANSCRIPTION_LANGUAGES:
@@ -306,9 +311,9 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
             f" QPushButton:hover {{ background-color: rgba(220, 20, 60, {alpha_int}); }}"
         )
         chk_style = (
-            f"QCheckBox {{ background-color: transparent; color: white;"
-            f" padding: 4px; font-size: 13px; }}"
-            f" QCheckBox::indicator {{ width: 16px; height: 16px; }}"
+            "QCheckBox { background-color: transparent; color: white;"
+            " padding: 4px; font-size: 13px; }"
+            " QCheckBox::indicator { width: 16px; height: 16px; }"
         )
         self.chk_autosubmit.setStyleSheet(chk_style)
         for name, btn in self.buttons.items():

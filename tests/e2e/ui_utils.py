@@ -1,6 +1,7 @@
+import time
+
 import pyautogui
 import pyperclip
-import time
 
 from config import CYCLE_SOURCE, ERROR_RESPONSES
 

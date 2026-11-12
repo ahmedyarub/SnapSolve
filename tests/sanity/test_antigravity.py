@@ -60,7 +60,7 @@ def list_models() -> bool:
         return False
 
 
-async def test_agent(prompt: str, model: str = None) -> bool:
+async def test_agent(prompt: str, model: str | None = None) -> bool:
     """Create an Agent, send a prompt, and stream the response."""
     try:
         from google.antigravity import Agent, LocalAgentConfig
@@ -70,10 +70,10 @@ async def test_agent(prompt: str, model: str = None) -> bool:
 
         return False
 
-    step = "[2]" if not model else "[2]"
+    step = "[2]"
     model_label = model or "default"
     print(f"\n{step} Chat test (model={model_label})")
-    print(f"Prompt: \"{prompt}\"")
+    print(f'Prompt: "{prompt}"')
     print("=" * 50)
 
     config_kwargs = {}
@@ -121,9 +121,15 @@ async def test_agent(prompt: str, model: str = None) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sanity test for Google Antigravity SDK")
-    parser.add_argument("--prompt", default="Say hello in exactly 5 words.", help="Prompt to send")
-    parser.add_argument("--model", default=None, help="Model ID to use (e.g. gemini-3.5-flash)")
+    parser = argparse.ArgumentParser(
+        description="Sanity test for Google Antigravity SDK"
+    )
+    parser.add_argument(
+        "--prompt", default="Say hello in exactly 5 words.", help="Prompt to send"
+    )
+    parser.add_argument(
+        "--model", default=None, help="Model ID to use (e.g. gemini-3.5-flash)"
+    )
     args = parser.parse_args()
 
     print("Antigravity SDK Sanity Test")

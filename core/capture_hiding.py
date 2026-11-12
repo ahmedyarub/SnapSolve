@@ -53,8 +53,9 @@ def _apply_display_affinity_macos(widget, exclude: bool) -> bool:
             return False
 
         # noinspection PyUnresolvedReferences
-        import objc  # noqa: F811
         from ctypes import c_void_p
+
+        import objc
 
         ns_view = objc.objc_object(c_void_p=c_void_p(int(widget.winId())))
         ns_window = ns_view.window()

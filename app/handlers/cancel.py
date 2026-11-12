@@ -1,4 +1,5 @@
 """Cancel handler."""
+
 import app.state as state
 from core.output import show_popup, update_multi_state
 

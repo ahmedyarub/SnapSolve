@@ -2,6 +2,7 @@ import mimetypes
 import threading
 
 from core.sinks.base import Sink
+
 from .base import LLMEngine
 
 
@@ -34,14 +35,12 @@ class GoogleGenAIEngine(LLMEngine):
             return True
         except Exception as e:
             if status_callback:
-                status_callback(f"Google GenAI warmup failed: {str(e)}")
+                status_callback(f"Google GenAI warmup failed: {e!s}")
             return False
 
     @property
     def supports_images(self) -> bool:
         return True
-
-
 
     @staticmethod
     def _check_cancelled(cancel_event: threading.Event):
@@ -81,7 +80,7 @@ class GoogleGenAIEngine(LLMEngine):
         contents,
         sink: Sink,
         is_main: bool,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if self._check_cancelled(cancel_event):
             return "Cancelled"
@@ -99,7 +98,7 @@ class GoogleGenAIEngine(LLMEngine):
             if self._check_cancelled(cancel_event):
                 return "Cancelled"
 
-            print(f"[GoogleGenAIEngine] Received chunk {i}: {repr(chunk.text)}")
+            print(f"[GoogleGenAIEngine] Received chunk {i}: {chunk.text!r}")
 
             chunk_text = self._process_stream_chunk(chunk, sink, is_main, cancel_event)
             if chunk_text is None:
@@ -125,7 +124,7 @@ class GoogleGenAIEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -146,17 +145,17 @@ class GoogleGenAIEngine(LLMEngine):
 
         try:
             client = genai.Client(api_key=self.api_key)
-            
+
             full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
-            
+
             current_parts = [types.Part.from_text(text=full_prompt)]
             contents = [types.Content(role="user", parts=current_parts)]
 
             assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
-            print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
-            return f"Error calling Google GenAI API: {str(e)}"
+            print(f"[GoogleGenAIEngine] Error during request: {e!s}")
+            return f"Error calling Google GenAI API: {e!s}"
 
     def process_image(
         self,
@@ -166,7 +165,7 @@ class GoogleGenAIEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -187,9 +186,9 @@ class GoogleGenAIEngine(LLMEngine):
 
         try:
             client = genai.Client(api_key=self.api_key)
-            
+
             full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
-            
+
             current_parts = [types.Part.from_text(text=full_prompt)]
 
             print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
@@ -212,5 +211,5 @@ class GoogleGenAIEngine(LLMEngine):
             assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
-            print(f"[GoogleGenAIEngine] Error during request: {str(e)}")
-            return f"Error calling Google GenAI API: {str(e)}"
+            print(f"[GoogleGenAIEngine] Error during request: {e!s}")
+            return f"Error calling Google GenAI API: {e!s}"

@@ -1,5 +1,16 @@
 [
     {
+        "id": "claude",
+        "name": "Claude (subscription)",
+        "llm_engine": "claude-code",
+        "model": "claude-opus-5-5",
+        "fallback_model": "None",
+        "ocr_engine": "none",
+        "prompt_id": "detailed",
+        "enable_chat_sessions": true,
+        "correction_model": "claude-haiku-5-5"
+    },
+    {
         "id": "quick",
         "name": "Quick and short answers",
         "llm_engine": "google-genai",

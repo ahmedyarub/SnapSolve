@@ -3,6 +3,7 @@
 Handles starting, health-checking, and cleaning up the WhisperLive
 real-time transcription server process.
 """
+
 import logging
 import os
 import subprocess
@@ -17,6 +18,7 @@ _WHISPERLIVE_PATH = os.path.join(
     "services",
     "whisperlive",
 )
+_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(_WHISPERLIVE_PATH)), "logs")
 
 
 def is_whisperlive_service_online(host: str = "localhost", port: int = 9090) -> bool:
@@ -48,22 +50,28 @@ def start_whisperlive_service(model_size: str = "small") -> subprocess.Popen | N
     )
     python_exec = venv_python if os.path.exists(venv_python) else sys.executable
 
+    # The server's output goes to a log file. Pipes would never be read here,
+    # and a full pipe buffer blocks the server mid-transcription.
+    os.makedirs(_LOG_DIR, exist_ok=True)
+    log_path = os.path.join(_LOG_DIR, "whisperlive_server.log")
+
     try:
-        process = subprocess.Popen(
-            [
-                python_exec,
-                server_script,
-                "--port",
-                "9090",
-                "--backend",
-                "faster_whisper",
-                "--faster_whisper_custom_model_path",
-                model_size,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                [
+                    python_exec,
+                    server_script,
+                    "--port",
+                    "9090",
+                    "--backend",
+                    "faster_whisper",
+                    "--faster_whisper_custom_model_path",
+                    model_size,
+                ],
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+        logger.info(f"WhisperLive server output: {log_path}")
         logger.info(f"WhisperLive service starting with PID: {process.pid}...")
         return process
     except Exception as e:

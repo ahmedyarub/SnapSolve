@@ -1,4 +1,5 @@
 """Signal brokers, module-level globals, and tiny helpers shared across UI widgets."""
+
 import threading
 
 from PyQt6.QtCore import QObject, pyqtSignal

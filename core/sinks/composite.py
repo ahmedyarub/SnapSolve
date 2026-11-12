@@ -1,4 +1,5 @@
 import threading
+
 from .base import Sink
 
 
@@ -7,7 +8,7 @@ class CompositeSink(Sink):
     A Sink that forwards chunks to multiple underlying sinks.
     """
 
-    def __init__(self, sinks: list[Sink], cancel_event: threading.Event = None):
+    def __init__(self, sinks: list[Sink], cancel_event: threading.Event | None = None):
         super().__init__(cancel_event)
         self.sinks = sinks
 

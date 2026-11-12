@@ -6,16 +6,18 @@ currently focused window (title, process name, executable path).  Uses
 
 On non-Windows platforms the function always returns ``None``.
 """
+
 import logging
 import os
 import sys
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
 
 class WindowInfo(TypedDict):
     """Metadata about the currently active (foreground) window."""
+
     window_title: str
     process_name: str
     app_name: str
@@ -81,14 +83,14 @@ def _derive_app_name(process_name: str) -> str:
     # Remove common suffixes like "64", "32"
     for suffix in ("64", "32"):
         if stem.endswith(suffix) and len(stem) > len(suffix):
-            stem = stem[:-len(suffix)]
+            stem = stem[: -len(suffix)]
 
     # Replace separators with spaces and title-case
     friendly = stem.replace("_", " ").replace("-", " ").strip()
     return friendly.title() if friendly else process_name
 
 
-def get_active_window_info() -> Optional[WindowInfo]:
+def get_active_window_info() -> WindowInfo | None:
     """Return metadata about the currently focused foreground window.
 
     Returns ``None`` on non-Windows platforms, if no window is focused,
@@ -105,10 +107,10 @@ def get_active_window_info() -> Optional[WindowInfo]:
         return None
 
 
-def _get_active_window_info_win32() -> Optional[WindowInfo]:
+def _get_active_window_info_win32() -> WindowInfo | None:
     """Windows-specific implementation using ctypes."""
-    import ctypes  # noqa: PLC0415
-    import ctypes.wintypes  # noqa: PLC0415
+    import ctypes
+    import ctypes.wintypes
 
     user32 = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32

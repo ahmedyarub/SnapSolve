@@ -1,3 +1,4 @@
+import os
 import tempfile
 import threading
 
@@ -14,7 +15,7 @@ class ScreenshotSource(ImageSource):
         self.ocr_engine = ocr_engine
         self._temp_files = []
 
-    def _capture(self, coords, cancel_event: threading.Event = None) -> str:
+    def _capture(self, coords, cancel_event: threading.Event | None = None) -> str:
         if cancel_event and cancel_event.is_set():
             raise ValueError(CAPTURE_CANCELLED_MSG)
 
@@ -27,14 +28,13 @@ class ScreenshotSource(ImageSource):
         try:
             img = ImageGrab.grab(bbox=bbox)
         except Exception as e:
-            raise ValueError(f"Error capturing screen: {str(e)}")
+            raise ValueError(f"Error capturing screen: {e!s}") from e
 
         if cancel_event and cancel_event.is_set():
             raise ValueError(CAPTURE_CANCELLED_MSG)
 
-        temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        temp_file_path = temp_file.name
-        temp_file.close()
+        fd, temp_file_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
 
         self._temp_files.append(temp_file_path)
         img.save(temp_file_path)
@@ -45,7 +45,7 @@ class ScreenshotSource(ImageSource):
         self,
         coords=None,
         status_callback=None,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
         *args,
         **kwargs,
     ) -> str:
@@ -76,7 +76,7 @@ class ScreenshotSource(ImageSource):
         return text
 
     def get_image(
-        self, coords=None, cancel_event: threading.Event = None, *args, **kwargs
+        self, coords=None, cancel_event: threading.Event | None = None, *args, **kwargs
     ) -> str:
         return self._capture(coords, cancel_event)
 

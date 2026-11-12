@@ -5,6 +5,7 @@ grammar corrections in the same format used by ``CorrectionEngine``.
 Supports automatic language mapping from the app's transcription language
 codes to LanguageTool's regional-variant codes.
 """
+
 import logging
 import time
 
@@ -51,7 +52,10 @@ class LanguageToolClient:
 
         logger.info(
             "[LanguageTool] mode=%s, url=%s, language_override=%s, level=%s",
-            self._mode, self._check_url, self._language_override, self._level,
+            self._mode,
+            self._check_url,
+            self._language_override,
+            self._level,
         )
 
     # ------------------------------------------------------------------
@@ -114,15 +118,22 @@ class LanguageToolClient:
         try:
             logger.info(
                 "[LanguageTool] Checking %d chars (lang=%s, level=%s)",
-                len(text), language, self._level,
+                len(text),
+                language,
+                self._level,
             )
             response = requests.post(
-                self._check_url, data=data, timeout=self._timeout,
+                self._check_url,
+                data=data,
+                timeout=self._timeout,
             )
             response.raise_for_status()
             result = response.json()
         except requests.ConnectionError:
-            logger.error("[LanguageTool] Connection failed — is the server running at %s?", self._check_url)
+            logger.error(
+                "[LanguageTool] Connection failed — is the server running at %s?",
+                self._check_url,
+            )
             return []
         except requests.Timeout:
             logger.error("[LanguageTool] Request timed out after %.1fs", self._timeout)
@@ -137,26 +148,30 @@ class LanguageToolClient:
         matches = result.get("matches", [])
         is_premium = result.get("software", {}).get("premium", False)
         logger.info(
-            "[LanguageTool] Got %d matches (premium=%s)", len(matches), is_premium,
+            "[LanguageTool] Got %d matches (premium=%s)",
+            len(matches),
+            is_premium,
         )
 
         corrections: list[dict] = []
         for match in matches:
-            original_text = text[match["offset"]:match["offset"] + match["length"]]
+            original_text = text[match["offset"] : match["offset"] + match["length"]]
             replacements = match.get("replacements", [])
             first_replacement = replacements[0]["value"] if replacements else ""
             rule = match.get("rule", {})
 
-            corrections.append({
-                "timestamp": time.time(),
-                "type": "grammar",
-                "original": original_text,
-                "correction": first_replacement,
-                "confidence": "HIGH",
-                "explanation": match.get("message", ""),
-                "source_sentences": source_sentences or [],
-                "rule_id": rule.get("id", ""),
-            })
+            corrections.append(
+                {
+                    "timestamp": time.time(),
+                    "type": "grammar",
+                    "original": original_text,
+                    "correction": first_replacement,
+                    "confidence": "HIGH",
+                    "explanation": match.get("message", ""),
+                    "source_sentences": source_sentences or [],
+                    "rule_id": rule.get("id", ""),
+                }
+            )
 
         return corrections
 

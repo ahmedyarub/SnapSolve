@@ -1,17 +1,18 @@
 """UIManager — central orchestrator that creates, wires, and manages all overlay widgets."""
+
 import logging
 
-from PyQt6.QtCore import QObject, QEvent
+from PyQt6.QtCore import QEvent, QObject
 from PyQt6.QtWidgets import QApplication
 
 from core.capture_hiding import apply_display_affinity
+from core.ui.correction_panel_widget import CorrectionPanelWidget
 from core.ui.panel_widget import PanelWidget
 from core.ui.popup_widget import PopupWidget
-from core.ui.signals import ui_signals, selector_signals, _app_callbacks
+from core.ui.signals import _app_callbacks, selector_signals, ui_signals
 from core.ui.subtitle_widget import SubtitleWidget
 from core.ui.text_input_widget import TextInputWidget
 from core.ui.url_input_widget import UrlInputWidget
-from core.ui.correction_panel_widget import CorrectionPanelWidget
 
 
 def _on_request_active_source(q):
@@ -67,7 +68,9 @@ class UIManager(QObject):
         ui_signals.set_processing_state.connect(self._on_set_processing_state)
         ui_signals.show_popup.connect(self.popup.show_content)
         ui_signals.close_popup.connect(self.popup.hide)
-        ui_signals.capture_popup_screenshot.connect(self.popup.capture_full_page_screenshot)
+        ui_signals.capture_popup_screenshot.connect(
+            self.popup.capture_full_page_screenshot
+        )
         ui_signals.request_active_source.connect(_on_request_active_source)
         ui_signals.show_subtitle.connect(self._on_show_subtitle)
         ui_signals.update_subtitle.connect(self._on_update_subtitle)
@@ -77,9 +80,13 @@ class UIManager(QObject):
         ui_signals.open_url.connect(self._on_open_url)
         ui_signals.open_session_browser.connect(self._on_open_session_browser)
         ui_signals.open_context_manager.connect(self._on_open_context_manager)
-        ui_signals.set_transcription_language.connect(self._on_set_transcription_language)
+        ui_signals.set_transcription_language.connect(
+            self._on_set_transcription_language
+        )
         ui_signals.update_chat_sessions_btn.connect(self._on_update_chat_sessions_btn)
-        ui_signals.update_periodic_screenshots_btn.connect(self._on_update_periodic_screenshots_btn)
+        ui_signals.update_periodic_screenshots_btn.connect(
+            self._on_update_periodic_screenshots_btn
+        )
         ui_signals.ocr_text_to_input.connect(self._on_ocr_text_to_input)
 
     def _on_update_chat_sessions_btn(self, enabled: bool):
@@ -164,14 +171,13 @@ class UIManager(QObject):
 
         # Sync the language combos from config when switching to audio
         if source_name == "audio":
-            from config.settings import load_config  # noqa: PLC0415
+            from config.settings import load_config
+
             cfg = load_config()
             self.panel.set_transcription_language_value(
                 cfg.get("transcription_language", "en")
             )
-            self.panel.update_translation_label(
-                cfg.get("translation_language", "")
-            )
+            self.panel.update_translation_label(cfg.get("translation_language", ""))
             self.panel.set_audio_volume_bar_setting(
                 cfg.get("show_audio_volume_bar", True)
             )
@@ -188,7 +194,8 @@ class UIManager(QObject):
 
     def _on_set_transcription_language(self, lang_code: str):
         """Persist transcription language to config and save."""
-        from config.settings import load_config, save_config  # noqa: PLC0415
+        from config.settings import load_config, save_config
+
         cfg = load_config()
         cfg["transcription_language"] = lang_code
         save_config(cfg)

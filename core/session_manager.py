@@ -1,22 +1,23 @@
 # Force PyQt6 WebEngine and GL sharing to initialize before anything else
 try:
-    import PyQt6.QtWebEngineWidgets
+    import PyQt6.QtWebEngineWidgets  # noqa: F401
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
+
     if not QApplication.instance():
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 except ImportError:
     pass
 
 import json
+import logging
 import os
 import shutil
 import tempfile
-import uuid
 import time
+import uuid
 from datetime import datetime
-from typing import List, Dict, Any, Optional
-import logging
+from typing import Any
 
 SESSIONS_DIR = "sessions"
 
@@ -61,12 +62,14 @@ def _has_screenshots(session_id: str) -> bool:
         return False
     return any(f.endswith(".png") for f in os.listdir(screenshots_dir))
 
+
 def _has_transcription(session_id: str) -> bool:
     """Return True if the session has a non-empty transcription file."""
     trans_path = _session_transcription_path(session_id)
     if not os.path.isfile(trans_path):
         return False
     return os.path.getsize(trans_path) > 0
+
 
 def _legacy_session_json_path(session_id: str) -> str:
     """Return the legacy flat-file session path: sessions/<session_id>.json"""
@@ -123,7 +126,7 @@ def _migrate_legacy_session(session_id: str) -> bool:
         os.makedirs(new_images, exist_ok=True)
 
         # Read legacy data
-        with open(legacy_path, "r", encoding="utf-8") as f:
+        with open(legacy_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Relocate referenced images
@@ -137,7 +140,9 @@ def _migrate_legacy_session(session_id: str) -> bool:
                     # Store relative path from session dir
                     interaction["image"] = os.path.join("images", image_filename)
                 except Exception as e:
-                    logger.warning(f"[SessionManager] Failed to migrate image {old_image}: {e}")
+                    logger.warning(
+                        f"[SessionManager] Failed to migrate image {old_image}: {e}"
+                    )
 
         # Write to new location
         _atomic_json_write(new_json, data)
@@ -146,9 +151,13 @@ def _migrate_legacy_session(session_id: str) -> bool:
         try:
             os.remove(legacy_path)
         except OSError as e:
-            logger.warning(f"[SessionManager] Failed to remove legacy file {legacy_path}: {e}")
+            logger.warning(
+                f"[SessionManager] Failed to remove legacy file {legacy_path}: {e}"
+            )
 
-        logger.info(f"[SessionManager] Migrated legacy session {session_id} to folder structure")
+        logger.info(
+            f"[SessionManager] Migrated legacy session {session_id} to folder structure"
+        )
         return True
 
     except Exception as e:
@@ -162,9 +171,9 @@ class SessionManager:
         self.save_images = config.get("save_images", True)
         self.save_transcriptions = config.get("save_transcriptions", True)
         self.speaker_name = config.get("speaker_name", "interviewer")
-        self.current_session_id: Optional[str] = None
-        self.title: Optional[str] = None
-        self.transcription_file: Optional[str] = None
+        self.current_session_id: str | None = None
+        self.title: str | None = None
+        self.transcription_file: str | None = None
 
         # Ensure base sessions directory exists
         os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -200,7 +209,9 @@ class SessionManager:
 
         # Setup new transcription file inside session folder
         if self.save_transcriptions:
-            self.transcription_file = _session_transcription_path(self.current_session_id)
+            self.transcription_file = _session_transcription_path(
+                self.current_session_id
+            )
             logger.debug(
                 f"[SessionManager] Created new transcription file: {self.transcription_file}"
             )
@@ -268,7 +279,9 @@ class SessionManager:
 
         # Migrate if legacy
         legacy_path = _legacy_session_json_path(last_session_id)
-        if not os.path.exists(_session_json_path(last_session_id)) and os.path.exists(legacy_path):
+        if not os.path.exists(_session_json_path(last_session_id)) and os.path.exists(
+            legacy_path
+        ):
             _migrate_legacy_session(last_session_id)
 
         # Ensure session dirs exist
@@ -283,15 +296,15 @@ class SessionManager:
 
         print(f"[SessionManager] Resumed last session: {self.current_session_id}")
 
-    def _default_context_config(self) -> Dict[str, Any]:
+    def _default_context_config(self) -> dict[str, Any]:
         return {
             "include_transcribed_text": False,
             "include_previous_questions": False,
             "include_previous_answers": False,
-            "project_folder": ""
+            "project_folder": "",
         }
 
-    def get_context_config(self) -> Dict[str, Any]:
+    def get_context_config(self) -> dict[str, Any]:
         """Returns the context configuration for the current session."""
         if not self.current_session_id:
             return self._default_context_config()
@@ -301,37 +314,37 @@ class SessionManager:
             return self._default_context_config()
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("context", self._default_context_config())
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return self._default_context_config()
 
-    def set_context_config(self, context_config: Dict[str, Any]):
+    def set_context_config(self, context_config: dict[str, Any]):
         """Sets and saves the context configuration."""
         if not self.current_session_id:
             return
-            
+
         path = _session_json_path(self.current_session_id)
         data = {}
         if os.path.exists(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     data = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
-                
+
         data["context"] = context_config
         # We must preserve everything else
-        if "id" not in data: data["id"] = self.current_session_id
-        if "history" not in data: data["history"] = []
-        
+        data.setdefault("id", self.current_session_id)
+        data.setdefault("history", [])
+
         try:
             _atomic_json_write(path, data)
-        except IOError as e:
+        except OSError as e:
             logger.error(f"[SessionManager] Failed to set context config: {e}")
 
-    def get_session_dir(self, session_id: str) -> Optional[str]:
+    def get_session_dir(self, session_id: str) -> str | None:
         """Returns the directory path for the given session_id, or None if it doesn't exist."""
         path = _session_dir(session_id)
         if os.path.exists(path):
@@ -352,19 +365,19 @@ class SessionManager:
         """Imports selected historical items from source_session_id into current session."""
         if not self.current_session_id or source_session_id == self.current_session_id:
             return
-            
+
         source_data = self.load_session_data(source_session_id)
         if not source_data:
             return
-            
+
         source_history = source_data.get("history", [])
         current_history = self.get_history()
-        
+
         for turn in source_history:
             new_turn = {
                 "timestamp": time.time(),
                 "source": "import",
-                "speaker_name": turn.get("speaker_name", self.speaker_name)
+                "speaker_name": turn.get("speaker_name", self.speaker_name),
             }
             if import_questions and "prompt" in turn:
                 new_turn["prompt"] = turn["prompt"]
@@ -372,13 +385,17 @@ class SessionManager:
                 new_turn["response"] = turn["response"]
             if import_transcribed_text and "extracted_text" in turn:
                 new_turn["extracted_text"] = turn["extracted_text"]
-                
-            if "prompt" in new_turn or "response" in new_turn or "extracted_text" in new_turn:
+
+            if (
+                "prompt" in new_turn
+                or "response" in new_turn
+                or "extracted_text" in new_turn
+            ):
                 current_history.append(new_turn)
-                
+
         self._save_session_data(current_history)
 
-    def get_history(self) -> List[Dict[str, Any]]:
+    def get_history(self) -> list[dict[str, Any]]:
         """Returns the history of the current session."""
         if not self.current_session_id:
             return []
@@ -388,19 +405,19 @@ class SessionManager:
             return []
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 self.title = data.get("title")
                 return data.get("history", [])
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return []
 
     def append_interaction(
         self,
         prompt: str,
-        image_path: Optional[str | List[str]],
+        image_path: str | list[str] | None,
         response: str,
-        extracted_text: Optional[str],
+        extracted_text: str | None,
         source_name: str = "text",
     ):
         """Appends a new interaction to the current session."""
@@ -411,7 +428,7 @@ class SessionManager:
             # Simple title generation: take the first 50 chars of the prompt
             self.title = prompt.strip().split("\n")[0][:50]
 
-        interaction: Dict[str, Any] = {
+        interaction: dict[str, Any] = {
             "timestamp": time.time(),
             "prompt": prompt,
             "response": response,
@@ -459,11 +476,13 @@ class SessionManager:
 
         history.append(interaction)
         self._save_session_data(history)
-        
+
         # Index the session after interaction so it becomes searchable
         self.index_session(self.current_session_id)
 
-    def append_transcription_segment(self, segment_text: str, speaker_name: Optional[str] = None):
+    def append_transcription_segment(
+        self, segment_text: str, speaker_name: str | None = None
+    ):
         """Appends a completed transcription segment to the active transcription file.
 
         Prefixes the segment with ``[speaker_name]`` for attribution.
@@ -487,7 +506,7 @@ class SessionManager:
                 f"[SessionManager] Appended segment to {self.transcription_file}: "
                 f"'[{name}] {segment_text}'"
             )
-        except IOError as e:
+        except OSError as e:
             print(
                 f"[SessionManager] Failed to append transcription segment to file: {e}"
             )
@@ -496,7 +515,7 @@ class SessionManager:
             )
 
     def _save_transcription_to_file(
-        self, _prompt: str, response: str, _extracted_text: Optional[str]
+        self, _prompt: str, response: str, _extracted_text: str | None
     ):
         """Save AI response to transcription file with speaker attribution."""
         if not self.transcription_file:
@@ -513,11 +532,11 @@ class SessionManager:
             logger.debug(
                 f"[SessionManager] Saved AI response to {self.transcription_file}"
             )
-        except IOError as e:
+        except OSError as e:
             print(f"[SessionManager] Failed to save transcription to file: {e}")
             logger.error(f"[SessionManager] Failed to save transcription to file: {e}")
 
-    def _save_session_data(self, history: List[Dict[str, Any]]):
+    def _save_session_data(self, history: list[dict[str, Any]]):
         if not self.current_session_id:
             return
 
@@ -528,18 +547,18 @@ class SessionManager:
 
         # Preserve existing name/tags/context from file if present
         existing_name = None
-        existing_tags: List[str] = []
+        existing_tags: list[str] = []
         existing_context = self._default_context_config()
-        existing_corrections: List[Dict[str, Any]] = []
+        existing_corrections: list[dict[str, Any]] = []
         if os.path.exists(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     existing = json.load(f)
                     existing_name = existing.get("name")
                     existing_tags = existing.get("tags", [])
                     existing_context = existing.get("context", existing_context)
                     existing_corrections = existing.get("corrections", [])
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         data = {
@@ -548,7 +567,9 @@ class SessionManager:
             "name": existing_name,
             "tags": existing_tags,
             "speaker_name": self.speaker_name,
-            "transcription_file": "transcription.txt" if self.transcription_file and os.path.exists(self.transcription_file) else None,
+            "transcription_file": "transcription.txt"
+            if self.transcription_file and os.path.exists(self.transcription_file)
+            else None,
             "updated_at": time.time(),
             "context": existing_context,
             "corrections": existing_corrections,
@@ -557,7 +578,7 @@ class SessionManager:
 
         try:
             _atomic_json_write(path, data)
-        except IOError as e:
+        except OSError as e:
             print(f"[SessionManager] Failed to save session data: {e}")
 
     def _close_transcription_file(self):
@@ -568,16 +589,16 @@ class SessionManager:
             )
         self.transcription_file = None
 
-    def get_full_transcription(self) -> Optional[str]:
+    def get_full_transcription(self) -> str | None:
         """Returns the full contents of the active session's transcription file, if it exists."""
         if not self.transcription_file or not os.path.exists(self.transcription_file):
             return None
-            
+
         try:
-            with open(self.transcription_file, "r", encoding="utf-8") as f:
+            with open(self.transcription_file, encoding="utf-8") as f:
                 content = f.read().strip()
                 return content if content else None
-        except IOError as e:
+        except OSError as e:
             logger.error(f"[SessionManager] Failed to read transcription file: {e}")
             return None
 
@@ -587,7 +608,7 @@ class SessionManager:
             self.index_session(self.current_session_id)
         self._close_transcription_file()
 
-    def append_corrections(self, corrections: List[Dict[str, Any]]):
+    def append_corrections(self, corrections: list[dict[str, Any]]):
         """Append real-time corrections to the current session."""
         if not self.current_session_id or not corrections:
             return
@@ -596,9 +617,9 @@ class SessionManager:
         data = {}
         if os.path.exists(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     data = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         existing = data.get("corrections", [])
@@ -617,10 +638,10 @@ class SessionManager:
                 len(corrections),
                 self.current_session_id,
             )
-        except IOError as e:
+        except OSError as e:
             logger.error("[SessionManager] Failed to append corrections: %s", e)
 
-    def get_corrections(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_corrections(self, session_id: str | None = None) -> list[dict[str, Any]]:
         """Return stored corrections for a session."""
         sid = session_id or self.current_session_id
         if not sid:
@@ -631,14 +652,14 @@ class SessionManager:
             return []
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("corrections", [])
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return []
 
     @staticmethod
-    def list_all_sessions() -> List[Dict[str, Any]]:
+    def list_all_sessions() -> list[dict[str, Any]]:
         """Returns lightweight metadata for all non-empty sessions, sorted by updated_at descending.
 
         Scans for both new-style (folder-based) and legacy (flat-file) sessions.
@@ -648,7 +669,8 @@ class SessionManager:
 
         # Filter out empty sessions (no interactions, no screenshots, and no transcription)
         sessions = [
-            s for s in sessions
+            s
+            for s in sessions
             if s["interaction_count"] > 0
             or _has_screenshots(s["id"])
             or _has_transcription(s["id"])
@@ -662,8 +684,11 @@ class SessionManager:
         """Return the number of empty sessions (no interactions, no screenshots, no transcription)."""
         all_sessions = SessionManager._list_all_sessions_unfiltered()
         return sum(
-            1 for s in all_sessions
-            if s["interaction_count"] == 0 and not _has_screenshots(s["id"]) and not _has_transcription(s["id"])
+            1
+            for s in all_sessions
+            if s["interaction_count"] == 0
+            and not _has_screenshots(s["id"])
+            and not _has_transcription(s["id"])
         )
 
     @staticmethod
@@ -671,8 +696,11 @@ class SessionManager:
         """Delete all empty sessions and return the count of deleted sessions."""
         all_sessions = SessionManager._list_all_sessions_unfiltered()
         empty_ids = [
-            s["id"] for s in all_sessions
-            if s["interaction_count"] == 0 and not _has_screenshots(s["id"]) and not _has_transcription(s["id"])
+            s["id"]
+            for s in all_sessions
+            if s["interaction_count"] == 0
+            and not _has_screenshots(s["id"])
+            and not _has_transcription(s["id"])
         ]
         deleted = 0
         for sid in empty_ids:
@@ -681,7 +709,7 @@ class SessionManager:
         return deleted
 
     @staticmethod
-    def _list_all_sessions_unfiltered() -> List[Dict[str, Any]]:
+    def _list_all_sessions_unfiltered() -> list[dict[str, Any]]:
         """Returns lightweight metadata for ALL sessions (including empty ones).
 
         Scans for both new-style (folder-based) and legacy (flat-file) sessions.
@@ -700,20 +728,22 @@ class SessionManager:
             session_json = os.path.join(entry_path, "session.json")
             if os.path.isdir(entry_path) and os.path.exists(session_json):
                 try:
-                    with open(session_json, "r", encoding="utf-8") as f:
+                    with open(session_json, encoding="utf-8") as f:
                         data = json.load(f)
                     session_id = data.get("id", entry)
                     seen_ids.add(session_id)
-                    sessions.append({
-                        "id": session_id,
-                        "title": data.get("title"),
-                        "name": data.get("name"),
-                        "tags": data.get("tags", []),
-                        "speaker_name": data.get("speaker_name", "interviewer"),
-                        "updated_at": data.get("updated_at", 0),
-                        "interaction_count": len(data.get("history", [])),
-                    })
-                except (json.JSONDecodeError, IOError):
+                    sessions.append(
+                        {
+                            "id": session_id,
+                            "title": data.get("title"),
+                            "name": data.get("name"),
+                            "tags": data.get("tags", []),
+                            "speaker_name": data.get("speaker_name", "interviewer"),
+                            "updated_at": data.get("updated_at", 0),
+                            "interaction_count": len(data.get("history", [])),
+                        }
+                    )
+                except (OSError, json.JSONDecodeError):
                     continue
                 continue
 
@@ -733,25 +763,27 @@ class SessionManager:
             read_path = migrated_path if os.path.exists(migrated_path) else entry_path
 
             try:
-                with open(read_path, "r", encoding="utf-8") as f:
+                with open(read_path, encoding="utf-8") as f:
                     data = json.load(f)
                 seen_ids.add(session_id)
-                sessions.append({
-                    "id": data.get("id", session_id),
-                    "title": data.get("title"),
-                    "name": data.get("name"),
-                    "tags": data.get("tags", []),
-                    "speaker_name": data.get("speaker_name", "interviewer"),
-                    "updated_at": data.get("updated_at", 0),
-                    "interaction_count": len(data.get("history", [])),
-                })
-            except (json.JSONDecodeError, IOError):
+                sessions.append(
+                    {
+                        "id": data.get("id", session_id),
+                        "title": data.get("title"),
+                        "name": data.get("name"),
+                        "tags": data.get("tags", []),
+                        "speaker_name": data.get("speaker_name", "interviewer"),
+                        "updated_at": data.get("updated_at", 0),
+                        "interaction_count": len(data.get("history", [])),
+                    }
+                )
+            except (OSError, json.JSONDecodeError):
                 continue
 
         return sessions
 
     @staticmethod
-    def load_session_data(session_id: str) -> Optional[Dict[str, Any]]:
+    def load_session_data(session_id: str) -> dict[str, Any] | None:
         """Loads full session JSON including history.
 
         Checks new-style path first, falls back to legacy, and migrates if needed.
@@ -760,9 +792,9 @@ class SessionManager:
         new_path = _session_json_path(session_id)
         if os.path.exists(new_path):
             try:
-                with open(new_path, "r", encoding="utf-8") as f:
+                with open(new_path, encoding="utf-8") as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 return None
 
         # Fall back to legacy
@@ -773,9 +805,9 @@ class SessionManager:
             migrated_path = _session_json_path(session_id)
             read_path = migrated_path if os.path.exists(migrated_path) else legacy_path
             try:
-                with open(read_path, "r", encoding="utf-8") as f:
+                with open(read_path, encoding="utf-8") as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 return None
 
         return None
@@ -795,15 +827,15 @@ class SessionManager:
             return
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             data["name"] = new_name
             _atomic_json_write(path, data)
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             logger.error(f"[SessionManager] Failed to rename session {session_id}: {e}")
 
     @staticmethod
-    def set_session_tags(session_id: str, tags: List[str]):
+    def set_session_tags(session_id: str, tags: list[str]):
         """Updates the tags field of a session."""
         path = _session_json_path(session_id)
 
@@ -817,12 +849,14 @@ class SessionManager:
             return
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             data["tags"] = tags
             _atomic_json_write(path, data)
-        except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"[SessionManager] Failed to set tags for session {session_id}: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error(
+                f"[SessionManager] Failed to set tags for session {session_id}: {e}"
+            )
 
     @staticmethod
     def delete_session(session_id: str) -> bool:
@@ -836,7 +870,9 @@ class SessionManager:
                 logger.info(f"[SessionManager] Deleted session folder: {session_id}")
                 return True
             except OSError as e:
-                logger.error(f"[SessionManager] Failed to delete session folder {session_id}: {e}")
+                logger.error(
+                    f"[SessionManager] Failed to delete session folder {session_id}: {e}"
+                )
                 return False
 
         # Legacy: delete flat JSON file and referenced images
@@ -846,7 +882,7 @@ class SessionManager:
 
         # Remove referenced images from legacy shared folder
         try:
-            with open(legacy_path, "r", encoding="utf-8") as f:
+            with open(legacy_path, encoding="utf-8") as f:
                 data = json.load(f)
             for interaction in data.get("history", []):
                 image_path = interaction.get("image")
@@ -857,7 +893,7 @@ class SessionManager:
                         logger.warning(
                             f"[SessionManager] Failed to delete image {image_path}: {img_err}"
                         )
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass  # Still attempt to delete the session file
 
         # Remove session JSON file
@@ -870,7 +906,7 @@ class SessionManager:
             return False
 
     @staticmethod
-    def _parse_screenshot_timestamp(filename: str) -> Optional[float]:
+    def _parse_screenshot_timestamp(filename: str) -> float | None:
         """Parse a screenshot filename like ``2026-06-06_10-30-15.png`` to epoch seconds.
 
         Returns ``None`` if the filename does not match the expected format.
@@ -883,7 +919,7 @@ class SessionManager:
             return None
 
     @staticmethod
-    def get_timeline_events(session_id: str) -> List[Dict[str, Any]]:
+    def get_timeline_events(session_id: str) -> list[dict[str, Any]]:
         """Return chronologically sorted timeline events for a session.
 
         Each event dict contains:
@@ -905,7 +941,7 @@ class SessionManager:
 
             {"line": "--- [interviewer] ---"}
         """
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         # 1. Screenshots
         screenshots_dir = _session_screenshots_dir(session_id)
@@ -916,7 +952,7 @@ class SessionManager:
                 ts = SessionManager._parse_screenshot_timestamp(fname)
                 if ts is not None:
                     abs_path = os.path.abspath(os.path.join(screenshots_dir, fname))
-                    data: Dict[str, Any] = {
+                    data: dict[str, Any] = {
                         "filename": fname,
                         "path": abs_path,
                     }
@@ -926,20 +962,22 @@ class SessionManager:
                     sidecar_path = os.path.join(screenshots_dir, sidecar_name)
                     if os.path.isfile(sidecar_path):
                         try:
-                            with open(sidecar_path, "r", encoding="utf-8") as sf:
+                            with open(sidecar_path, encoding="utf-8") as sf:
                                 sidecar = json.load(sf)
                             data["app_name"] = sidecar.get("app_name", "")
                             data["process_name"] = sidecar.get("process_name", "")
                             data["window_title"] = sidecar.get("window_title", "")
                             data["exe_path"] = sidecar.get("exe_path", "")
-                        except (json.JSONDecodeError, IOError):
+                        except (OSError, json.JSONDecodeError):
                             pass
 
-                    events.append({
-                        "type": "screenshot",
-                        "timestamp": ts,
-                        "data": data,
-                    })
+                    events.append(
+                        {
+                            "type": "screenshot",
+                            "timestamp": ts,
+                            "data": data,
+                        }
+                    )
 
         # 2. Interactions from session.json
         session_data = SessionManager.load_session_data(session_id)
@@ -969,23 +1007,25 @@ class SessionManager:
                 if isinstance(images, str):
                     images = [images] if images else []
 
-                events.append({
-                    "type": "interaction",
-                    "timestamp": ts,
-                    "data": {
-                        "index": idx,
-                        "source": source,
-                        "prompt_excerpt": excerpt,
-                        "has_image": len(images) > 0,
-                        "image_count": len(images),
-                    },
-                })
+                events.append(
+                    {
+                        "type": "interaction",
+                        "timestamp": ts,
+                        "data": {
+                            "index": idx,
+                            "source": source,
+                            "prompt_excerpt": excerpt,
+                            "has_image": len(images) > 0,
+                            "image_count": len(images),
+                        },
+                    }
+                )
 
         # 3. Transcription separators (timestamps inferred from position)
         trans_path = _session_transcription_path(session_id)
         if os.path.isfile(trans_path):
             try:
-                with open(trans_path, "r", encoding="utf-8") as f:
+                with open(trans_path, encoding="utf-8") as f:
                     for line in f:
                         stripped = line.strip()
                         if stripped.startswith("--- ") and stripped.endswith(" ---"):
@@ -993,18 +1033,26 @@ class SessionManager:
                             if "AI Response" in stripped:
                                 # Format: --- AI Response (2026-06-06 10:30:15) ---
                                 import re
-                                m = re.search(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)", stripped)
+
+                                m = re.search(
+                                    r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+                                    stripped,
+                                )
                                 if m:
                                     try:
-                                        dt = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
-                                        events.append({
-                                            "type": "transcription_separator",
-                                            "timestamp": dt.timestamp(),
-                                            "data": {"line": stripped},
-                                        })
+                                        dt = datetime.strptime(
+                                            m.group(1), "%Y-%m-%d %H:%M:%S"
+                                        )
+                                        events.append(
+                                            {
+                                                "type": "transcription_separator",
+                                                "timestamp": dt.timestamp(),
+                                                "data": {"line": stripped},
+                                            }
+                                        )
                                     except ValueError:
                                         pass
-            except IOError:
+            except OSError:
                 pass
 
         # Sort by timestamp
@@ -1015,39 +1063,42 @@ class SessionManager:
         """Generates and saves embeddings for the session synchronously."""
         try:
             from core.llm.embeddings import get_embedding_engine
+
             engine = get_embedding_engine(self.config)
-            
+
             data = self.load_session_data(session_id)
             if not data:
                 return
-                
+
             chunks = []
             history = data.get("history", [])
-            
+
             # Extract prompts and responses
             for i, interaction in enumerate(history):
                 prompt = interaction.get("prompt", "").strip()
                 if prompt:
                     chunks.append({"type": "prompt", "index": i, "text": prompt})
-                    
+
                 response = interaction.get("response", "").strip()
                 if response:
                     chunks.append({"type": "response", "index": i, "text": response})
-            
+
             # Extract transcription lines
             trans_path = _session_transcription_path(session_id)
             if os.path.exists(trans_path):
                 try:
-                    with open(trans_path, "r", encoding="utf-8") as f:
+                    with open(trans_path, encoding="utf-8") as f:
                         for idx, line in enumerate(f):
                             line = line.strip()
                             # Skip separator lines
                             if line.startswith("---") or not line:
                                 continue
-                            chunks.append({"type": "transcription", "index": idx, "text": line})
+                            chunks.append(
+                                {"type": "transcription", "index": idx, "text": line}
+                            )
                 except Exception:
                     pass
-            
+
             # Extract app names from screenshots
             screenshots_dir = _session_screenshots_dir(session_id)
             if os.path.isdir(screenshots_dir):
@@ -1056,33 +1107,37 @@ class SessionManager:
                         continue
                     sidecar_path = os.path.join(screenshots_dir, fname)
                     try:
-                        with open(sidecar_path, "r", encoding="utf-8") as sf:
+                        with open(sidecar_path, encoding="utf-8") as sf:
                             sidecar = json.load(sf)
                         app_name = sidecar.get("app_name", "").strip()
                         window_title = sidecar.get("window_title", "").strip()
                         text = ""
-                        if app_name: text += app_name
-                        if window_title: text += " " + window_title
+                        if app_name:
+                            text += app_name
+                        if window_title:
+                            text += " " + window_title
                         if text:
-                            chunks.append({"type": "app_name", "index": 0, "text": text.strip()})
+                            chunks.append(
+                                {"type": "app_name", "index": 0, "text": text.strip()}
+                            )
                     except Exception:
                         pass
-            
+
             # Extract tags and summaries
             tags = data.get("tags", [])
             if tags:
                 chunks.append({"type": "tag", "index": 0, "text": " ".join(tags)})
-                
+
             summary = data.get("summary", "").strip()
             if summary:
                 chunks.append({"type": "summary", "index": 0, "text": summary})
-            
+
             # Load existing embeddings to avoid re-embedding everything
             emb_path = os.path.join(_session_dir(session_id), "embeddings.json")
             existing_embeddings = {}
             if os.path.exists(emb_path):
                 try:
-                    with open(emb_path, "r", encoding="utf-8") as f:
+                    with open(emb_path, encoding="utf-8") as f:
                         old_chunks = json.load(f)
                     for c in old_chunks:
                         key = (c.get("type"), c.get("index"), c.get("text"))
@@ -1090,13 +1145,13 @@ class SessionManager:
                             existing_embeddings[key] = c["embedding"]
                 except Exception:
                     pass
-            
+
             if not chunks:
                 return
-                
+
             texts_to_embed = []
             chunk_indices_to_embed = []
-            
+
             for i, chunk in enumerate(chunks):
                 key = (chunk["type"], chunk["index"], chunk["text"])
                 if key in existing_embeddings:
@@ -1104,42 +1159,47 @@ class SessionManager:
                 else:
                     texts_to_embed.append(chunk["text"])
                     chunk_indices_to_embed.append(i)
-            
+
             if texts_to_embed:
                 embeddings = engine.embed_texts(texts_to_embed)
                 for j, idx in enumerate(chunk_indices_to_embed):
                     chunks[idx]["embedding"] = embeddings[j].tolist()
-                
+
             _atomic_json_write(emb_path, chunks)
-            logger.info(f"[SessionManager] Indexed {len(chunks)} chunks ({len(texts_to_embed)} new) for session {session_id}")
-            
+            logger.info(
+                f"[SessionManager] Indexed {len(chunks)} chunks ({len(texts_to_embed)} new) for session {session_id}"
+            )
+
         except Exception as e:
             logger.error(f"[SessionManager] Failed to index session {session_id}: {e}")
 
     def index_session(self, session_id: str):
         """Generates and saves embeddings for the session in a background thread."""
         import threading
-        thread = threading.Thread(target=self.index_session_sync, args=(session_id,), daemon=True)
+
+        thread = threading.Thread(
+            target=self.index_session_sync, args=(session_id,), daemon=True
+        )
         thread.start()
 
     @staticmethod
-    def get_all_embeddings() -> List[Dict[str, Any]]:
+    def get_all_embeddings() -> list[dict[str, Any]]:
         """Loads all embeddings.json files into memory. Used for semantic search."""
         all_chunks = []
         if not os.path.exists(SESSIONS_DIR):
             return all_chunks
-            
+
         for entry in os.listdir(SESSIONS_DIR):
             session_dir = os.path.join(SESSIONS_DIR, entry)
             emb_path = os.path.join(session_dir, "embeddings.json")
             if os.path.isdir(session_dir) and os.path.exists(emb_path):
                 try:
-                    with open(emb_path, "r", encoding="utf-8") as f:
+                    with open(emb_path, encoding="utf-8") as f:
                         chunks = json.load(f)
                     for c in chunks:
                         c["session_id"] = entry
                     all_chunks.extend(chunks)
                 except Exception:
                     pass
-                    
+
         return all_chunks

@@ -1,17 +1,17 @@
 """Public API — thread-safe functions called from background threads to interact with the UI."""
+
 import logging
 import queue
 import threading
 
 from PyQt6.QtWidgets import QApplication
 
-from core.ui.signals import ui_signals, _app_callbacks
+from core.ui.signals import _app_callbacks, ui_signals
 
 
 def set_app_callbacks(callbacks):
     # Mutate in-place so every module that imported a reference to the
     # original dict object sees the updated callbacks.
-    from core.ui.signals import _app_callbacks
     _app_callbacks.clear()
     _app_callbacks.update(callbacks)
 
@@ -19,6 +19,7 @@ def set_app_callbacks(callbacks):
 def set_hide_from_capture(hide: bool):
     """Enable or disable capture-hiding globally for all overlay widgets."""
     from core.ui.manager import ui_manager
+
     if ui_manager is not None:
         ui_manager.set_hide_from_capture(hide)
 
@@ -63,6 +64,7 @@ def close_popup():
 def share_response_screenshot():
     ui_signals.capture_popup_screenshot.emit()
 
+
 def set_chat_sessions_btn_state(enabled: bool):
     ui_signals.update_chat_sessions_btn.emit(enabled)
 
@@ -84,6 +86,7 @@ def is_autosubmit_enabled() -> bool:
     Returns True (default) when the panel is not available.
     """
     from core.ui.manager import ui_manager
+
     if ui_manager is not None and ui_manager.panel is not None:
         return ui_manager.panel.chk_autosubmit.isChecked()
     return True
@@ -113,6 +116,7 @@ def clear_subtitles():
 def get_subtitle_text(index: int) -> str:
     """Get the text of a subtitle by index (1 is newest)."""
     from core.ui.manager import ui_manager
+
     if ui_manager is not None:
         return ui_manager.get_subtitle_text(index)
     return ""

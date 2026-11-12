@@ -1,10 +1,11 @@
 """UrlInputWidget — quick URL entry overlay."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QLineEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.mixins import DraggableWidgetMixin, _DragHandleBar
@@ -56,7 +57,7 @@ class UrlInputWidget(DraggableWidgetMixin, QWidget):
     def _handle_submit(self):
         url = self.line_edit.text().strip()
         if url:
-            if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
+            if not url.startswith(("http://", "https://", "file://")):
                 url = "https://" + url
             self.line_edit.clear()
             ui_signals.open_url.emit(url)

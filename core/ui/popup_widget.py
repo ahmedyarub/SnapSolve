@@ -1,22 +1,23 @@
 """PopupWidget — rich Markdown/LaTeX/Mermaid popup overlay."""
+
 import json
 import os
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSize, QUrl, QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
     QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.ui.ide_integration import _PopupWebPage
-from core.ui.mixins import ResizableWidgetMixin, DraggableWidgetMixin
+from core.ui.mixins import DraggableWidgetMixin, ResizableWidgetMixin
 
 
 class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
@@ -53,7 +54,9 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         self.web_view = QWebEngineView()
         self._popup_page = _PopupWebPage(self.web_view)
         self.web_view.setPage(self._popup_page)
-        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        self.web_view.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
         self._popup_page.setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.setStyleSheet("background-color: transparent; border: none;")
         self.layout.addWidget(self.web_view)
@@ -85,8 +88,7 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         """
         self._bg_opacity = opacity
         self.setStyleSheet(
-            "background-color: #1e1e1e;"
-            " border: 2px solid #555; border-radius: 10px;"
+            "background-color: #1e1e1e; border: 2px solid #555; border-radius: 10px;"
         )
         self.setWindowOpacity(opacity)
 
@@ -157,12 +159,12 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         logger = logging.getLogger(__name__)
 
         def on_size_eval(size_data):
-            width = self.width() # Keep current width to avoid text reflow
-            content_height = size_data.get('height', self.height())
+            width = self.width()  # Keep current width to avoid text reflow
+            content_height = size_data.get("height", self.height())
 
             # Account for layout margins and the top bar's height
             extra_height = self.height() - self.web_view.height()
-            total_height = content_height + extra_height + 20 # Add some padding
+            total_height = content_height + extra_height + 20  # Add some padding
 
             original_size = self.size()
 
@@ -181,11 +183,14 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
             self.resize(original_size)
 
             try:
-                fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="snapsolve_response_")
+                fd, temp_path = tempfile.mkstemp(
+                    suffix=".png", prefix="snapsolve_response_"
+                )
                 os.close(fd)
                 pixmap.save(temp_path, "PNG")
 
                 from core.remote_control_server import set_response_image_path
+
                 set_response_image_path(temp_path)
             except Exception as e:
                 logger.error(f"Failed to capture and save popup screenshot: {e}")
@@ -193,5 +198,5 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         # Scroll to top and get the actual scroll dimensions
         self.web_view.page().runJavaScript(
             "window.scrollTo(0, 0); ({ width: document.documentElement.scrollWidth, height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) })",
-            on_size_eval
+            on_size_eval,
         )

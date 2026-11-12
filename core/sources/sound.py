@@ -5,21 +5,20 @@ Delegates to:
 - :mod:`audio_recorder` — device discovery, mic/loopback recording workers
 - :mod:`transcription` — transcription/translation client management and callbacks
 """
+
 import logging
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
 
-from .base import Source
-from .whisperlive_manager import WhisperLiveManager
 from .audio_recorder import (
-    record_mic_simple,
     record_loopback_simple,
-    stream_mic_to_whisperlive,
+    record_mic_simple,
     stream_loopback_to_whisperlive,
-    find_audio_device_index,
-    update_volume,
+    stream_mic_to_whisperlive,
 )
+from .base import Source
 from .transcription import TranscriptionProcessor
+from .whisperlive_manager import WhisperLiveManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class SoundSource(Source):
         self.config = config or {}
         self.session_manager = session_manager
         self.is_recording = False
-        self._record_thread: Optional[threading.Thread] = None
+        self._record_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self.realtime_transcription = True
 
@@ -74,8 +73,8 @@ class SoundSource(Source):
 
     def start_recording(
         self,
-        status_callback: Callable[[str], None] = None,
-        enable_transcription: bool = None,
+        status_callback: Callable[[str], None] | None = None,
+        enable_transcription: bool | None = None,
     ):
         if self.is_recording:
             return
@@ -90,10 +89,17 @@ class SoundSource(Source):
         if enable_transcription is not None:
             self.realtime_transcription = enable_transcription
         else:
-            self.realtime_transcription = self.config.get("realtime_transcription", True)
+            self.realtime_transcription = self.config.get(
+                "realtime_transcription", True
+            )
 
-        if self.realtime_transcription and not TranscriptionProcessor.is_client_available():
-            logger.error("Cannot start transcription: WhisperLive client is not available.")
+        if (
+            self.realtime_transcription
+            and not TranscriptionProcessor.is_client_available()
+        ):
+            logger.error(
+                "Cannot start transcription: WhisperLive client is not available."
+            )
             if status_callback:
                 status_callback("Error: Transcription client not found.")
             return
@@ -102,7 +108,9 @@ class SoundSource(Source):
         loopback_name = self.config.get("audio_loopback_device_name")
         if status_callback:
             if loopback_name:
-                status_callback(f"Starting recording on {device_name} & {loopback_name}...")
+                status_callback(
+                    f"Starting recording on {device_name} & {loopback_name}..."
+                )
             else:
                 status_callback(f"Starting recording on {device_name}...")
 

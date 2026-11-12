@@ -4,12 +4,13 @@ Contains the low-level recording logic for both simple (record-only) and
 streaming (WhisperLive) modes, for both microphone and system loopback
 devices.
 """
+
 import logging
 import os
 import tempfile
 import threading
 import wave
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 import pyaudio
@@ -40,14 +41,16 @@ def handle_stream_error(
     e: Exception,
     device_name: str,
     source_type: str,
-    status_callback: Optional[Callable[[str], None]] = None,
+    status_callback: Callable[[str], None] | None = None,
 ):
     """Classify and report an audio stream error."""
     error_str = str(e).lower()
     err_msg = ""
 
     if "unanticipated host error" in error_str or "-9999" in error_str:
-        err_msg = f"Device Disconnected: {device_name} ({source_type}) was unplugged or lost."
+        err_msg = (
+            f"Device Disconnected: {device_name} ({source_type}) was unplugged or lost."
+        )
     elif "device unavailable" in error_str or "-9985" in error_str:
         err_msg = f"Device Unavailable: {device_name} ({source_type}) is in use or disconnected."
     elif "invalid input device" in error_str or "-9996" in error_str:
@@ -80,10 +83,14 @@ def update_volume(data: bytes, volume_state: dict):
         vol = np.abs(audio_data.astype(np.float32)).max()
 
         # Keep a running max of the volume to auto-normalize
-        volume_state["max_observed_vol"] = max(volume_state.get("max_observed_vol", 500.0), vol)
+        volume_state["max_observed_vol"] = max(
+            volume_state.get("max_observed_vol", 500.0), vol
+        )
 
         # Slowly decay so it adapts if volume decreases; floor at 500.0
-        volume_state["max_observed_vol"] = max(500.0, volume_state["max_observed_vol"] * 0.995)
+        volume_state["max_observed_vol"] = max(
+            500.0, volume_state["max_observed_vol"] * 0.995
+        )
 
         scaled_vol = int((vol / volume_state["max_observed_vol"]) * 100)
         scaled_vol = min(100, max(0, scaled_vol))
@@ -108,7 +115,7 @@ def record_mic_simple(
     stop_event: threading.Event,
     audio_frames_dict: dict,
     volume_state: dict,
-    status_callback: Optional[Callable[[str], None]] = None,
+    status_callback: Callable[[str], None] | None = None,
 ) -> tuple[int | None, int | None]:
     """Record microphone audio without streaming to WhisperLive.
 
@@ -139,7 +146,8 @@ def record_mic_simple(
 
                     if enhancer:
                         audio_array = (
-                            np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                            np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                            / 32768.0
                         )
                         audio_array = enhancer.enhance(audio_array)
                         data = (audio_array * 32767).astype(np.int16).tobytes()
@@ -158,7 +166,7 @@ def record_loopback_simple(
     stop_event: threading.Event,
     audio_frames_dict: dict,
     fallback_sample_rate: int = 16000,
-    status_callback: Optional[Callable[[str], None]] = None,
+    status_callback: Callable[[str], None] | None = None,
 ):
     """Record system loopback audio without streaming to WhisperLive."""
     loopback_name = config.get("audio_loopback_device_name")
@@ -208,7 +216,7 @@ def stream_mic_to_whisperlive(
     transcription_client,
     volume_state: dict,
     session_manager=None,
-    status_callback: Optional[Callable[[str], None]] = None,
+    status_callback: Callable[[str], None] | None = None,
 ):
     """Stream microphone audio to WhisperLive for real-time transcription."""
     device_name = config.get("audio_input_device_name")
@@ -216,10 +224,13 @@ def stream_mic_to_whisperlive(
 
     wav_file = None
     if config.get("post_recording_diarization", False) and session_manager:
-        session_dir = session_manager.get_session_dir(session_manager.current_session_id)
+        session_dir = session_manager.get_session_dir(
+            session_manager.current_session_id
+        )
         if session_dir:
             wav_path = os.path.join(session_dir, "audio_mic.wav")
-            wav_file = wave.open(wav_path, "wb")
+            # Written for the whole stream; closed in the finally block below.
+            wav_file = wave.open(wav_path, "wb")  # noqa: SIM115
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)
     try:
@@ -227,7 +238,9 @@ def stream_mic_to_whisperlive(
             stream = source.stream
             source_sample_rate = source.SAMPLE_RATE
             target_sample_rate = 16000
-            logger.info(f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz.")
+            logger.info(
+                f"Microphone {device_name} opened. Sample rate: {source_sample_rate}Hz."
+            )
 
             if wav_file:
                 wav_file.setframerate(target_sample_rate)
@@ -265,7 +278,7 @@ def stream_loopback_to_whisperlive(
     stop_event: threading.Event,
     transcription_client,
     session_manager=None,
-    status_callback: Optional[Callable[[str], None]] = None,
+    status_callback: Callable[[str], None] | None = None,
 ):
     """Stream system loopback audio to WhisperLive for real-time transcription."""
     device_name = config.get("audio_loopback_device_name")
@@ -274,10 +287,13 @@ def stream_loopback_to_whisperlive(
 
     wav_file = None
     if config.get("post_recording_diarization", False) and session_manager:
-        session_dir = session_manager.get_session_dir(session_manager.current_session_id)
+        session_dir = session_manager.get_session_dir(
+            session_manager.current_session_id
+        )
         if session_dir:
             wav_path = os.path.join(session_dir, "audio_loopback.wav")
-            wav_file = wave.open(wav_path, "wb")
+            # Written for the whole stream; closed in the finally block below.
+            wav_file = wave.open(wav_path, "wb")  # noqa: SIM115
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)
     try:

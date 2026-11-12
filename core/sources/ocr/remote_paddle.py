@@ -1,6 +1,8 @@
+import os
 import tempfile
-import httpx
 import threading
+
+import httpx
 from PIL import Image, ImageDraw
 
 from .base import OCREngine
@@ -26,24 +28,25 @@ class RemotePaddleOCREngine(OCREngine):
         if status_callback:
             status_callback("Warming up Remote PaddleOCR...")
 
-        temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        fd, temp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
         try:
             img = Image.new("RGB", (100, 100), color="white")
             d = ImageDraw.Draw(img)
             d.text((10, 10), "Warmup Text", fill=(0, 0, 0))
-            img.save(temp_file.name)
-            self.extract_text(temp_file.name)
+            img.save(temp_path)
+            self.extract_text(temp_path)
         except Exception as e:
             print(f"Warmup failed: {e}")
         finally:
-            temp_file.close()
+            os.remove(temp_path)
             # Intentionally not deleting the file
 
     def extract_text(
         self,
         image_path: str,
         status_callback=None,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             raise OCRCancelledError("OCR cancelled.")

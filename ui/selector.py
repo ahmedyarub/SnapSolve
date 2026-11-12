@@ -1,8 +1,8 @@
 import sys
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
-from PyQt6.QtWidgets import QWidget, QApplication
+from PyQt6.QtGui import QColor, QCursor, QPainter, QPen
+from PyQt6.QtWidgets import QApplication, QWidget
 
 
 class CoordinateSelector(QWidget):
@@ -133,7 +133,11 @@ class CoordinateSelector(QWidget):
         # Fill the entire screen with a semi-transparent dark gray mask
         painter.fillRect(self.rect(), QColor(50, 50, 50, 76))
 
-        if (self.is_drawing or self.first_point_locked) and self.start_x is not None and self.end_x is not None:
+        if (
+            (self.is_drawing or self.first_point_locked)
+            and self.start_x is not None
+            and self.end_x is not None
+        ):
             # Draw the red selection rectangle outline
             pen = QPen(QColor("red"))
             pen.setWidth(3)
@@ -204,10 +208,12 @@ def _get_coordinates_impl(callback=None):
 
 
 def get_coordinates(callback=None):
-    from core.output import selector_signals
     import queue
     import threading
+
     from PyQt6.QtWidgets import QApplication
+
+    from core.output import selector_signals
 
     # Check if we are already in the main Qt thread.
     app = QApplication.instance()

@@ -1,47 +1,41 @@
 #!/bin/bash
-# Exit immediately if a command exits with a non-zero status
-set -e
+# Static analysis & verification loop (WSL / Linux). Windows: scripts/verify.ps1.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+fail() {
+    echo -e "\e[31m$1\e[0m"
+    exit 1
+}
 
 echo "🔍 Starting Static Analysis & Verification Loop..."
 
-# 1. Python: Ruff (Linter & Formatter)
+# 1. Python: Ruff (settings, rules and excludes live in ruff.toml)
 echo "Running Python Checks (Ruff)..."
-# Check for unused imports, variables, and linting errors
-ruff check .
-RUFF_CHECK_EXIT_CODE=$?
-if [ "$RUFF_CHECK_EXIT_CODE" -ne 0 ]; then
-    echo -e "\e[31mRuff check failed. Fix the issues listed above.\e[0m"
-    exit 1
-fi
+ruff check . || fail "Ruff check failed. Fix the issues listed above."
+ruff format --check . || fail "Ruff format check failed. Run 'ruff format .' to fix formatting issues."
 
-# Check formatting without modifying files (forces AI to run the fix command if it fails)
-ruff format --check . --exclude "services/whisperlive" --exclude "android_remote_control/build" --exclude "android_remote_control/app/build" --exclude "android_remote_control/gradle"
-RUFF_FORMAT_EXIT_CODE=$?
-if [ "$RUFF_FORMAT_EXIT_CODE" -ne 0 ]; then
-    echo -e "\e[31mRuff format check failed. Run 'ruff format .' to fix formatting issues.\e[0m"
-    exit 1
-fi
+# 2. Unit tests (pytest.ini selects the suite)
+echo "Running unit tests (pytest)..."
+"${PYTHON:-python3}" -m pytest -q || fail "Unit tests failed."
 
-# 2. JetBrains Qodana (Headless PyCharm/IntelliJ Inspections)
+# 3. JetBrains Qodana (headless PyCharm inspections in Docker).
+# QODANA_PYTHON_PATH points Qodana at the venv built by scripts/qodana_bootstrap.sh;
+# without it Qodana analyses against an empty interpreter. No --apply-fixes:
+# verification must not edit code.
 echo "Running IDE Inspections (Qodana)..."
-# Fails if any new problems are introduced beyond the baseline threshold
-export NONINTERACTIVE=true
-qodana scan --fail-threshold 0 --print-problems --apply-fixes
-QODANA_EXIT_CODE=$?
-if [ "$QODANA_EXIT_CODE" -ne 0 ]; then
-    echo -e "\e[31mQodana inspection failed. Fix the issues listed above.\e[0m"
-    exit 1
-fi
+NONINTERACTIVE=true qodana scan --fail-threshold 0 --print-problems \
+    -e QODANA_PYTHON_PATH=/data/cache/snapsolve-venv/bin/python \
+    || fail "Qodana inspection failed. Fix the issues listed above."
 
-# 3. SonarQube Scanner
+# 4. SonarQube Scanner (token from SONAR_TOKEN, never stored in the repo)
 echo "Running SonarQube Quality Gate..."
+[ -n "${SONAR_TOKEN:-}" ] || fail "SONAR_TOKEN is not set. Create a token at http://localhost:9000."
+bash scripts/sonarqube_up.sh || fail "SonarQube server is not available."
 
-# 1. Run the container
-docker start sonarqube
-
-# 2. Run the scanner
-sonar-scanner -Dsonar.qualitygate.wait=true -Dsonar.python.version=3
-SONAR_EXIT_CODE=$?
+SONAR_EXIT_CODE=0
+sonar-scanner -Dsonar.qualitygate.wait=true || SONAR_EXIT_CODE=$?
 
 # 3. Fetch the issues directly from the SonarQube API
 SONAR_URL="http://localhost:9000"
@@ -89,6 +83,8 @@ if [ -f "$REPORT_TASK_FILE" ]; then
 fi
 
 # Query for issues (only open/confirmed/reopened)
+ISSUE_COUNT=0
+FILTERED_RESPONSE="[]"
 API_URL="${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&types=CODE_SMELL,BUG,VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED"
 ISSUES_RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$API_URL")
 

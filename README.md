@@ -7,7 +7,7 @@ answers, and provides responses via frameless popup notifications and/or local T
 
 * **Multiple Input Sources:** Support for text input, screen capture (images), and audio input with speech recognition.
 * **Fast Screen Capture:** Capture user-defined areas with minimal overhead.
-* **Multiple LLM Backends:** Use Gemini (via CLI or Python SDK), Google GenAI API, or a local Ollama server.
+* **Multiple LLM Backends:** Claude through your Claude subscription (default), Gemini (via CLI or Python SDK), Google GenAI API, LiteLLM, or a local Ollama server.
 * **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
 * **Chat History:** Maintain conversational context over multiple queries with session management.
 * **Session Browser:** Browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering.
@@ -28,14 +28,33 @@ For details on streaming screen and audio from a remote device, see [REMOTE_CAPT
 ## Setup & Installation
 
 1. Install Python 3.10+
-2. Install dependencies:
+2. Install dependencies, with the GPU constraints so pip can't swap the CUDA stack:
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements.txt -c constraints-gpu.txt
    ```
+3. Check that the NVIDIA GPU is used (PaddleOCR and faster-whisper must report `GPU`):
+   ```bash
+   python scripts/check_gpu.py
+   ```
+   Run it again after any package upgrade. To move a GPU package to a new version, change its pin in
+   `constraints-gpu.txt`, reinstall, and commit the pin only if this check passes.
 
-### Option 1: Gemini CLI (Default)
+### Default: Claude with your Claude subscription
 
-To use the default Gemini CLI:
+The default profile, "Claude (subscription)", uses the `claude-code` engine. It runs the Claude Code CLI in
+headless mode with all tools turned off, so requests are billed to the Claude Pro/Max plan the CLI is logged in
+with, not to an API key. `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the CLI's environment
+so a key set elsewhere (for example by the LiteLLM engine) can't switch billing to the API.
+
+1. Install [Claude Code](https://code.claude.com/docs) and run `claude` once to log in with your Claude account.
+2. Check the login: `claude auth status` should show `"authMethod": "claude.ai"`.
+3. Models: `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5` (used for real-time
+   corrections), `claude-fable-5-2`. Images are sent to Claude directly, so the profile needs no OCR engine.
+4. If `claude` is not on `PATH`, set `claude_cli_path` in `config.json`.
+
+### Option 1: Gemini CLI
+
+To use the Gemini CLI:
 
 1. Install Node.js (for `npx`)
 2. Install the Gemini CLI:

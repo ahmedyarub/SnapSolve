@@ -4,11 +4,11 @@ This module also performs early platform-specific setup (DPI awareness,
 console control handler) at import time so it runs before any Qt or
 library code.
 """
+
 import logging
 import os
 import platform
 import sys
-import threading
 
 # ---------------------------------------------------------------------------
 # CRITICAL: Initialize Qt flags BEFORE any other imports!
@@ -19,6 +19,7 @@ import threading
 try:
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
+
     if not QApplication.instance():
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 except Exception:
@@ -27,16 +28,16 @@ except Exception:
 from app import state
 from app.config_validation import validate_config
 from app.engine_init import (
-    _initialize_ocr_engine,
-    _initialize_llm_engines,
-    _initialize_correction_engine,
-    _perform_llm_warmup,
     _initialize_audio_components,
+    _initialize_correction_engine,
+    _initialize_llm_engines,
+    _initialize_ocr_engine,
+    _perform_llm_warmup,
 )
 from app.handlers.audio import handle_start_record, handle_stop_record
 from app.handlers.cancel import handle_cancel
 from app.handlers.capture import handle_capture
-from app.handlers.multi_capture import handle_multi_capture, handle_end_multi_capture
+from app.handlers.multi_capture import handle_end_multi_capture, handle_multi_capture
 from app.handlers.navigation import handle_open_context_manager
 from app.handlers.periodic_screenshots import handle_toggle_periodic_screenshots
 from app.handlers.session import handle_toggle_chat_sessions
@@ -45,21 +46,21 @@ from app.handlers.text import handle_text_submit
 from app.hotkeys import _register_keyboard_shortcuts
 from app.state import exit_app
 from app.tray import _setup_tray_or_console_mode
-from config.settings import get_config, save_config, load_profiles, load_prompts
+from config.settings import get_config, load_profiles, load_prompts, save_config
+from core.api_server import start_api_server
 from core.output import (
-    set_hide_from_capture,
     set_active_source_ui,
     set_app_callbacks,
-    toggle_control_panel,
     set_chat_sessions_btn_state,
+    set_hide_from_capture,
     set_periodic_screenshots_btn_state,
+    toggle_control_panel,
 )
-from core.api_server import start_api_server
 from core.session_manager import SessionManager
 from core.sources import (
     ScreenshotSource,
-    TextSource,
     SoundSource,
+    TextSource,
     get_active_source_instance,
     set_active_source_instance,
 )
@@ -72,7 +73,7 @@ if platform.system() == "Windows":
     import ctypes
 
     try:
-        SetProcessDpiAwareness = getattr(ctypes.windll.shcore, "SetProcessDpiAwareness")
+        SetProcessDpiAwareness = ctypes.windll.shcore.SetProcessDpiAwareness
         SetProcessDpiAwareness(2)
     except Exception as e:
         print(f"Warning: Failed to set DPI awareness: {e}")
@@ -96,7 +97,8 @@ if platform.system() == "Windows":
 # ---------------------------------------------------------------------------
 def _initialize_qt_app():
     """Initialize PyQt application."""
-    import PyQt6.QtWebEngineWidgets  # Force early import to prevent crash
+    import PyQt6.QtWebEngineWidgets  # noqa: F401  Force early import to prevent crash
+
     app = QApplication.instance()
     if not app:
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
@@ -111,7 +113,7 @@ def _load_config_and_profiles():
     profiles = load_profiles()
     prompts = load_prompts()
 
-    active_profile_id = config.get("active_profile_id", "prof1")
+    active_profile_id = config.get("active_profile_id", "claude")
     active_profile = next(
         (p for p in profiles if p.get("id") == active_profile_id),
         profiles[0] if profiles else {},
@@ -156,7 +158,9 @@ def _setup_ui_callbacks(config, active_profile, active_prompt_text, session_mana
             config, active_profile, active_prompt_text
         ),
         "cancel": handle_cancel,
-        "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(config, active_profile),
+        "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(
+            config, active_profile
+        ),
         "cycle_source": lambda: handle_cycle_source(config, active_profile),
         "text_submit": lambda text: handle_text_submit(config, active_profile, text),
         "start_record": lambda enable_transcription: handle_start_record(
@@ -166,7 +170,9 @@ def _setup_ui_callbacks(config, active_profile, active_prompt_text, session_mana
             config, active_profile, active_prompt_text, is_long_press
         ),
         "open_context_manager": lambda: handle_open_context_manager(session_manager),
-        "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(config),
+        "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(
+            config
+        ),
     }
     return callbacks
 
@@ -225,6 +231,7 @@ def main():
 
     # Replace early logging with full loguru setup now that config is available
     from core.logging_config import setup_logging
+
     setup_logging(config)
 
     validate_config(active_profile)
@@ -233,7 +240,9 @@ def main():
 
     active_source = _setup_active_source(config, state.session_manager)
 
-    callbacks = _setup_ui_callbacks(config, active_profile, active_prompt_text, state.session_manager)
+    callbacks = _setup_ui_callbacks(
+        config, active_profile, active_prompt_text, state.session_manager
+    )
 
     _initialize_ui(config, active_source, callbacks)
 
@@ -247,11 +256,13 @@ def main():
         active_source.ocr_engine = state.ocr_engine_instance
         set_active_source_instance(active_source)
 
-    state.llm_engine_instance, state.fallback_llm_engine_instance = _initialize_llm_engines(
-        active_profile, config, state.session_manager
+    state.llm_engine_instance, state.fallback_llm_engine_instance = (
+        _initialize_llm_engines(active_profile, config, state.session_manager)
     )
 
-    _perform_llm_warmup(config, state.llm_engine_instance, state.fallback_llm_engine_instance)
+    _perform_llm_warmup(
+        config, state.llm_engine_instance, state.fallback_llm_engine_instance
+    )
 
     # Initialize real-time correction engine
     prompts = load_prompts()
@@ -269,12 +280,16 @@ def main():
     set_chat_sessions_btn_state(active_profile.get("enable_chat_sessions", True))
 
     # Initialize periodic screenshot service
-    from core.periodic_screenshots import PeriodicScreenshotService  # noqa: PLC0415
+    from core.periodic_screenshots import PeriodicScreenshotService
 
-    state.periodic_screenshot_service = PeriodicScreenshotService(config, state.session_manager)
+    state.periodic_screenshot_service = PeriodicScreenshotService(
+        config, state.session_manager
+    )
     if config.get("periodic_screenshots_enabled", False):
         state.periodic_screenshot_service.start()
-    set_periodic_screenshots_btn_state(config.get("periodic_screenshots_enabled", False))
+    set_periodic_screenshots_btn_state(
+        config.get("periodic_screenshots_enabled", False)
+    )
 
     # Start API server if enabled
     if config.get("enable_api_server", False):

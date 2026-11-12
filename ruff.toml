@@ -1,0 +1,48 @@
+# Ruff settings shared by scripts/verify.ps1, scripts/verify.sh and editors.
+required-version = ">=0.17.4"
+target-version = "py312"
+line-length = 88
+extend-exclude = [
+    "services/whisperlive",
+    "services/diarization/.venv",
+    "android_remote_control",
+]
+
+[lint]
+# Explicit list, so a Ruff upgrade cannot silently change what is checked.
+# Security rules (S) are left to SonarQube; blind `except Exception` (BLE) is
+# deliberate in worker threads and Qt callbacks, which must not die.
+select = [
+    "E4", "E7", "E9", "W",  # pycodestyle errors and warnings
+    "F",      # pyflakes
+    "I",      # import sorting
+    "UP",     # pyupgrade for Python 3.12
+    "B",      # bugbear
+    "C4",     # comprehensions
+    "PIE",
+    "SIM",
+    "LOG",
+    "ASYNC",
+    "RUF",
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # UI strings and comments use typographic characters
+    "SIM102",  # nested ifs often read better than one long condition
+    "SIM105",  # contextlib.suppress is not clearer than try/except/pass
+]
+
+[lint.per-file-ignores]
+# Standalone GPU services: the async endpoints serialize requests on purpose,
+# because the shared PaddleOCR / Whisper models are not thread-safe. The
+# diarization service is a script that configures the root logger itself.
+"services/ocr_service.py" = ["ASYNC"]
+"services/diarization/diarization_service.py" = ["ASYNC", "LOG015"]
+# Manual sanity/e2e scripts, not library code.
+"tests/**" = ["LOG015", "SIM112", "SIM115", "ASYNC240"]
+
+[lint.flake8-bugbear]
+# FastAPI's parameter markers are meant to be called in defaults.
+extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Depends", "fastapi.Query"]
+
+[lint.isort]
+known-first-party = ["app", "core", "config", "ui", "services", "challenges", "tests"]

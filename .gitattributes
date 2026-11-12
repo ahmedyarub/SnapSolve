@@ -1,0 +1,2 @@
+# Shell scripts run in Linux (WSL, the Qodana container): keep LF endings.
+*.sh text eol=lf

@@ -4,15 +4,15 @@ Each processor receives a :class:`Frame`, performs a single stage of work,
 and returns a new frame.  ``ErrorFrame`` and ``CancelledFrame`` are passed
 through unchanged to short-circuit the pipeline.
 """
+
 import abc
 import logging
 import threading
-import time
-from typing import Optional
 
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
 from core.sources.base import Source
+
 from .frames import (
     CancelledFrame,
     ErrorFrame,
@@ -43,7 +43,7 @@ class Processor(abc.ABC):
 # ---------------------------------------------------------------------------
 # Helpers shared by processors (thin wrappers around pipeline.py internals)
 # ---------------------------------------------------------------------------
-def _check_cancelled(frame: Frame) -> Optional[CancelledFrame]:
+def _check_cancelled(frame: Frame) -> CancelledFrame | None:
     """Return a ``CancelledFrame`` if the cancel event is set, else ``None``."""
     if frame.cancel_event and frame.cancel_event.is_set():
         return CancelledFrame(cancel_event=frame.cancel_event, metadata=frame.metadata)
@@ -68,9 +68,9 @@ class SourceProcessor(Processor):
         self,
         source: Source,
         coords=None,
-        text: Optional[str] = None,
+        text: str | None = None,
         status_callback=None,
-        image_paths: Optional[list[str]] = None,
+        image_paths: list[str] | None = None,
     ):
         self.source = source
         self.coords = coords
@@ -108,7 +108,7 @@ class SourceProcessor(Processor):
             return cancelled
 
         # Merge image paths from source and externally-provided paths
-        combined_image_paths: Optional[str | list[str]] = None
+        combined_image_paths: str | list[str] | None = None
         paths: list[str] = []
         if self.image_paths:
             paths.extend(self.image_paths)
@@ -118,7 +118,7 @@ class SourceProcessor(Processor):
             combined_image_paths = paths[0] if len(paths) == 1 else paths
 
         # For backward compat — only pass a single string to downstream
-        image_path_str: Optional[str] = None
+        image_path_str: str | None = None
         if isinstance(combined_image_paths, str):
             image_path_str = combined_image_paths
 
@@ -167,6 +167,7 @@ class PromptBuilderProcessor(Processor):
 
         # Store prompt for IDE context injection
         from core.output import set_last_user_prompt
+
         set_last_user_prompt(prompt)
 
         return PromptFrame(
@@ -194,7 +195,7 @@ class LLMProcessor(Processor):
         llm: LLMEngine,
         status_callback=None,
         enable_chat_sessions: bool = True,
-        sink: Optional[Sink] = None,
+        sink: Sink | None = None,
         max_retries: int = 3,
         base_delay: float = 5.0,
     ):
@@ -268,7 +269,7 @@ class ConcurrentLLMProcessor(Processor):
         fallback_llm: LLMEngine,
         status_callback=None,
         enable_chat_sessions: bool = True,
-        sink: Optional[Sink] = None,
+        sink: Sink | None = None,
         max_retries: int = 3,
         base_delay: float = 5.0,
     ):
@@ -297,8 +298,8 @@ class ConcurrentLLMProcessor(Processor):
 
         from .pipeline import (
             ConcurrentSinkWrapper,
-            _run_llm_thread,
             _determine_final_result,
+            _run_llm_thread,
         )
 
         results: dict = {}
@@ -392,7 +393,7 @@ class ConcurrentLLMProcessor(Processor):
 class SinkProcessor(Processor):
     """Calls ``sink.finish()`` after LLM execution completes."""
 
-    def __init__(self, sink: Optional[Sink] = None):
+    def __init__(self, sink: Sink | None = None):
         self.sink = sink
 
     def process(self, frame: Frame) -> Frame:

@@ -4,16 +4,17 @@ Manages WhisperLive transcription client lifecycle, segment callbacks,
 utterance finalization, and subtitle updates.  Also provides a Google
 Speech-to-Text fallback for simple (non-streaming) recordings.
 """
+
 import logging
 import os
 import sys
 import threading
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import speech_recognition as sr
 
-from core.output import show_subtitle, update_subtitle, clear_subtitles
+from core.output import clear_subtitles, show_subtitle, update_subtitle
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,10 @@ if _WHISPERLIVE_PATH not in sys.path:
 try:
     from whisper_live.client import (
         TranscriptionClient as WhisperLiveTranscriptionClient,
-    )  # noqa: E402
+    )
 except ImportError:
     WhisperLiveTranscriptionClient = None
-    logging.error(
+    logger.error(
         "Failed to import WhisperLiveTranscriptionClient. Real-time transcription will not work."
     )
 
@@ -80,8 +81,8 @@ class TranscriptionProcessor:
         self.session_manager = session_manager
 
         # WhisperLive clients
-        self.client_mic: Optional[WhisperLiveTranscriptionClient] = None
-        self.client_loopback: Optional[WhisperLiveTranscriptionClient] = None
+        self.client_mic: WhisperLiveTranscriptionClient | None = None
+        self.client_loopback: WhisperLiveTranscriptionClient | None = None
 
         # Transcription state
         self._last_transcription_text: str = ""
@@ -92,7 +93,10 @@ class TranscriptionProcessor:
         self._translation_language: str = ""
         self._last_translated_text: str = ""
         self._current_translated_utterance: dict[str, str] = {"mic": "", "loopback": ""}
-        self._last_translated_segment_start: dict[str, float] = {"mic": -1.0, "loopback": -1.0}
+        self._last_translated_segment_start: dict[str, float] = {
+            "mic": -1.0,
+            "loopback": -1.0,
+        }
 
         # Real-time correction engine (set externally)
         self.correction_engine = None
@@ -133,7 +137,9 @@ class TranscriptionProcessor:
             if translation_lang:
                 translate_kwargs["enable_translation"] = True
                 translate_kwargs["target_language"] = translation_lang
-                logger.info("Translation enabled — target language: %s", translation_lang)
+                logger.info(
+                    "Translation enabled — target language: %s", translation_lang
+                )
 
             # Mic Client
             mic_kwargs = translate_kwargs.copy()
@@ -180,7 +186,7 @@ class TranscriptionProcessor:
     def wait_for_clients_ready(
         self,
         timeout: int = 15,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> bool:
         """Wait for transcription clients to be ready."""
         ready = True
@@ -223,7 +229,7 @@ class TranscriptionProcessor:
             client = getattr(self, client_attr, None)
             if client:
                 try:
-                    client.client.send_packet_to_server("END_OF_AUDIO".encode("utf-8"))
+                    client.client.send_packet_to_server(b"END_OF_AUDIO")
                     time.sleep(1)
                     client.client.close_websocket()
                 except Exception as e:
@@ -406,9 +412,7 @@ class TranscriptionProcessor:
                 continue
             try:
                 audio_data = sr.AudioData(b"".join(frames), sample_rate, sample_width)
-                text = recognizer.recognize_google(
-                    audio_data, language=google_lang
-                )  # type: ignore[attr-defined]
+                text = recognizer.recognize_google(audio_data, language=google_lang)  # type: ignore[attr-defined]
                 if text:
                     prefix = "🎤 " if source == "mic" else "💻 "
                     results.append(f"{prefix}{text}")

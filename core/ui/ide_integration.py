@@ -1,4 +1,5 @@
 """IDE integration helpers — language maps, code-to-IDE opening, and custom web page."""
+
 import logging
 import os
 import subprocess
@@ -12,20 +13,28 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 
 from core.ui.signals import _last_user_prompt
 
-
 # --- Language → file extension mapping for temp files ---
 _LANG_EXTENSIONS: dict[str, str] = {
-    "python": ".py", "py": ".py",
-    "javascript": ".js", "js": ".js",
-    "typescript": ".ts", "ts": ".ts",
+    "python": ".py",
+    "py": ".py",
+    "javascript": ".js",
+    "js": ".js",
+    "typescript": ".ts",
+    "ts": ".ts",
     "java": ".java",
-    "c": ".c", "cpp": ".cpp", "c++": ".cpp",
-    "csharp": ".cs", "cs": ".cs",
+    "c": ".c",
+    "cpp": ".cpp",
+    "c++": ".cpp",
+    "csharp": ".cs",
+    "cs": ".cs",
     "go": ".go",
-    "rust": ".rs", "rs": ".rs",
-    "kotlin": ".kt", "kt": ".kt",
+    "rust": ".rs",
+    "rs": ".rs",
+    "kotlin": ".kt",
+    "kt": ".kt",
     "swift": ".swift",
-    "ruby": ".rb", "rb": ".rb",
+    "ruby": ".rb",
+    "rb": ".rb",
     "php": ".php",
     "html": ".html",
     "css": ".css",
@@ -33,20 +42,27 @@ _LANG_EXTENSIONS: dict[str, str] = {
     "less": ".less",
     "json": ".json",
     "xml": ".xml",
-    "yaml": ".yaml", "yml": ".yaml",
+    "yaml": ".yaml",
+    "yml": ".yaml",
     "toml": ".toml",
     "sql": ".sql",
-    "bash": ".sh", "sh": ".sh", "shell": ".sh",
-    "powershell": ".ps1", "ps1": ".ps1",
-    "bat": ".bat", "batch": ".bat",
-    "markdown": ".md", "md": ".md",
+    "bash": ".sh",
+    "sh": ".sh",
+    "shell": ".sh",
+    "powershell": ".ps1",
+    "ps1": ".ps1",
+    "bat": ".bat",
+    "batch": ".bat",
+    "markdown": ".md",
+    "md": ".md",
     "lua": ".lua",
     "r": ".r",
     "scala": ".scala",
     "dart": ".dart",
     "groovy": ".groovy",
     "perl": ".pl",
-    "jsx": ".jsx", "tsx": ".tsx",
+    "jsx": ".jsx",
+    "tsx": ".tsx",
     "vue": ".vue",
     "svelte": ".svelte",
 }
@@ -56,20 +72,39 @@ _LANG_EXTENSIONS: dict[str, str] = {
 # Languages with only line-comments use a synthetic block built from line prefixes.
 _LANG_BLOCK_COMMENT: dict[str, tuple[str, str | None]] = {
     # C-style block comments
-    ".js": ("/*", "*/"), ".ts": ("/*", "*/"), ".java": ("/*", "*/"),
-    ".c": ("/*", "*/"), ".cpp": ("/*", "*/"), ".cs": ("/*", "*/"),
-    ".go": ("/*", "*/"), ".rs": ("/*", "*/"), ".kt": ("/*", "*/"),
-    ".swift": ("/*", "*/"), ".php": ("/*", "*/"), ".scss": ("/*", "*/"),
-    ".less": ("/*", "*/"), ".css": ("/*", "*/"), ".dart": ("/*", "*/"),
-    ".groovy": ("/*", "*/"), ".scala": ("/*", "*/"),
-    ".jsx": ("/*", "*/"), ".tsx": ("/*", "*/"),
-    ".vue": ("<!--", "-->"), ".svelte": ("<!--", "-->"),
-    ".html": ("<!--", "-->"), ".xml": ("<!--", "-->"),
+    ".js": ("/*", "*/"),
+    ".ts": ("/*", "*/"),
+    ".java": ("/*", "*/"),
+    ".c": ("/*", "*/"),
+    ".cpp": ("/*", "*/"),
+    ".cs": ("/*", "*/"),
+    ".go": ("/*", "*/"),
+    ".rs": ("/*", "*/"),
+    ".kt": ("/*", "*/"),
+    ".swift": ("/*", "*/"),
+    ".php": ("/*", "*/"),
+    ".scss": ("/*", "*/"),
+    ".less": ("/*", "*/"),
+    ".css": ("/*", "*/"),
+    ".dart": ("/*", "*/"),
+    ".groovy": ("/*", "*/"),
+    ".scala": ("/*", "*/"),
+    ".jsx": ("/*", "*/"),
+    ".tsx": ("/*", "*/"),
+    ".vue": ("<!--", "-->"),
+    ".svelte": ("<!--", "-->"),
+    ".html": ("<!--", "-->"),
+    ".xml": ("<!--", "-->"),
     ".md": ("<!--", "-->"),
     # Hash-style line comments (synthesized block)
-    ".py": ("#", None), ".rb": ("#", None), ".sh": ("#", None),
-    ".ps1": ("#", None), ".r": ("#", None), ".pl": ("#", None),
-    ".yaml": ("#", None), ".toml": ("#", None),
+    ".py": ("#", None),
+    ".rb": ("#", None),
+    ".sh": ("#", None),
+    ".ps1": ("#", None),
+    ".r": ("#", None),
+    ".pl": ("#", None),
+    ".yaml": ("#", None),
+    ".toml": ("#", None),
     # SQL
     ".sql": ("/*", "*/"),
     # Lua
@@ -92,7 +127,9 @@ def _wrap_prompt_as_comment(prompt: str, ext: str) -> str:
     if end is None:
         # Line-comment style: prefix every line
         header = f"{start} AI Prompt / Context:"
-        commented = [header] + [f"{start} {line}" if line.strip() else start for line in lines]
+        commented = [header] + [
+            f"{start} {line}" if line.strip() else start for line in lines
+        ]
         return "\n".join(commented) + "\n\n"
     else:
         # Block-comment style
@@ -126,6 +163,7 @@ def _open_code_in_ide(ide: str, code: str, lang: str):
 
     try:
         import hashlib
+
         content_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()[:8]
         temp_dir = os.path.join(tempfile.gettempdir(), "snapsolve_code")
         os.makedirs(temp_dir, exist_ok=True)
@@ -140,14 +178,22 @@ def _open_code_in_ide(ide: str, code: str, lang: str):
 
     try:
         from config.settings import load_config
+
         app_config = load_config()
 
         if ide == "pycharm":
             pycharm_path = app_config.get("ide_pycharm_path", "pycharm")
             subprocess.Popen(f'"{pycharm_path}" "{temp_path}"', shell=True)
         elif ide == "antigravity":
-            default_antigravity = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe")
-            antigravity_path = app_config.get("ide_antigravity_path", default_antigravity)
+            default_antigravity = str(
+                Path(os.environ.get("LOCALAPPDATA", ""))
+                / "Programs"
+                / "Antigravity IDE"
+                / "Antigravity IDE.exe"
+            )
+            antigravity_path = app_config.get(
+                "ide_antigravity_path", default_antigravity
+            )
             subprocess.Popen(f'"{antigravity_path}" --goto "{temp_path}"', shell=True)
         else:
             logger.warning(f"Unknown IDE: {ide}")

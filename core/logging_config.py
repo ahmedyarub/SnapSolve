@@ -5,6 +5,7 @@ to loguru via :class:`InterceptHandler` so existing
 ``logging.getLogger(__name__)`` calls automatically route through loguru
 with zero import changes.
 """
+
 import logging
 import os
 import sys
@@ -167,4 +168,6 @@ def setup_logging(config: dict) -> None:
         if level is not None:
             logging.getLogger(logger_name).setLevel(level)
 
-    logger.info("Logging configured — console={}, file={}", log_level, log_file or "disabled")
+    logger.info(
+        "Logging configured — console={}, file={}", log_level, log_file or "disabled"
+    )

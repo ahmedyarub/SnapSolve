@@ -1,4 +1,5 @@
 """System tray icon and console/tray mode setup."""
+
 import os
 import platform
 import signal
@@ -14,7 +15,9 @@ def create_tray_icon(on_exit):
     """Create and return a pystray system-tray icon."""
     # Load custom tray icon from assets, fall back to generated if missing
     icon_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "assets",
+        "icon.ico",
     )
     if os.path.exists(icon_path):
         img = Image.open(icon_path)
@@ -52,12 +55,13 @@ def _setup_tray_or_console_mode(config, exit_handler):
         # handles SIGINT/console-close.  On other platforms, fall back to
         # Python signal handlers with a QTimer to ensure delivery.
         if platform.system() != "Windows":
+
             def _signal_exit(_sig, _frame):
                 print("Exiting (signal)...")
                 os._exit(0)
 
             signal.signal(signal.SIGINT, _signal_exit)
-            if hasattr(signal, 'SIGTERM'):
+            if hasattr(signal, "SIGTERM"):
                 signal.signal(signal.SIGTERM, _signal_exit)
 
             from PyQt6.QtCore import QTimer

@@ -1,10 +1,11 @@
-import os
-import mimetypes
 import base64
+import mimetypes
+import os
 import threading
 
-from .base import LLMEngine
 from core.sinks.base import Sink
+
+from .base import LLMEngine
 
 
 class LiteLLMEngine(LLMEngine):
@@ -30,7 +31,8 @@ class LiteLLMEngine(LLMEngine):
         if status_callback:
             status_callback("Warming up LiteLLM engine...")
         try:
-            import litellm
+            import litellm  # noqa: F401  (availability check)
+
             self._set_env_keys()
             if status_callback:
                 status_callback("LiteLLM engine warmup complete.")
@@ -41,7 +43,7 @@ class LiteLLMEngine(LLMEngine):
             return False
         except Exception as e:
             if status_callback:
-                status_callback(f"LiteLLM warmup failed: {str(e)}")
+                status_callback(f"LiteLLM warmup failed: {e!s}")
             return False
 
     @property
@@ -53,16 +55,15 @@ class LiteLLMEngine(LLMEngine):
         messages: list,
         sink: Sink,
         is_main: bool,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         try:
             import litellm
+
             print("[LiteLLMEngine] Calling litellm.completion...")
 
             response = litellm.completion(
-                model=self.model,
-                messages=messages,
-                stream=True
+                model=self.model, messages=messages, stream=True
             )
 
             ans_chunks = []
@@ -72,7 +73,11 @@ class LiteLLMEngine(LLMEngine):
                 if cancel_event and cancel_event.is_set():
                     return "Cancelled"
 
-                chunk_content = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else None
+                chunk_content = (
+                    chunk.choices[0].delta.content
+                    if chunk.choices and chunk.choices[0].delta
+                    else None
+                )
                 if not chunk_content:
                     continue
 
@@ -96,8 +101,8 @@ class LiteLLMEngine(LLMEngine):
             print("[LiteLLMEngine] Request finished successfully")
             return ans
         except Exception as e:
-            print(f"[LiteLLMEngine] Error during request: {str(e)}")
-            return f"Error calling LiteLLM API: {str(e)}"
+            print(f"[LiteLLMEngine] Error during request: {e!s}")
+            return f"Error calling LiteLLM API: {e!s}"
 
     def process_text(
         self,
@@ -106,7 +111,7 @@ class LiteLLMEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -117,7 +122,7 @@ class LiteLLMEngine(LLMEngine):
         print(f"[LiteLLMEngine] Text Request started for model: {self.model}")
 
         try:
-            import litellm
+            import litellm  # noqa: F401  (availability check)
         except ImportError:
             return "Error: litellm is not installed. Please install it."
 
@@ -135,7 +140,7 @@ class LiteLLMEngine(LLMEngine):
         enable_chat_sessions=True,
         sink: Sink = None,
         is_main: bool = True,
-        cancel_event: threading.Event = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
@@ -146,7 +151,7 @@ class LiteLLMEngine(LLMEngine):
         print(f"[LiteLLMEngine] Image Request started for model: {self.model}")
 
         try:
-            import litellm
+            import litellm  # noqa: F401  (availability check)
         except ImportError:
             return "Error: litellm is not installed. Please install it."
 
@@ -160,16 +165,14 @@ class LiteLLMEngine(LLMEngine):
                 if not mime_type:
                     mime_type = "image/png"
         except Exception as e:
-            return f"Error reading image: {str(e)}"
+            return f"Error reading image: {e!s}"
 
         content = [
             {"type": "text", "text": full_prompt},
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": f"data:{mime_type};base64,{encoded_string}"
-                }
-            }
+                "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"},
+            },
         ]
         messages = [{"role": "user", "content": content}]
 
