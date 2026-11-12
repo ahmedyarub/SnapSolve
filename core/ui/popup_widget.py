@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from core.ui.ide_integration import _PopupWebPage
+from core.ui.ide_integration import PopupWebPage
 from core.ui.mixins import DraggableWidgetMixin, ResizableWidgetMixin
 
 
@@ -52,7 +52,7 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
 
         # WebEngine View for Markdown/Math — uses custom page for IDE interception
         self.web_view = QWebEngineView()
-        self._popup_page = _PopupWebPage(self.web_view)
+        self._popup_page = PopupWebPage(self.web_view)
         self.web_view.setPage(self._popup_page)
         self.web_view.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
@@ -73,13 +73,13 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         _popup_html = _assets_dir / "popup.html"
         self.web_view.setUrl(QUrl.fromLocalFile(str(_popup_html)))
 
-    def _on_load_finished(self, ok: bool):
+    def _on_load_finished(self, _ok: bool):
         self._is_loaded = True
         for js in self._pending_js:
             self.web_view.page().runJavaScript(js)
         self._pending_js.clear()
 
-    def _apply_opacity(self, opacity: float):
+    def apply_opacity(self, opacity: float):
         """Apply opacity to the popup window.
 
         Because QWebEngineView has an opaque background (#1e1e1e) to prevent
@@ -98,7 +98,7 @@ class PopupWidget(ResizableWidgetMixin, DraggableWidgetMixin, QWidget):
         opacity = data.get("opacity", 0.8)
         is_result = data.get("is_result", False)
 
-        self._apply_opacity(opacity)
+        self.apply_opacity(opacity)
 
         # Safely serialize string for JS injection using json.dumps
         js_text = json.dumps(text)

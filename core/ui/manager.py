@@ -9,7 +9,7 @@ from core.capture_hiding import apply_display_affinity
 from core.ui.correction_panel_widget import CorrectionPanelWidget
 from core.ui.panel_widget import PanelWidget
 from core.ui.popup_widget import PopupWidget
-from core.ui.signals import _app_callbacks, selector_signals, ui_signals
+from core.ui.signals import app_callbacks, selector_signals, ui_signals
 from core.ui.subtitle_widget import SubtitleWidget
 from core.ui.text_input_widget import TextInputWidget
 from core.ui.url_input_widget import UrlInputWidget
@@ -95,7 +95,7 @@ class UIManager(QObject):
             self.panel.btn_chat_sessions.setText("💬 Chat Sessions: ON")
         else:
             self.panel.btn_chat_sessions.setText("💬 Chat Sessions: OFF")
-        self.panel._apply_opacity(self._global_opacity)
+        self.panel.apply_opacity(self._global_opacity)
 
     def _on_update_periodic_screenshots_btn(self, enabled: bool):
         self.panel.periodic_screenshots_enabled = enabled
@@ -103,10 +103,10 @@ class UIManager(QObject):
             self.panel.btn_periodic_screenshots.setText("📷 Screenshots: ON")
         else:
             self.panel.btn_periodic_screenshots.setText("📷 Screenshots: OFF")
-        self.panel._apply_opacity(self._global_opacity)
+        self.panel.apply_opacity(self._global_opacity)
 
     def _on_open_url(self, url: str):
-        self.popup._apply_opacity(self._global_opacity)
+        self.popup.apply_opacity(self._global_opacity)
         self.popup.load_url(url)
 
     @staticmethod
@@ -117,12 +117,12 @@ class UIManager(QObject):
 
     @staticmethod
     def _on_open_context_manager():
-        if "open_context_manager" in _app_callbacks:
-            _app_callbacks["open_context_manager"]()
+        if "open_context_manager" in app_callbacks:
+            app_callbacks["open_context_manager"]()
 
     def _on_show_url_input(self):
         self.url_input.update_position()
-        self.url_input._apply_opacity(self._global_opacity)
+        self.url_input.apply_opacity(self._global_opacity)
         self.url_input.show()
         self.url_input.raise_()
         self.url_input.activateWindow()
@@ -131,7 +131,7 @@ class UIManager(QObject):
     def _on_ocr_text_to_input(self, text: str):
         """Populate the text input widget with OCR'd text and show it."""
         assert self.text_input is not None
-        self.text_input._apply_opacity(self._global_opacity)
+        self.text_input.apply_opacity(self._global_opacity)
         self.text_input.set_ocr_text(text)
         if not self.text_input.isVisible():
             self.text_input.update_position()
@@ -155,7 +155,7 @@ class UIManager(QObject):
         if show is None:
             show = not self.panel.isVisible()
         if show:
-            self.panel._apply_opacity(self._global_opacity)
+            self.panel.apply_opacity(self._global_opacity)
             self.panel.show()
             self.panel.update_position()
         else:
@@ -166,7 +166,7 @@ class UIManager(QObject):
         self._global_opacity = opacity
 
         # Apply opacity to the panel and all its children
-        self.panel._apply_opacity(opacity)
+        self.panel.apply_opacity(opacity)
         self.panel.set_source(source_name)
 
         # Sync the language combos from config when switching to audio
@@ -183,7 +183,7 @@ class UIManager(QObject):
             )
 
         if source_name == "text":
-            self.text_input._apply_opacity(opacity)
+            self.text_input.apply_opacity(opacity)
             self.text_input.show()
             self.text_input.update_position()
             self.text_input.text_edit.setFocus()
@@ -192,7 +192,8 @@ class UIManager(QObject):
             # for audio/other modes it is also hidden.
             self.text_input.hide()
 
-    def _on_set_transcription_language(self, lang_code: str):
+    @staticmethod
+    def _on_set_transcription_language(lang_code: str):
         """Persist transcription language to config and save."""
         from config.settings import load_config, save_config
 

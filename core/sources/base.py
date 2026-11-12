@@ -16,7 +16,9 @@ class Source(abc.ABC):
         """Retrieves image path from the source. Raises ValueError if unsupported."""
 
 
-class ImageSource(Source):
+class ImageSource(Source, abc.ABC):
+    """Base for image sources; subclasses implement get_text and get_image."""
+
     @property
     def name(self):
         return "image"

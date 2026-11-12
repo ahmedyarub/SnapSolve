@@ -397,12 +397,8 @@ class SinkProcessor(Processor):
         self.sink = sink
 
     def process(self, frame: Frame) -> Frame:
-        if _is_terminal(frame):
-            return frame
-
-        if self.sink and hasattr(self.sink, "finish"):
+        if not _is_terminal(frame) and self.sink and hasattr(self.sink, "finish"):
             self.sink.finish()
-
         return frame
 
 

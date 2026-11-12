@@ -18,6 +18,13 @@ exclude:
             - services/diarization/.venv
             - android_remote_control
             - core/web_assets/shiki.bundle.js
+    # Ruff enforces PEP 8. PyCharm's own PEP 8 check shells out to pycodestyle,
+    # and in the container that child can turn zombie and hang the scan forever.
+    -   name: PyPep8Inspection
+    # Same policy as ruff.toml (BLE not selected): a blind `except Exception`
+    # is deliberate in worker threads, Qt callbacks and best-effort probes,
+    # which must not die. Handlers with an obvious narrow type use it.
+    -   name: PyBroadExceptionInspection
 include:
     -   name: DuplicatedCode
     -   name: PyUnresolvedReferences

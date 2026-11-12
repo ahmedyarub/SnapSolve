@@ -45,7 +45,6 @@ def handle_stream_error(
 ):
     """Classify and report an audio stream error."""
     error_str = str(e).lower()
-    err_msg = ""
 
     if "unanticipated host error" in error_str or "-9999" in error_str:
         err_msg = (

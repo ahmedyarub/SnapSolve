@@ -185,7 +185,7 @@ class _FilmstripWidget(QWidget):
         self._selected_index = index
         self.update()
 
-    def _time_to_x(self, ts: float) -> int:
+    def time_to_x(self, ts: float) -> int:
         if self._time_end <= getattr(self, "_time_start", 0):
             return _THUMB_GAP
         frac = (ts - self._time_start) / (self._time_end - self._time_start)
@@ -193,7 +193,7 @@ class _FilmstripWidget(QWidget):
 
     def _thumb_rect(self, index: int) -> QRect:
         ss = self._screenshots[index]
-        center_x = self._time_to_x(ss["timestamp"])
+        center_x = self.time_to_x(ss["timestamp"])
         x = int(center_x - _THUMB_WIDTH / 2)
         return QRect(x, 4, _THUMB_WIDTH, _THUMB_HEIGHT)
 
@@ -323,7 +323,7 @@ class _FilmstripWidget(QWidget):
             self.update()
 
     # noinspection PyPep8Naming
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, _event) -> None:
         self._hovered_index = -1
         self.update()
 
@@ -529,7 +529,7 @@ class _AppTrackWidget(QWidget):
                 spans.append(_AppSpan(app, ts, ts, title, exe_path))
         return spans
 
-    def _time_to_x(self, ts: float) -> int:
+    def time_to_x(self, ts: float) -> int:
         if self._time_end <= self._time_start:
             return _THUMB_GAP
         frac = (ts - self._time_start) / (self._time_end - self._time_start)
@@ -537,8 +537,8 @@ class _AppTrackWidget(QWidget):
 
     def _span_rect(self, index: int) -> QRect:
         span = self._spans[index]
-        x1 = self._time_to_x(span.start_ts)
-        x2 = self._time_to_x(span.end_ts)
+        x1 = self.time_to_x(span.start_ts)
+        x2 = self.time_to_x(span.end_ts)
         w = max(x2 - x1, 2)  # ensure at least 2px so the span is visible
         return QRect(x1, 2, w, _APP_TRACK_HEIGHT - 4)
 
@@ -629,7 +629,7 @@ class _AppTrackWidget(QWidget):
             QToolTip.hideText()
 
     # noinspection PyPep8Naming
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, _event) -> None:
         self._hovered_index = -1
         self.update()
 
@@ -672,7 +672,7 @@ class _EventTrackWidget(QWidget):
         self._hovered_index = -1
         self.update()
 
-    def _time_to_x(self, ts: float) -> int:
+    def time_to_x(self, ts: float) -> int:
         if self._time_end <= self._time_start:
             return _THUMB_GAP
         frac = (ts - self._time_start) / (self._time_end - self._time_start)
@@ -680,11 +680,11 @@ class _EventTrackWidget(QWidget):
 
     def _marker_rect(self, index: int) -> QRect:
         ev = self._events[index]
-        x = self._time_to_x(ev["timestamp"])
+        x = self.time_to_x(ev["timestamp"])
         return QRect(x - 12, 2, 24, _MARKER_TRACK_HEIGHT - 4)
 
     # noinspection PyPep8Naming
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -701,7 +701,7 @@ class _EventTrackWidget(QWidget):
         painter.setFont(font)
 
         for i, ev in enumerate(self._events):
-            x = self._time_to_x(ev["timestamp"])
+            x = self.time_to_x(ev["timestamp"])
 
             # Determine colour and icon
             source = ev.get("data", {}).get("source", "text")
@@ -792,7 +792,7 @@ class _EventTrackWidget(QWidget):
             self.eventClicked.emit(self._events[idx])
 
     # noinspection PyPep8Naming
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, _event) -> None:
         self._hovered_index = -1
         self.update()
 
@@ -836,13 +836,13 @@ class _TimeRulerWidget(QWidget):
         self.setFixedWidth(self._total_width)
         self.update()
 
-    def _time_to_x(self, ts: float) -> int:
+    def time_to_x(self, ts: float) -> int:
         if self._time_end <= self._time_start:
             return _THUMB_GAP
         frac = (ts - self._time_start) / (self._time_end - self._time_start)
         return int(_THUMB_GAP + frac * (self._total_width - 2 * _THUMB_GAP))
 
-    def _x_to_time(self, x: int) -> float:
+    def x_to_time(self, x: int) -> float:
         if self._total_width <= 2 * _THUMB_GAP:
             return self._time_start
         frac = (x - _THUMB_GAP) / (self._total_width - 2 * _THUMB_GAP)
@@ -850,7 +850,7 @@ class _TimeRulerWidget(QWidget):
         return self._time_start + frac * (self._time_end - self._time_start)
 
     # noinspection PyPep8Naming
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor(_BG_PANEL))
@@ -885,7 +885,7 @@ class _TimeRulerWidget(QWidget):
         first_tick = int(self._time_start // tick_interval + 1) * tick_interval
         ts = first_tick
         while ts <= self._time_end:
-            x = self._time_to_x(ts)
+            x = self.time_to_x(ts)
 
             # Major tick
             painter.setPen(QPen(QColor(_TEXT_DIM), 1))
@@ -914,17 +914,17 @@ class _TimeRulerWidget(QWidget):
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            ts = self._x_to_time(int(event.position().x()))
+            ts = self.x_to_time(int(event.position().x()))
             self.playheadMoved.emit(ts)
 
     # noinspection PyPep8Naming
     def mouseMoveEvent(self, event) -> None:
         if self._dragging:
-            ts = self._x_to_time(int(event.position().x()))
+            ts = self.x_to_time(int(event.position().x()))
             self.playheadMoved.emit(ts)
 
     # noinspection PyPep8Naming
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, _event) -> None:
         self._dragging = False
 
 
@@ -1078,14 +1078,14 @@ class _TranscriptionPanel(QFrame):
             return
 
         lines_html = []
-        speaker_re = re.compile(r"^\[(.*?)\]\s*(.*)$")
+        speaker_re = re.compile(r"^\[([^\]]*)\](.*)$")
         for ts, text in self._transcription_lines:
             time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
 
             match = speaker_re.match(text)
             if match:
                 speaker = html.escape(match.group(1))
-                rest = html.escape(match.group(2))
+                rest = html.escape(match.group(2).lstrip())
                 content_html = f'<span style="color:{_ACCENT_GREEN};font-weight:bold;">[{speaker}]</span> {rest}'
             else:
                 content_html = html.escape(text)
@@ -1155,7 +1155,7 @@ class _PlayheadOverlay(QWidget):
         super().__init__(parent)
         self._time_start: float = 0.0
         self._time_end: float = 1.0
-        self._playhead_time: float = 0.0
+        self.playhead_time: float = 0.0
         # Purely visual — let mouse events fall through
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -1166,21 +1166,21 @@ class _PlayheadOverlay(QWidget):
         self.update()
 
     def set_playhead_time(self, ts: float) -> None:
-        self._playhead_time = ts
+        self.playhead_time = ts
         self.update()
 
-    def _time_to_x(self, ts: float) -> int:
+    def time_to_x(self, ts: float) -> int:
         if self._time_end <= self._time_start:
             return 0
         frac = (ts - self._time_start) / (self._time_end - self._time_start)
         return int(_THUMB_GAP + frac * (self.width() - 2 * _THUMB_GAP))
 
     # noinspection PyPep8Naming
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, _event) -> None:
         if self._time_end <= self._time_start:
             return
 
-        x = self._time_to_x(self._playhead_time)
+        x = self.time_to_x(self.playhead_time)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -1200,7 +1200,7 @@ class _PlayheadOverlay(QWidget):
         painter.drawPath(path)
 
         # Time label near playhead
-        ts_str = datetime.fromtimestamp(self._playhead_time).strftime("%H:%M:%S")
+        ts_str = datetime.fromtimestamp(self.playhead_time).strftime("%H:%M:%S")
         font = QFont("Segoe UI", 8, QFont.Weight.Bold)
         painter.setFont(font)
         fm = QFontMetrics(font)
@@ -1246,6 +1246,7 @@ class SessionTimelineWidget(QWidget):
         self._collapsed: bool = False
         self._zoom: float = 1.0
         self._base_total_width: int = 800  # width at zoom=1.0
+        self._dragging_playhead: bool = False
 
         self._build_ui()
         self._apply_style()
@@ -1406,7 +1407,7 @@ class SessionTimelineWidget(QWidget):
     # noinspection PyPep8Naming
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress:
-            if getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
+            if event.button() == Qt.MouseButton.LeftButton:
                 if obj in (
                     self._tracks_container,
                     self._filmstrip,
@@ -1417,25 +1418,23 @@ class SessionTimelineWidget(QWidget):
                     pos = event.position().toPoint()
                     if obj != self._tracks_container:
                         pos = obj.mapTo(self._tracks_container, pos)
-                    playhead_x = self._playhead._time_to_x(
-                        self._playhead._playhead_time
-                    )
+                    playhead_x = self._playhead.time_to_x(self._playhead.playhead_time)
                     if abs(pos.x() - playhead_x) <= 12:
                         self._dragging_playhead = True
                         return True
         elif event.type() == QEvent.Type.MouseMove:
-            if getattr(self, "_dragging_playhead", False):
+            if self._dragging_playhead:
                 pos = event.position().toPoint()
                 if obj != self._tracks_container:
                     pos = obj.mapTo(self._tracks_container, pos)
-                ts = self._ruler._x_to_time(pos.x())
+                ts = self._ruler.x_to_time(pos.x())
                 ts = max(self._time_start, min(self._time_end, ts))
                 self._playhead.set_playhead_time(ts)
                 self._on_playhead_moved(ts)
                 return True
         elif event.type() == QEvent.Type.MouseButtonRelease:
-            if getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
-                if getattr(self, "_dragging_playhead", False):
+            if event.button() == Qt.MouseButton.LeftButton:
+                if self._dragging_playhead:
                     self._dragging_playhead = False
                     return True
         return super().eventFilter(obj, event)
@@ -1571,9 +1570,9 @@ class SessionTimelineWidget(QWidget):
 
     def _load_transcription_with_timestamps(self, session_id: str) -> None:
         """Load transcription and assign approximate timestamps."""
-        from core.session_manager import _session_transcription_path
+        from core.session_manager import session_transcription_path
 
-        path = _session_transcription_path(session_id)
+        path = session_transcription_path(session_id)
         if not os.path.isfile(path):
             self._transcription_panel.set_transcription_lines_with_timestamps([])
             return
@@ -1665,7 +1664,7 @@ class SessionTimelineWidget(QWidget):
         if nearest_idx < 0:
             return
 
-        target_x = self._playhead._time_to_x(
+        target_x = self._playhead.time_to_x(
             self._screenshot_events[nearest_idx]["timestamp"]
         )
         viewport_w = self._scroll.viewport().width()

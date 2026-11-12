@@ -69,6 +69,7 @@ class GeminiCLIEngine(LLMEngine):
         if status_callback:
             status_callback("Warming up Gemini CLI...")
         try:
+            # noinspection PyDeprecation
             gemini_cmd = shutil.which("gemini")
             if not gemini_cmd:
                 return False
@@ -100,6 +101,7 @@ class GeminiCLIEngine(LLMEngine):
 
         print(f"[GeminiCLIEngine] Text Request started for model: {self.model}")
 
+        # noinspection PyDeprecation
         gemini_cmd = shutil.which("gemini")
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."
@@ -126,6 +128,7 @@ class GeminiCLIEngine(LLMEngine):
 
         print(f"[GeminiCLIEngine] Image Request started for model: {self.model}")
 
+        # noinspection PyDeprecation
         gemini_cmd = shutil.which("gemini")
         if not gemini_cmd:
             return "Error: Could not find 'gemini' executable in PATH."

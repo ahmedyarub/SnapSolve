@@ -31,7 +31,7 @@ class AntigravityEngine(LLMEngine):
             if resp.status_code == 200:
                 return True, ""
             return False, f"Antigravity service returned status {resp.status_code}"
-        except Exception:
+        except requests.RequestException:
             return False, f"Antigravity service is not reachable at {self.service_url}"
 
     @property

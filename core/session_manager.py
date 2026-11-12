@@ -1,14 +1,3 @@
-# Force PyQt6 WebEngine and GL sharing to initialize before anything else
-try:
-    import PyQt6.QtWebEngineWidgets  # noqa: F401
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QApplication
-
-    if not QApplication.instance():
-        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-except ImportError:
-    pass
-
 import json
 import logging
 import os
@@ -18,6 +7,21 @@ import time
 import uuid
 from datetime import datetime
 from typing import Any
+
+
+def _init_qt_gl_sharing() -> None:
+    """Load Qt WebEngine and enable GL context sharing before anything else."""
+    try:
+        import PyQt6.QtWebEngineWidgets  # noqa: F401
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
+        return
+    if not QApplication.instance():
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+
+
+_init_qt_gl_sharing()
 
 SESSIONS_DIR = "sessions"
 
@@ -30,29 +34,29 @@ DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
 logger = logging.getLogger(__name__)
 
 
-def _session_dir(session_id: str) -> str:
+def session_dir_path(session_id: str) -> str:
     """Return the per-session directory path: sessions/<session_id>/"""
     return os.path.join(SESSIONS_DIR, session_id)
 
 
 def _session_json_path(session_id: str) -> str:
     """Return the session JSON path: sessions/<session_id>/session.json"""
-    return os.path.join(_session_dir(session_id), "session.json")
+    return os.path.join(session_dir_path(session_id), "session.json")
 
 
 def _session_images_dir(session_id: str) -> str:
     """Return the per-session images directory: sessions/<session_id>/images/"""
-    return os.path.join(_session_dir(session_id), "images")
+    return os.path.join(session_dir_path(session_id), "images")
 
 
-def _session_transcription_path(session_id: str) -> str:
+def session_transcription_path(session_id: str) -> str:
     """Return the per-session transcription file: sessions/<session_id>/transcription.txt"""
-    return os.path.join(_session_dir(session_id), "transcription.txt")
+    return os.path.join(session_dir_path(session_id), "transcription.txt")
 
 
 def _session_screenshots_dir(session_id: str) -> str:
     """Return the per-session screenshots directory: sessions/<session_id>/screenshots/"""
-    return os.path.join(_session_dir(session_id), "screenshots")
+    return os.path.join(session_dir_path(session_id), "screenshots")
 
 
 def _has_screenshots(session_id: str) -> bool:
@@ -65,7 +69,7 @@ def _has_screenshots(session_id: str) -> bool:
 
 def _has_transcription(session_id: str) -> bool:
     """Return True if the session has a non-empty transcription file."""
-    trans_path = _session_transcription_path(session_id)
+    trans_path = session_transcription_path(session_id)
     if not os.path.isfile(trans_path):
         return False
     return os.path.getsize(trans_path) > 0
@@ -113,7 +117,7 @@ def _migrate_legacy_session(session_id: str) -> bool:
     if not os.path.exists(legacy_path):
         return False
 
-    new_dir = _session_dir(session_id)
+    new_dir = session_dir_path(session_id)
     new_images = _session_images_dir(session_id)
     new_json = _session_json_path(session_id)
 
@@ -190,9 +194,10 @@ class SessionManager:
         if not self.current_session_id:
             self.start_new_session()
 
-    def _ensure_session_dirs(self, session_id: str):
+    @staticmethod
+    def _ensure_session_dirs(session_id: str):
         """Create the per-session directory structure."""
-        os.makedirs(_session_dir(session_id), exist_ok=True)
+        os.makedirs(session_dir_path(session_id), exist_ok=True)
         os.makedirs(_session_images_dir(session_id), exist_ok=True)
         os.makedirs(_session_screenshots_dir(session_id), exist_ok=True)
 
@@ -209,7 +214,7 @@ class SessionManager:
 
         # Setup new transcription file inside session folder
         if self.save_transcriptions:
-            self.transcription_file = _session_transcription_path(
+            self.transcription_file = session_transcription_path(
                 self.current_session_id
             )
             logger.debug(
@@ -236,7 +241,7 @@ class SessionManager:
 
             # Setup transcription file inside session folder
             if self.save_transcriptions:
-                self.transcription_file = _session_transcription_path(session_id)
+                self.transcription_file = session_transcription_path(session_id)
                 logger.debug(
                     f"[SessionManager] Resumed session, transcription file: {self.transcription_file}"
                 )
@@ -289,14 +294,15 @@ class SessionManager:
 
         # Setup transcription file inside session folder
         if self.save_transcriptions:
-            self.transcription_file = _session_transcription_path(last_session_id)
+            self.transcription_file = session_transcription_path(last_session_id)
             logger.debug(
                 f"[SessionManager] Resumed last session, transcription file: {self.transcription_file}"
             )
 
         print(f"[SessionManager] Resumed last session: {self.current_session_id}")
 
-    def _default_context_config(self) -> dict[str, Any]:
+    @staticmethod
+    def _default_context_config() -> dict[str, Any]:
         return {
             "include_transcribed_text": False,
             "include_previous_questions": False,
@@ -344,15 +350,16 @@ class SessionManager:
         except OSError as e:
             logger.error(f"[SessionManager] Failed to set context config: {e}")
 
-    def get_session_dir(self, session_id: str) -> str | None:
+    @staticmethod
+    def get_session_dir(session_id: str) -> str | None:
         """Returns the directory path for the given session_id, or None if it doesn't exist."""
-        path = _session_dir(session_id)
+        path = session_dir_path(session_id)
         if os.path.exists(path):
             return path
         legacy = _legacy_session_json_path(session_id)
         if os.path.exists(legacy):
             _migrate_legacy_session(session_id)
-            return _session_dir(session_id)
+            return session_dir_path(session_id)
         return None
 
     def import_context(
@@ -861,7 +868,7 @@ class SessionManager:
     @staticmethod
     def delete_session(session_id: str) -> bool:
         """Deletes a session and all its associated files. Returns True if deleted successfully."""
-        session_dir = _session_dir(session_id)
+        session_dir = session_dir_path(session_id)
 
         # New-style: delete entire session folder
         if os.path.isdir(session_dir):
@@ -1022,7 +1029,7 @@ class SessionManager:
                 )
 
         # 3. Transcription separators (timestamps inferred from position)
-        trans_path = _session_transcription_path(session_id)
+        trans_path = session_transcription_path(session_id)
         if os.path.isfile(trans_path):
             try:
                 with open(trans_path, encoding="utf-8") as f:
@@ -1084,7 +1091,7 @@ class SessionManager:
                     chunks.append({"type": "response", "index": i, "text": response})
 
             # Extract transcription lines
-            trans_path = _session_transcription_path(session_id)
+            trans_path = session_transcription_path(session_id)
             if os.path.exists(trans_path):
                 try:
                     with open(trans_path, encoding="utf-8") as f:
@@ -1096,7 +1103,7 @@ class SessionManager:
                             chunks.append(
                                 {"type": "transcription", "index": idx, "text": line}
                             )
-                except Exception:
+                except (OSError, ValueError):  # unreadable or not UTF-8
                     pass
 
             # Extract app names from screenshots
@@ -1133,7 +1140,7 @@ class SessionManager:
                 chunks.append({"type": "summary", "index": 0, "text": summary})
 
             # Load existing embeddings to avoid re-embedding everything
-            emb_path = os.path.join(_session_dir(session_id), "embeddings.json")
+            emb_path = os.path.join(session_dir_path(session_id), "embeddings.json")
             existing_embeddings = {}
             if os.path.exists(emb_path):
                 try:

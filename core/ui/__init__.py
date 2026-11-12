@@ -30,7 +30,7 @@ from core.ui.api import (  # noqa: F401
 )
 
 # --- IDE integration (also used by session_browser) ---
-from core.ui.ide_integration import _PopupWebPage  # noqa: F401
+from core.ui.ide_integration import PopupWebPage  # noqa: F401
 
 # --- Manager ---
 from core.ui.manager import UIManager, init_ui_manager, ui_manager  # noqa: F401

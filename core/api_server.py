@@ -69,7 +69,7 @@ def health_check():
     try:
         if requests.get("http://localhost:8200/health", timeout=1).status_code == 200:
             antigravity_status = "online"
-    except Exception:
+    except requests.RequestException:
         pass
 
     return {
@@ -112,7 +112,7 @@ async def status():
 def get_response_image():
     # Legacy endpoint for Android client
     with _response_image_lock:
-        image_path = rc_server._response_image_path
+        image_path = rc_server.response_image_path
 
     if not image_path or not os.path.exists(image_path):
         return JSONResponse(
@@ -209,7 +209,7 @@ async def keyboard_type(req: KeyboardTypeRequest):
 
 @app.post("/response_image/ack", dependencies=[Depends(verify_api_key)])
 async def response_image_ack():
-    result = rc_server._handle_response_image_ack()
+    result = rc_server.handle_response_image_ack()
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return result
@@ -466,7 +466,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "mouse_scroll": lambda d=data: _handle_mouse_scroll(d, _app_config),
                 "keyboard_type": lambda d=data: _handle_keyboard_type(d, _app_config),
                 "response_image_ack": lambda d=data: (
-                    rc_server._handle_response_image_ack()
+                    rc_server.handle_response_image_ack()
                 ),
                 "set_transcription_language": lambda d=data: (
                     _handle_set_transcription_language(d, _app_config)
@@ -501,7 +501,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 async def broadcast_state(state: dict[str, dict[str, bool]]):
     with _response_image_lock:
-        has_image = rc_server._has_new_response_image
+        has_image = rc_server.has_new_response_image
 
     message = json.dumps(
         {

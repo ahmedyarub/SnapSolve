@@ -57,7 +57,7 @@ def _load_prompt_text(prompts: list[dict], prompt_id: str) -> str:
 def _window_hash(sentences: list[str]) -> str:
     """Return a short hash for a list of sentences (deduplication key)."""
     raw = "|".join(sentences)
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+    return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
 
 
 def _parse_corrections(raw_text: str) -> list[dict]:

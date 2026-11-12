@@ -5,6 +5,8 @@ without modification.  New code should import directly from ``core.ui``
 or its submodules.
 """
 
+# Facade: the star import is what callers of ``core.output`` use.
+# noinspection PyUnresolvedReferences,PyUnusedImports
 from core.ui import *  # noqa: F403
 
 
@@ -17,12 +19,4 @@ def __getattr__(name):
         from core.ui.manager import ui_manager
 
         return ui_manager
-    if name == "_app_callbacks":
-        from core.ui.signals import _app_callbacks
-
-        return _app_callbacks
-    if name == "_PopupWebPage":
-        from core.ui.ide_integration import _PopupWebPage
-
-        return _PopupWebPage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

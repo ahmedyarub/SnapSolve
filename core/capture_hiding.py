@@ -12,6 +12,14 @@ import platform
 logger = logging.getLogger(__name__)
 
 
+# SetWindowDisplayAffinity values.
+WDA_NONE = 0x00000000
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+# NSWindowSharingType values.
+NS_WINDOW_SHARING_NONE = 0
+NS_WINDOW_SHARING_READ_ONLY = 1
+
+
 def _apply_display_affinity_windows(widget, exclude: bool) -> bool:
     """Windows: use SetWindowDisplayAffinity to hide from capture.
 
@@ -21,8 +29,6 @@ def _apply_display_affinity_windows(widget, exclude: bool) -> bool:
     import ctypes
 
     hwnd = int(widget.winId())
-    WDA_EXCLUDEFROMCAPTURE = 0x00000011
-    WDA_NONE = 0x00000000
     affinity = WDA_EXCLUDEFROMCAPTURE if exclude else WDA_NONE
     result = ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, affinity)
     return bool(result)
@@ -62,9 +68,7 @@ def _apply_display_affinity_macos(widget, exclude: bool) -> bool:
         if ns_window is None:
             return False
 
-        NSWindowSharingNone = 0
-        NSWindowSharingReadOnly = 1
-        sharing = NSWindowSharingNone if exclude else NSWindowSharingReadOnly
+        sharing = NS_WINDOW_SHARING_NONE if exclude else NS_WINDOW_SHARING_READ_ONLY
         ns_window.setSharingType_(sharing)
         return True
     except Exception as exc:

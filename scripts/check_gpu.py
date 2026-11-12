@@ -40,7 +40,7 @@ def _check_paddle():
     detail = f"paddle {paddle.__version__}, CUDA {paddle.version.cuda()}, cuDNN {paddle.version.cudnn()}"
     if ok:
         x = paddle.to_tensor([1.0, 2.0], place=paddle.CUDAPlace(0))
-        ok = float((x * 2).sum()) == 6.0
+        ok = abs(float((x * 2).sum()) - 6.0) < 1e-6
     return ok, detail
 
 

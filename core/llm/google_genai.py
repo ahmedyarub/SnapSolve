@@ -122,7 +122,7 @@ class GoogleGenAIEngine(LLMEngine):
         prompt: str,
         status_callback=None,
         enable_chat_sessions=True,
-        sink: Sink = None,
+        sink: Sink | None = None,
         is_main: bool = True,
         cancel_event: threading.Event | None = None,
     ) -> str:
@@ -143,6 +143,9 @@ class GoogleGenAIEngine(LLMEngine):
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
 
+        if sink is None:
+            return "Error calling Google GenAI API: no output sink was given."
+
         try:
             client = genai.Client(api_key=self.api_key)
 
@@ -151,7 +154,6 @@ class GoogleGenAIEngine(LLMEngine):
             current_parts = [types.Part.from_text(text=full_prompt)]
             contents = [types.Content(role="user", parts=current_parts)]
 
-            assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {e!s}")
@@ -163,7 +165,7 @@ class GoogleGenAIEngine(LLMEngine):
         image_path: str,
         status_callback=None,
         enable_chat_sessions=True,
-        sink: Sink = None,
+        sink: Sink | None = None,
         is_main: bool = True,
         cancel_event: threading.Event | None = None,
     ) -> str:
@@ -183,6 +185,9 @@ class GoogleGenAIEngine(LLMEngine):
 
         if not self.api_key:
             return "Error: Google GenAI API key is missing. Please add it to your configuration."
+
+        if sink is None:
+            return "Error calling Google GenAI API: no output sink was given."
 
         try:
             client = genai.Client(api_key=self.api_key)
@@ -208,7 +213,6 @@ class GoogleGenAIEngine(LLMEngine):
 
             contents = [types.Content(role="user", parts=current_parts)]
 
-            assert sink is not None
             return self._execute_stream(client, contents, sink, is_main, cancel_event)
         except Exception as e:
             print(f"[GoogleGenAIEngine] Error during request: {e!s}")

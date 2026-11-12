@@ -31,12 +31,17 @@ try
         throw "Unit tests failed."
     }
 
-    # 3. JetBrains Qodana, in WSL Docker.
-    # QODANA_PYTHON_PATH points Qodana at the venv that scripts/qodana_bootstrap.sh
-    # builds; without it Qodana analyses against an empty interpreter and reports
-    # valid code as broken. No --apply-fixes: verification must not edit code.
+    # WSL stops the distro a few seconds after its last wsl.exe process exits,
+    # and the Docker containers in it (Qodana, SonarQube) stop with it - even
+    # while the Windows-side sonar-scanner is still talking to SonarQube. Hold
+    # the distro open for the rest of the run; `finally` below releases it.
+    $wslKeepAlive = Start-Process wsl.exe -ArgumentList "-e", "sleep", "7200" -WindowStyle Hidden -PassThru
+
+    # 3. JetBrains Qodana, in WSL Docker, on a Linux-side copy of the sources
+    # (scanning /mnt/<drive> directly misresolves builtins; see the script).
+    # No --apply-fixes: verification must not edit code.
     Write-Host "Running IDE Inspections (Qodana via WSL)..." -ForegroundColor Yellow
-    wsl bash -lc "NONINTERACTIVE=true qodana scan --fail-threshold 0 --print-problems -e QODANA_PYTHON_PATH=/data/cache/snapsolve-venv/bin/python"
+    wsl bash -lc "bash scripts/qodana_scan.sh"
     if ($LASTEXITCODE -ne 0)
     {
         throw "Qodana inspection failed."
@@ -52,6 +57,8 @@ try
         throw "SONAR_TOKEN is not set. Create a token at http://localhost:9000 and set it as a user environment variable."
     }
 
+    # WSLENV hands SONAR_TOKEN to WSL, where the script sets up the quality gate.
+    $env:WSLENV = "SONAR_TOKEN/u" + $(if ($env:WSLENV) { ":$env:WSLENV" } else { "" })
     wsl bash scripts/sonarqube_up.sh
     if ($LASTEXITCODE -ne 0)
     {
@@ -178,7 +185,7 @@ try
 
     try
     {
-        $HotspotsUrl = "$SonarUrl/api/hotspots/search?projectKey=$ProjectKey&status=TO_REVIEW"
+        $HotspotsUrl = "$SonarUrl/api/hotspots/search?project=$ProjectKey&status=TO_REVIEW"
         $HotspotsResponse = Invoke-RestMethod -Uri $HotspotsUrl -Headers $Headers -Method Get
 
         # Filter out hotspots from excluded paths
@@ -238,4 +245,11 @@ catch
     Write-Host "❌ Verification Failed: $_" -ForegroundColor Red
     # Return a non-zero exit code so the AI knows to fix the issue
     exit 1
+}
+finally
+{
+    if ($wslKeepAlive -and -not $wslKeepAlive.HasExited)
+    {
+        Stop-Process -Id $wslKeepAlive.Id -Force
+    }
 }

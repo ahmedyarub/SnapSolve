@@ -178,8 +178,8 @@ def _retrieve_data_from_source(
         )
         print(f"Retrieved text from source: {extracted_text}")
 
-        if hasattr(source, "_temp_files") and source._temp_files:
-            image_path = source._temp_files[-1]
+        if hasattr(source, "temp_files") and source.temp_files:
+            image_path = source.temp_files[-1]
 
         return extracted_text, image_path, is_image
     except (ValueError, OCRCancelledError) as e:
@@ -489,7 +489,6 @@ def process_pipeline(
         coords=coords,
         text=text,
         image_paths=image_paths,
-        cancel_event=cancel_event,
         max_retries=max_retries,
         base_delay=base_delay,
     )

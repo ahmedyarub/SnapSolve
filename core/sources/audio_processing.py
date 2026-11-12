@@ -7,6 +7,7 @@ try:
 
     HAS_SCIPY = True
 except ImportError:
+    butter = lfilter = None
     HAS_SCIPY = False
 
 try:
@@ -14,6 +15,7 @@ try:
 
     HAS_NOISEREDUCE = True
 except ImportError:
+    nr = None
     HAS_NOISEREDUCE = False
 
 try:
@@ -21,6 +23,7 @@ try:
 
     HAS_PYLOUDNORM = True
 except ImportError:
+    pyln = None
     HAS_PYLOUDNORM = False
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,8 @@ class AudioEnhancer:
         if HAS_PYLOUDNORM:
             self.meter = pyln.Meter(sample_rate)
 
-    def _check_dependencies(self):
+    @staticmethod
+    def _check_dependencies():
         missing = []
         if not HAS_SCIPY:
             missing.append("scipy")
@@ -48,7 +52,8 @@ class AudioEnhancer:
                 f"Audio enhancement dependencies missing: {', '.join(missing)}. Stages will be skipped."
             )
 
-    def butter_highpass(self, cutoff, fs, order=5):
+    @staticmethod
+    def butter_highpass(cutoff, fs, order=5):
         nyq = 0.5 * fs
         normal_cutoff = cutoff / nyq
         b, a = butter(order, normal_cutoff, btype="high", analog=False)

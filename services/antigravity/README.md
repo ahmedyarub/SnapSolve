@@ -62,7 +62,8 @@ set GEMINI_API_KEY=your_api_key_here
 python services/antigravity/antigravity_service.py
 ```
 
-The service starts on `http://0.0.0.0:8200`.
+The service starts on `http://127.0.0.1:8200` (this computer only). To reach it
+from another computer, set `ANTIGRAVITY_HOST=0.0.0.0`.
 
 ### PyCharm Run Configuration
 

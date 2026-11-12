@@ -48,6 +48,10 @@ _HOOKPROC = ctypes.WINFUNCTYPE(
 )
 
 
+WM_MOUSEWHEEL = 0x020A
+WM_MOUSEHWHEEL = 0x020E
+
+
 class MouseBlocker:
     """Block physical mouse events while allowing injected (simulated) ones.
 
@@ -171,8 +175,6 @@ class MouseBlocker:
         # Scroll wheel messages must pass through unconditionally because
         # pyautogui.scroll() (via mouse_event / SendInput) does not reliably
         # set the LLMHF_INJECTED flag for WM_MOUSEWHEEL on all Windows builds.
-        WM_MOUSEWHEEL = 0x020A
-        WM_MOUSEHWHEEL = 0x020E
 
         def _low_level_mouse_proc(n_code, w_param, l_param):
             """Hook callback: block physical events, allow injected ones."""
@@ -223,8 +225,8 @@ ui_state: dict[str, dict[str, bool]] = {}
 _android_client_connected: bool = False
 
 # Latest response image path for sharing with Android
-_response_image_path: str | None = None
-_has_new_response_image: bool = False
+response_image_path: str | None = None
+has_new_response_image: bool = False
 _response_image_lock = threading.Lock()
 
 
@@ -246,10 +248,10 @@ def is_android_connected() -> bool:
 
 def set_response_image_path(path: str) -> None:
     """Store the path of a new response screenshot and notify the Android client."""
-    global _response_image_path, _has_new_response_image
+    global response_image_path, has_new_response_image
     with _response_image_lock:
-        _response_image_path = path
-        _has_new_response_image = True
+        response_image_path = path
+        has_new_response_image = True
     logger.info("Response image available for Android: %s", path)
     # Notify the connected client via a state_update push
     from core.api_server import api_server_instance
@@ -498,11 +500,11 @@ def _handle_keyboard_type(data: dict, app_config: dict[str, Any]) -> dict:
         return {"type": "error", "message": f"Error typing text: {exc}"}
 
 
-def _handle_response_image_ack() -> dict:
+def handle_response_image_ack() -> dict:
     """Acknowledge receipt of the response image and clear the flag."""
-    global _has_new_response_image
+    global has_new_response_image
     with _response_image_lock:
-        _has_new_response_image = False
+        has_new_response_image = False
     logger.info("Android client acknowledged response image")
     return {"type": "response", "status": "acknowledged"}
 

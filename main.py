@@ -3,7 +3,7 @@
 # FORCE PyQt6 initialization at the VERY FIRST entry point
 try:
     import PyQt6.QtWebEngineWidgets  # noqa: F401  (must load before QApplication)
-except Exception:
+except ImportError:
     pass
 
 from app.startup import main

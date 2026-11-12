@@ -51,8 +51,8 @@ def _perform_multi_capture_ocr(active_profile, coords, status_update):
             status_callback=status_update,
             cancel_event=state.cancel_event,
         )
-        if hasattr(temp_source, "_temp_files") and temp_source._temp_files:
-            image_path = temp_source._temp_files[-1]
+        if hasattr(temp_source, "temp_files") and temp_source.temp_files:
+            image_path = temp_source.temp_files[-1]
     except Exception as ocr_error:
         status_update(f"Error during OCR: {ocr_error!s}")
     finally:

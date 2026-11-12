@@ -103,6 +103,13 @@ async def health():
     return {"status": "ok"}
 
 
+def _save_temp_image(image_bytes: bytes, ext: str) -> str:
+    """Write the request image to a temp file (off the event loop)."""
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(image_bytes)
+    return tmp.name
+
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     """Stream a chat response as SSE (text/event-stream)."""
@@ -131,11 +138,10 @@ async def chat(request: ChatRequest):
             if request.image_base64:
                 image_bytes = base64.b64decode(request.image_base64)
                 ext = (request.image_mime_type or "image/png").split("/")[-1]
-                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
-                    tmp.write(image_bytes)
-                logger.info("Image saved to temp file: %s", tmp.name)
+                image_path = await asyncio.to_thread(_save_temp_image, image_bytes, ext)
+                logger.info("Image saved to temp file: %s", image_path)
                 # Pass image path + text prompt together
-                chat_input = f"[Image: {tmp.name}]\n{request.prompt}"
+                chat_input = f"[Image: {image_path}]\n{request.prompt}"
             else:
                 chat_input = request.prompt
 
@@ -169,6 +175,9 @@ async def reset():
 # Main
 # ---------------------------------------------------------------------------
 
+# Loopback only by default, like the OCR and diarization services: the agent
+# can read and run files on this machine. ANTIGRAVITY_HOST=0.0.0.0 serves the LAN.
+HOST = os.environ.get("ANTIGRAVITY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("ANTIGRAVITY_PORT", "8200"))
 
 
@@ -182,4 +191,4 @@ if __name__ == "__main__":
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _handle_exit)
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host=HOST, port=PORT)

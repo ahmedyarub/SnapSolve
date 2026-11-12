@@ -9,7 +9,6 @@ sequentially, passing frames through until a terminal frame is reached.
 """
 
 import logging
-import threading
 
 from core.llm.base import LLMEngine
 from core.sinks.base import Sink
@@ -59,7 +58,6 @@ def build_pipeline(
     coords=None,
     text: str | None = None,
     image_paths: list[str] | None = None,
-    cancel_event: threading.Event | None = None,
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> Pipeline:
@@ -67,21 +65,18 @@ def build_pipeline(
 
     Returns a :class:`Pipeline` ready to be executed via ``pipeline.run(frame)``.
     """
-    processors: list[Processor] = []
-
-    # 1. Source extraction
-    processors.append(
+    processors: list[Processor] = [
+        # 1. Source extraction
         SourceProcessor(
             source=source,
             coords=coords,
             text=text,
             status_callback=status_callback,
             image_paths=image_paths,
-        )
-    )
-
-    # 2. Prompt building
-    processors.append(PromptBuilderProcessor(prompt_text=prompt_text))
+        ),
+        # 2. Prompt building
+        PromptBuilderProcessor(prompt_text=prompt_text),
+    ]
 
     # 3. LLM execution (with or without fallback)
     if fallback_llm:

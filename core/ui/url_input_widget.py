@@ -41,14 +41,14 @@ class UrlInputWidget(DraggableWidgetMixin, QWidget):
         self.line_edit.returnPressed.connect(self._handle_submit)
         self.layout.addWidget(self.line_edit)
 
-    def _apply_opacity(self, opacity: float):
+    def apply_opacity(self, opacity: float):
         self._bg_opacity = opacity
         alpha_int = int(opacity * 255)
         self.setStyleSheet(
             f"background-color: rgba(30, 30, 30, {alpha_int});"
             f" border: 2px solid #555; border-radius: 8px;"
         )
-        self.drag_handle._apply_opacity(opacity)
+        self.drag_handle.apply_opacity(opacity)
         self.line_edit.setStyleSheet(
             f"background-color: rgba(45, 45, 45, {alpha_int}); color: white;"
             f" border: none; font-size: 16px; padding: 5px;"

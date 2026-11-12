@@ -176,7 +176,7 @@ def _build_card_widget(correction: dict) -> QWidget:
         """)
         toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        def _toggle(checked=False, lbl=exp_label, btn=toggle_btn):
+        def _toggle(_checked=False, lbl=exp_label, btn=toggle_btn):
             visible = not lbl.isVisible()
             lbl.setVisible(visible)
             btn.setText("Hide details \u25b4" if visible else "Show details \u25be")

@@ -38,6 +38,7 @@ try:
         COMPUTE_TYPE = "int8"
         logging.info("CUDA not available. Falling back to CPU (int8).")
 except ImportError:
+    torch = None
     DEVICE = "cpu"
     COMPUTE_TYPE = "int8"
     logging.info("Torch not available. Falling back to CPU (int8).")
@@ -132,8 +133,10 @@ def diarize_loopback(wav_path, model_name="base"):
 app = FastAPI(title="Diarization Service")
 
 
+# Plain def: the handler never awaits and diarization is CPU/GPU-bound, so
+# FastAPI runs it in its thread pool instead of blocking the event loop.
 @app.post("/diarize")
-async def diarize(
+def diarize(
     speaker_name: str = Form("You"),
     model: str = Form("base"),
     audio_mic: UploadFile | None = File(None),
@@ -176,6 +179,7 @@ if __name__ == "__main__":
     import uvicorn
 
     def _handle_exit(_sig, _frame):
+        # noinspection PyProtectedMember
         os._exit(0)
 
     signal.signal(signal.SIGINT, _handle_exit)

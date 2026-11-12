@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.ui.mixins import DraggableWidgetMixin
-from core.ui.signals import _app_callbacks
+from core.ui.signals import app_callbacks
 
 
 class SubtitleLabel(QLabel):
@@ -25,10 +25,10 @@ class SubtitleLabel(QLabel):
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             text = self.text()
-            if "text_submit" in _app_callbacks:
+            if "text_submit" in app_callbacks:
                 try:
                     threading.Thread(
-                        target=_app_callbacks["text_submit"],
+                        target=app_callbacks["text_submit"],
                         args=(text,),
                         daemon=True,
                     ).start()

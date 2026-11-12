@@ -107,9 +107,11 @@ def get_active_window_info() -> WindowInfo | None:
         return None
 
 
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
 def _get_active_window_info_win32() -> WindowInfo | None:
     """Windows-specific implementation using ctypes."""
-    import ctypes
     import ctypes.wintypes
 
     user32 = ctypes.windll.user32
@@ -136,7 +138,6 @@ def _get_active_window_info_win32() -> WindowInfo | None:
         return None
 
     # --- Get executable path via OpenProcess + QueryFullProcessImageNameW ---
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
     if not handle:
         return None

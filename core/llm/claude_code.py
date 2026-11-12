@@ -59,6 +59,7 @@ class ClaudeCodeEngine(LLMEngine):
         return True
 
     def _resolve_cli(self) -> str | None:
+        # noinspection PyDeprecation
         return shutil.which(self.cli_path)
 
     def is_available(self) -> tuple[bool, str]:

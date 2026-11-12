@@ -274,7 +274,8 @@ class PeriodicScreenshotService:
         except Exception as exc:
             logger.error("Failed to capture periodic screenshot: %s", exc)
 
-    def _write_window_sidecar(self, save_dir: str, timestamp: str) -> None:
+    @staticmethod
+    def _write_window_sidecar(save_dir: str, timestamp: str) -> None:
         """Write a JSON sidecar file with the active window's metadata."""
         try:
             from core.active_window import get_active_window_info

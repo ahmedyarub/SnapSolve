@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import threading
+from typing import TextIO, cast
 
 
 def show_test_ui(ui_data):
@@ -72,9 +73,11 @@ def launch_service(service_script_path, working_dir):
         )
         print("Service script launched.")
 
+        # stdout=PIPE above, so it is never None.
+        stdout = cast(TextIO, launched_process.stdout)
+
         def read_output():
-            assert launched_process.stdout is not None
-            for line in iter(launched_process.stdout.readline, ""):
+            for line in iter(stdout.readline, ""):
                 print(f"[OCR Service] {line}", end="")
 
         threading.Thread(target=read_output, daemon=True).start()
@@ -107,9 +110,11 @@ def launch_app(main_script_path, main_script_args, working_dir):
 
         is_initialized = threading.Event()
 
+        # stdout=PIPE above, so it is never None.
+        stdout = cast(TextIO, launched_process.stdout)
+
         def read_output():
-            assert launched_process.stdout is not None
-            for line in iter(launched_process.stdout.readline, ""):
+            for line in iter(stdout.readline, ""):
                 print(line, end="")
                 if "Initialization done." in line:
                     is_initialized.set()

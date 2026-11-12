@@ -12,18 +12,12 @@ if platform.system() == "Windows":
     import ctypes
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
-    def _config_ui_ctrl_handler(ctrl_type):
+    def _config_ui_ctrl_handler(_ctrl_type):
         # CTRL_C_EVENT=0, CTRL_BREAK_EVENT=1, CTRL_CLOSE_EVENT=2
+        # noinspection PyProtectedMember
         os._exit(0)
-        return True  # pragma: no cover
 
     ctypes.windll.kernel32.SetConsoleCtrlHandler(_config_ui_ctrl_handler, True)
-
-# FORCE PyQt6 initialization at the VERY FIRST entry point
-try:
-    pass
-except Exception:
-    pass
 
 # Add parent directory to path so imports work when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -102,6 +96,7 @@ class RefreshableComboBox(QComboBox):
         super().__init__(parent)
         self.on_show_popup = on_show_popup
 
+    # noinspection PyPep8Naming
     def showPopup(self):
         if self.on_show_popup:
             self.on_show_popup()
@@ -690,9 +685,9 @@ class ConfigUI(QDialog):
             self.embedding_engine_combo.setCurrentIndex(idx)
         layout.addRow("Embedding Engine:", self.embedding_engine_combo)
 
-        self.reindex_btn = QPushButton("Re-index All Sessions")
-        self.reindex_btn.clicked.connect(self.reindex_all_sessions)
-        layout.addRow("Index:", self.reindex_btn)
+        reindex_btn = QPushButton("Re-index All Sessions")
+        reindex_btn.clicked.connect(self.reindex_all_sessions)
+        layout.addRow("Index:", reindex_btn)
 
         # Mark advanced rows (0-indexed row numbers within this tab's QFormLayout)
         for row_idx in [2, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18]:

@@ -29,7 +29,7 @@ class OllamaEngine(LLMEngine):
                 if resp.status == 200:
                     return True, ""
             return False, f"Ollama returned status {resp.status}"
-        except Exception:
+        except OSError:  # URLError, HTTPError and timeouts are all OSErrors
             return False, f"Ollama is not reachable at {self.ollama_url}"
 
     def warmup(self, status_callback=None) -> bool:

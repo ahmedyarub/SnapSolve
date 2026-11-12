@@ -20,14 +20,11 @@ ruff format --check . || fail "Ruff format check failed. Run 'ruff format .' to 
 echo "Running unit tests (pytest)..."
 "${PYTHON:-python3}" -m pytest -q || fail "Unit tests failed."
 
-# 3. JetBrains Qodana (headless PyCharm inspections in Docker).
-# QODANA_PYTHON_PATH points Qodana at the venv built by scripts/qodana_bootstrap.sh;
-# without it Qodana analyses against an empty interpreter. No --apply-fixes:
+# 3. JetBrains Qodana (headless PyCharm inspections in Docker), on a Linux-side
+# copy of the sources (see scripts/qodana_scan.sh). No --apply-fixes:
 # verification must not edit code.
 echo "Running IDE Inspections (Qodana)..."
-NONINTERACTIVE=true qodana scan --fail-threshold 0 --print-problems \
-    -e QODANA_PYTHON_PATH=/data/cache/snapsolve-venv/bin/python \
-    || fail "Qodana inspection failed. Fix the issues listed above."
+bash scripts/qodana_scan.sh || fail "Qodana inspection failed. Fix the issues listed above."
 
 # 4. SonarQube Scanner (token from SONAR_TOKEN, never stored in the repo)
 echo "Running SonarQube Quality Gate..."
@@ -126,7 +123,7 @@ fi
 # 4. Fetch Security Hotspots
 echo -e "\n\e[36m--- Security Hotspots Report ---\e[0m"
 
-HOTSPOTS_URL="${SONAR_URL}/api/hotspots/search?projectKey=${PROJECT_KEY}&status=TO_REVIEW"
+HOTSPOTS_URL="${SONAR_URL}/api/hotspots/search?project=${PROJECT_KEY}&status=TO_REVIEW"
 HOTSPOTS_RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "$HOTSPOTS_URL")
 
 if [ -n "$HOTSPOTS_RESPONSE" ] && echo "$HOTSPOTS_RESPONSE" | jq empty 2>/dev/null; then

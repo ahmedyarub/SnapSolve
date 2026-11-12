@@ -6,14 +6,14 @@ import threading
 
 from PyQt6.QtWidgets import QApplication
 
-from core.ui.signals import _app_callbacks, ui_signals
+from core.ui.signals import app_callbacks, ui_signals
 
 
 def set_app_callbacks(callbacks):
     # Mutate in-place so every module that imported a reference to the
     # original dict object sees the updated callbacks.
-    _app_callbacks.clear()
-    _app_callbacks.update(callbacks)
+    app_callbacks.clear()
+    app_callbacks.update(callbacks)
 
 
 def set_hide_from_capture(hide: bool):

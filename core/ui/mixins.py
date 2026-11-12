@@ -16,6 +16,10 @@ from PyQt6.QtWidgets import (
 _RESIZE_MARGIN = 8  # Pixels from edge to trigger resize
 
 
+# Mixins have no __init__ of their own: the QWidget subclass that uses one
+# calls _init_draggable() / _init_resizable() from its __init__. Their state is
+# declared at class level so every instance has it before that call.
+# noinspection PyClassHasNoInit
 class DraggableWidgetMixin:
     """Mixin that adds drag-to-move behaviour to a frameless QWidget.
 
@@ -23,8 +27,11 @@ class DraggableWidgetMixin:
     (i.e. not on a child button, text edit, or other interactive control).
     """
 
+    _drag_pos: QPoint | None = None
+    _has_been_moved: bool = False
+
     def _init_draggable(self):
-        self._drag_pos: QPoint | None = None
+        self._drag_pos = None
 
     def _is_on_interactive_child(self, pos) -> bool:
         """Return True if *pos* (local coords) is over a child that should
@@ -123,7 +130,7 @@ class _DragHandleBar(QWidget):
         else:
             super().mouseReleaseEvent(event)
 
-    def _apply_opacity(self, opacity: float):
+    def apply_opacity(self, opacity: float):
         """Adjust the drag bar background alpha to match the global opacity."""
         alpha_int = int(opacity * 255)
         self.setStyleSheet(
@@ -132,6 +139,7 @@ class _DragHandleBar(QWidget):
         )
 
 
+# noinspection PyClassHasNoInit
 class ResizableWidgetMixin:
     """Mixin that adds edge/corner resize handles to a frameless QWidget."""
 
@@ -152,10 +160,14 @@ class ResizableWidgetMixin:
         _EDGE_LEFT | _EDGE_BOTTOM: Qt.CursorShape.SizeBDiagCursor,
     }
 
+    _resize_edge: int = _EDGE_NONE
+    _resize_origin: QPoint | None = None
+    _resize_geom: QRect | None = None
+
     def _init_resizable(self, min_size: QSize | None = None):
         self._resize_edge = self._EDGE_NONE
-        self._resize_origin: QPoint | None = None
-        self._resize_geom: QRect | None = None
+        self._resize_origin = None
+        self._resize_geom = None
         self._min_resize_size = min_size or QSize(200, 100)
         self.setMouseTracking(True)  # type: ignore[attr-defined]
 

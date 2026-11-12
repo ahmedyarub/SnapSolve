@@ -70,7 +70,8 @@ This application relies on a strictly decoupled architecture:
     *   `ocr_service.py`: FastAPI microservice for remote PaddleOCR (POST `/ocr` endpoint).
     *   `whisperlive/`: Git submodule — WhisperLive real-time transcription server.
     *   `antigravity/`: Antigravity SDK service — FastAPI app that wraps the `google-antigravity`
-      Python SDK. Exposes `POST /chat` with SSE streaming and `GET /health` on port 8200.
+      Python SDK. Exposes `POST /chat` with SSE streaming and `GET /health` on `127.0.0.1:8200`
+      (`ANTIGRAVITY_HOST` / `ANTIGRAVITY_PORT` override them).
 5.  **`sessions/`**: Local storage for chat session history (JSON files), captured images, and transcriptions.
 6.  **`tests/`**: Contains the tests.
     *   `e2e/`: End-to-end tests with image-recognition-based UI automation. Only run on the developer's machine.
@@ -80,6 +81,14 @@ This application relies on a strictly decoupled architecture:
     *   `verify.ps1` / `verify.sh`: Ruff lint + format (`ruff.toml`), pytest (`pytest.ini`), Qodana (`qodana.yaml`,
         interpreter built by `qodana_bootstrap.sh`), and SonarQube (`sonar-project.properties`, server started by
         `sonarqube_up.sh`, token from `SONAR_TOKEN`). The Android app is not linted by these scripts.
+    *   Qodana runs through `scripts/qodana_scan.sh`, which scans a copy of our sources (without the WhisperLive
+        submodule) in WSL's `~/.cache/snapsolve-qodana/src`. When Qodana indexes the submodule, its
+        `python_requires=">=3.9"` makes it report valid code such as `str | None` as "Invalid type annotation" by
+        the hundred, and that sticks in its cache: if it ever happens, delete everything in
+        `~/.cache/snapsolve-qodana/cache` except `snapsolve-venv` and `pip`.
+    *   WSL stops the distro a few seconds after the last `wsl.exe` process exits, and Docker containers inside
+        (Qodana, SonarQube) stop with it. `verify.ps1` holds it open for the run; do the same when using
+        SonarQube from Windows by hand (`wsl -e sleep 3600` in another window).
 8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via WebSocket.
 9.  **`docs/`**: Additional documentation (architecture, features, setup guides, roadmap).
 10. **`main.py`**: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI,

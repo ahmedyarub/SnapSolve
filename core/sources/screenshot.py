@@ -13,7 +13,7 @@ CAPTURE_CANCELLED_MSG = "Capture cancelled."
 class ScreenshotSource(ImageSource):
     def __init__(self, ocr_engine: OCREngine = None):
         self.ocr_engine = ocr_engine
-        self._temp_files = []
+        self.temp_files = []
 
     def _capture(self, coords, cancel_event: threading.Event | None = None) -> str:
         if cancel_event and cancel_event.is_set():
@@ -36,7 +36,7 @@ class ScreenshotSource(ImageSource):
         fd, temp_file_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
 
-        self._temp_files.append(temp_file_path)
+        self.temp_files.append(temp_file_path)
         img.save(temp_file_path)
 
         return temp_file_path
@@ -81,10 +81,10 @@ class ScreenshotSource(ImageSource):
         return self._capture(coords, cancel_event)
 
     def cleanup_file(self, filepath):
-        if filepath in self._temp_files:
-            self._temp_files.remove(filepath)
+        if filepath in self.temp_files:
+            self.temp_files.remove(filepath)
         # Intentionally not deleting the file as requested
 
     def cleanup_all(self):
-        for f in list(self._temp_files):
+        for f in list(self.temp_files):
             self.cleanup_file(f)

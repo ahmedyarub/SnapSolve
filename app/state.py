@@ -121,4 +121,5 @@ def exit_app():
     #  - app.quit() can block when called from a non-main thread.
     # os._exit() terminates the process at the OS level, making both calls
     # unnecessary.
+    # noinspection PyProtectedMember
     os._exit(0)

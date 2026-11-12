@@ -32,7 +32,9 @@ def clean_text(text: str) -> str:
     text = re.sub(r"`(.*?)`", r"\1", text)
 
     # 4. Remove block code formatting (keeps the text inside)
-    text = re.sub(r"```\w*[\r\n]+(.*?)```", r"\1", text, flags=re.DOTALL)
+    # The newline after the fence is matched exactly so it cannot overlap the
+    # lazy body (overlap makes the match backtrack super-linearly).
+    text = re.sub(r"```\w*\r?\n(.*?)```", r"\1", text, flags=re.DOTALL)
 
     # 5. Remove emphasis: bold, italic, strikethrough
     text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)

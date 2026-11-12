@@ -58,6 +58,7 @@ def _setup_tray_or_console_mode(config, exit_handler):
 
             def _signal_exit(_sig, _frame):
                 print("Exiting (signal)...")
+                # noinspection PyProtectedMember
                 os._exit(0)
 
             signal.signal(signal.SIGINT, _signal_exit)

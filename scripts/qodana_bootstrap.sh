@@ -24,10 +24,12 @@ echo "Building Qodana venv in $VENV..."
 
 # PyAudio needs PortAudio headers to build on Linux and is not needed for
 # static analysis. Torch comes from the CPU index: the analysis needs its
-# Python sources, not CUDA.
+# Python sources, not CUDA. scipy-stubs gives the analysis scipy's real
+# return types.
 grep -viE '^\s*pyaudio\s*$' requirements.txt > /tmp/qodana-requirements.txt
 PIP_CACHE_DIR=/data/cache/pip "$VENV/bin/python" -m pip install --quiet \
     -r /tmp/qodana-requirements.txt \
+    scipy-stubs \
     -c constraints-gpu.txt \
     --extra-index-url https://download.pytorch.org/whl/cpu
 

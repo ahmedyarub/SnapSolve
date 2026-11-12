@@ -183,7 +183,7 @@ class SoundSource(Source):
             self.is_recording = False
             return
 
-        timeout = 600 if self._transcription._translation_language else 15
+        timeout = 600 if self._transcription.translation_language else 15
         if not self._transcription.wait_for_clients_ready(
             timeout=timeout, status_callback=status_callback
         ):

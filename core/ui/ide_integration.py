@@ -206,7 +206,7 @@ def _open_code_in_ide(ide: str, code: str, lang: str):
         logger.error(f"Failed to launch {ide}: {e}")
 
 
-class _PopupWebPage(QWebEnginePage):
+class PopupWebPage(QWebEnginePage):
     """Custom page that intercepts snapsolve:// navigation for IDE integration."""
 
     # noinspection PyPep8Naming

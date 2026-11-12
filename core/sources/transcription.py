@@ -5,6 +5,7 @@ utterance finalization, and subtitle updates.  Also provides a Google
 Speech-to-Text fallback for simple (non-streaming) recordings.
 """
 
+import functools
 import logging
 import os
 import sys
@@ -112,6 +113,11 @@ class TranscriptionProcessor:
         self._translation_language = self.config.get("translation_language", "")
 
     @property
+    def translation_language(self) -> str:
+        """Target language for live translation, or "" when it is off."""
+        return self._translation_language
+
+    @property
     def last_transcription_text(self) -> str:
         """The accumulated transcription text from the last recording."""
         return self._last_transcription_text
@@ -126,6 +132,14 @@ class TranscriptionProcessor:
     # ------------------------------------------------------------------
     def initialize_clients(self) -> bool:
         """Initialize WhisperLive transcription clients."""
+        # whisper_live is importable only through the sys.path entry added at the
+        # top of this module, so static analysis sees just the None fallback.
+        client_cls = WhisperLiveTranscriptionClient
+        if client_cls is None:
+            logger.error(
+                "Failed to initialize WhisperLive client: it is not installed."
+            )
+            return False
         try:
             transcription_lang = self.config.get("transcription_language", "en") or None
             translation_lang = self._translation_language
@@ -144,16 +158,17 @@ class TranscriptionProcessor:
             # Mic Client
             mic_kwargs = translate_kwargs.copy()
             if translation_lang:
-                mic_kwargs["translation_callback"] = lambda _, segs: (
-                    self._on_translation_result(_, segs, source="mic")
+                mic_kwargs["translation_callback"] = functools.partial(
+                    self._on_translation_result, source="mic"
                 )
-            self.client_mic = WhisperLiveTranscriptionClient(
+            # noinspection PyCallingNonCallable
+            self.client_mic = client_cls(
                 host="localhost",
                 port=9090,
                 lang=transcription_lang,
                 use_vad=True,
-                transcription_callback=lambda _, segs: self._on_transcription_result(
-                    _, segs, source="mic"
+                transcription_callback=functools.partial(
+                    self._on_transcription_result, source="mic"
                 ),
                 no_speech_thresh=0.4,
                 **mic_kwargs,
@@ -164,16 +179,17 @@ class TranscriptionProcessor:
             if loopback_device:
                 loop_kwargs = translate_kwargs.copy()
                 if translation_lang:
-                    loop_kwargs["translation_callback"] = lambda _, segs: (
-                        self._on_translation_result(_, segs, source="loopback")
+                    loop_kwargs["translation_callback"] = functools.partial(
+                        self._on_translation_result, source="loopback"
                     )
-                self.client_loopback = WhisperLiveTranscriptionClient(
+                # noinspection PyCallingNonCallable
+                self.client_loopback = client_cls(
                     host="localhost",
                     port=9090,
                     lang=transcription_lang,
                     use_vad=True,
-                    transcription_callback=lambda _, segs: (
-                        self._on_transcription_result(_, segs, source="loopback")
+                    transcription_callback=functools.partial(
+                        self._on_transcription_result, source="loopback"
                     ),
                     no_speech_thresh=0.4,
                     **loop_kwargs,

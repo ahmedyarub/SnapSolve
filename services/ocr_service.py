@@ -69,6 +69,7 @@ if __name__ == "__main__":
     import uvicorn
 
     def _handle_exit(_sig, _frame):
+        # noinspection PyProtectedMember
         os._exit(0)
 
     signal.signal(signal.SIGINT, _handle_exit)

@@ -38,6 +38,7 @@ class InterceptHandler(logging.Handler):
     uses ``logging.getLogger()``.
     """
 
+    # noinspection PyMethodMayBeStatic
     def emit(self, record: logging.LogRecord) -> None:
         # Get corresponding loguru level
         try:
@@ -63,11 +64,13 @@ class InterceptHandler(logging.Handler):
 # ---------------------------------------------------------------------------
 # UIPopupSink — show ERROR+ from service loggers as popups
 # ---------------------------------------------------------------------------
+# noinspection PyClassHasNoInit
 class UIPopupSink:
     """Loguru sink that emits ERROR+ messages from service-critical loggers
     as PyQt6 popup signals.
     """
 
+    # noinspection PyMethodMayBeStatic
     def write(self, message) -> None:
         record = message.record
         # Only intercept ERROR (40) and above

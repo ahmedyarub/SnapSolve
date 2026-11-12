@@ -205,7 +205,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self._broadcast_state()
 
     def update_position(self):
-        if getattr(self, "_has_been_moved", False):
+        if self._has_been_moved:
             return
         screen = QApplication.primaryScreen().size()
         x = 20
@@ -289,14 +289,14 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.update_position()
         self._broadcast_state()
 
-    def _apply_opacity(self, opacity: float):
+    def apply_opacity(self, opacity: float):
         """Apply opacity via RGBA backgrounds to the panel, drag handle, and all buttons."""
         alpha_int = int(opacity * 255)
         self.setStyleSheet(
             f"background-color: rgba(30, 30, 30, {alpha_int});"
             f" border: 1px solid #444; border-radius: 8px;"
         )
-        self.drag_handle._apply_opacity(opacity)
+        self.drag_handle.apply_opacity(opacity)
 
         # Apply uniform alpha to all buttons
         btn_style = (

@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from core.output import _PopupWebPage
+from core.output import PopupWebPage
 from core.session_manager import SessionManager
 from ui.timeline_widget import SessionTimelineWidget
 
@@ -96,6 +96,9 @@ class _CollapsiblePane(QWidget):
         layout.addWidget(header)
         layout.addWidget(content_widget)
 
+    def set_title(self, text: str) -> None:
+        self._label.setText(text)
+
     def toggle(self) -> None:
         self._collapsed = not self._collapsed
         if self._collapsed:
@@ -123,6 +126,7 @@ class _ImageLabel(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._pixmap: QPixmap | None = None
 
+    # noinspection PyPep8Naming
     def setPixmap(self, p: QPixmap) -> None:
         self._pixmap = p
         self.update()
@@ -180,7 +184,7 @@ class SessionBrowserDialog(QDialog):
         self._current_session_id: str | None = None
         self._response_loaded = False
         self._pending_response_js: list = []
-        self._response_page: _PopupWebPage | None = None
+        self._response_page: PopupWebPage | None = None
         self.selected_session_id: str | None = None
         self._empty_count: int = 0
         self.btn_delete_empty: QPushButton | None = None
@@ -315,7 +319,7 @@ class SessionBrowserDialog(QDialog):
         response_wrapper_layout.setContentsMargins(0, 0, 0, 0)
         response_wrapper_layout.setSpacing(0)
         self.response_view = QWebEngineView()
-        self._response_page = _PopupWebPage(self.response_view)
+        self._response_page = PopupWebPage(self.response_view)
         self.response_view.setPage(self._response_page)
         self.response_view.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
@@ -775,10 +779,10 @@ class SessionBrowserDialog(QDialog):
                     import html
                     import os
 
-                    from core.session_manager import _session_dir
+                    from core.session_manager import session_dir_path
 
                     abs_trans_path = os.path.abspath(
-                        os.path.join(_session_dir(session_id), transcription_file)
+                        os.path.join(session_dir_path(session_id), transcription_file)
                     )
                     if os.path.exists(abs_trans_path):
                         try:
@@ -836,7 +840,7 @@ class SessionBrowserDialog(QDialog):
         import html
         import os
 
-        from core.session_manager import _session_dir
+        from core.session_manager import session_dir_path
 
         # Build prompt display with metadata
         display_parts = []
@@ -853,7 +857,7 @@ class SessionBrowserDialog(QDialog):
 
         for img in images_data:
             abs_image_path = os.path.abspath(
-                os.path.join(_session_dir(session_id), img)
+                os.path.join(session_dir_path(session_id), img)
             )
             abs_image_path_fwd = abs_image_path.replace(os.sep, "/")
             file_url = f"file:///{abs_image_path_fwd}"
@@ -865,7 +869,7 @@ class SessionBrowserDialog(QDialog):
         transcription_text = ""
         if transcription_file:
             abs_trans_path = os.path.abspath(
-                os.path.join(_session_dir(session_id), transcription_file)
+                os.path.join(session_dir_path(session_id), transcription_file)
             )
             if os.path.exists(abs_trans_path):
                 trans_url = f"file:///{abs_trans_path.replace(os.sep, '/')}"
@@ -875,7 +879,7 @@ class SessionBrowserDialog(QDialog):
                 try:
                     with open(abs_trans_path, encoding="utf-8") as tf:
                         transcription_text = tf.read()
-                except Exception:
+                except (OSError, ValueError):  # unreadable or not UTF-8
                     pass
 
         header = "  ".join(display_parts)
@@ -895,7 +899,7 @@ class SessionBrowserDialog(QDialog):
 
         for img in images_data:
             abs_image_path = os.path.abspath(
-                os.path.join(_session_dir(session_id), img)
+                os.path.join(session_dir_path(session_id), img)
             )
             abs_image_path_fwd = abs_image_path.replace(os.sep, "/")
 
@@ -970,7 +974,7 @@ class SessionBrowserDialog(QDialog):
                 self.prompt_view.setTextCursor(first_cursor)
                 self.prompt_view.ensureCursorVisible()
 
-    def _on_tree_double_click(self, item: QTreeWidgetItem, column: int):
+    def _on_tree_double_click(self, item: QTreeWidgetItem, _column: int):
         if not self.selection_mode:
             return
 
@@ -1004,7 +1008,7 @@ class SessionBrowserDialog(QDialog):
             self._pending_response_js.clear()
             self._pending_response_js.append((js_code, _highlight_after_render))
 
-    def _on_response_loaded(self, ok: bool):
+    def _on_response_loaded(self, _ok: bool):
         self._response_loaded = True
         for item in self._pending_response_js:
             if isinstance(item, tuple):
@@ -1046,7 +1050,7 @@ class SessionBrowserDialog(QDialog):
             time_str = fname
 
         if self.screenshot_pane:
-            self.screenshot_pane._label.setText(f"📸 Screenshot at {time_str}")
+            self.screenshot_pane.set_title(f"📸 Screenshot at {time_str}")
 
     def _on_timeline_interaction_selected(self, index: int):
         """Select the corresponding prompt child in the tree when an event marker is clicked."""
@@ -1126,16 +1130,16 @@ class SessionBrowserDialog(QDialog):
         action = menu.exec(self.tree.viewport().mapToGlobal(position))
 
         if action == rename_action:
-            self._handle_rename(session_id, item)
+            self._handle_rename(session_id)
         elif action == tags_action:
-            self._handle_edit_tags(session_id, item)
+            self._handle_edit_tags(session_id)
         elif action == delete_action:
             if len(selected_session_ids) > 1:
                 self._handle_delete_sessions(selected_session_ids)
             else:
                 self._handle_delete_sessions([session_id])
 
-    def _handle_rename(self, session_id: str, tree_item: QTreeWidgetItem):
+    def _handle_rename(self, session_id: str):
         data = self._get_session_data(session_id)
         current_name = ""
         if data:
@@ -1151,7 +1155,7 @@ class SessionBrowserDialog(QDialog):
             # Refresh tree
             self._load_sessions()
 
-    def _handle_edit_tags(self, session_id: str, tree_item: QTreeWidgetItem):
+    def _handle_edit_tags(self, session_id: str):
         data = self._get_session_data(session_id)
         current_tags = []
         if data:

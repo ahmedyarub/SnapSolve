@@ -41,7 +41,7 @@ class SelectorSignals(QObject):
 
 ui_signals = UISignals()
 selector_signals = SelectorSignals()
-_app_callbacks = {}
+app_callbacks = {}
 _last_user_prompt: str | None = None
 
 
@@ -52,11 +52,11 @@ def set_last_user_prompt(prompt: str | None) -> None:
 
 
 def call_action(action, *args):
-    if action in _app_callbacks:
+    if action in app_callbacks:
         try:
             # Run callback in background thread so it doesn't block UI
             threading.Thread(
-                target=_app_callbacks[action], args=args, daemon=True
+                target=app_callbacks[action], args=args, daemon=True
             ).start()
         except Exception as e:
             print(f"Error calling {action}: {e}")

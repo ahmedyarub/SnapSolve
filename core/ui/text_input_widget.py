@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.ui.mixins import DraggableWidgetMixin, _DragHandleBar
-from core.ui.signals import _app_callbacks
+from core.ui.signals import app_callbacks
 
 
 class TextInputWidget(DraggableWidgetMixin, QWidget):
@@ -56,7 +56,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
         # Stash the in-progress text while the user browses history
         self._draft_text: str = ""
 
-    def _apply_opacity(self, opacity: float):
+    def apply_opacity(self, opacity: float):
         """Apply opacity via RGBA backgrounds to the widget, drag handle, and text edit."""
         self._bg_opacity = opacity
         alpha_int = int(opacity * 255)
@@ -64,7 +64,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
             f"background-color: rgba(30, 30, 30, {alpha_int});"
             f" border: 2px solid #555; border-radius: 8px;"
         )
-        self.drag_handle._apply_opacity(opacity)
+        self.drag_handle.apply_opacity(opacity)
         self.text_edit.setStyleSheet(
             f"background-color: rgba(45, 45, 45, {alpha_int}); color: white;"
             f" border: none; font-size: 16px; padding: 5px;"
@@ -88,9 +88,9 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
             self._add_to_history(text)
             self._history_index = -1
             self._draft_text = ""
-            if "text_submit" in _app_callbacks:
+            if "text_submit" in app_callbacks:
                 threading.Thread(
-                    target=_app_callbacks["text_submit"],
+                    target=app_callbacks["text_submit"],
                     args=(text,),
                     daemon=True,
                 ).start()
@@ -107,7 +107,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
                 with open(TextInputWidget._HISTORY_FILE, encoding="utf-8") as f:
                     history = json.load(f)
                 return list(history) if isinstance(history, list) else []
-        except Exception:
+        except (OSError, ValueError):  # unreadable file or bad JSON
             pass
         return []
 

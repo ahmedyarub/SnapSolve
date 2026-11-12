@@ -83,11 +83,11 @@ if platform.system() == "Windows":
     # button (which sends CTRL_C_EVENT or CTRL_BREAK_EVENT) terminates the
     # process immediately via os._exit().
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
-    def _console_ctrl_handler(ctrl_type):
+    def _console_ctrl_handler(_ctrl_type):
         # CTRL_C_EVENT=0, CTRL_BREAK_EVENT=1, CTRL_CLOSE_EVENT=2,
         # CTRL_LOGOFF_EVENT=5, CTRL_SHUTDOWN_EVENT=6
+        # noinspection PyProtectedMember
         os._exit(0)
-        return True  # pragma: no cover
 
     ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_ctrl_handler, True)
 
