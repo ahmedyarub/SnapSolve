@@ -1,23 +1,32 @@
 import argparse
+import copy
 import json
+import logging
 import os
 from pathlib import Path
 
-import pyaudio  # Import pyaudio
+logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join("config", "config.json")
 PROFILES_FILE = os.path.join("config", "profiles.json")
 PROMPTS_FILE = os.path.join("config", "prompts.json")
 
 
+def _write_json_atomic(path: str, data) -> None:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    os.replace(tmp_path, path)
+
+
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
         try:
-            with open(PROFILES_FILE) as f:
+            with open(PROFILES_FILE, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(
-                f"Warning: {PROFILES_FILE} is not a valid JSON. Using default profile."
+            logger.warning(
+                "%s is not valid JSON; using the default profile.", PROFILES_FILE
             )
     return [
         {
@@ -33,17 +42,16 @@ def load_profiles():
 
 
 def save_profiles(profiles):
-    with open(PROFILES_FILE, "w") as f:
-        json.dump(profiles, f, indent=4)
+    _write_json_atomic(PROFILES_FILE, profiles)
 
 
 def load_prompts():
     if os.path.exists(PROMPTS_FILE):
         try:
-            with open(PROMPTS_FILE) as f:
+            with open(PROMPTS_FILE, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(f"Warning: {PROMPTS_FILE} is not a valid JSON.")
+            logger.warning("%s is not valid JSON.", PROMPTS_FILE)
     return [
         {
             "id": "default",
@@ -58,6 +66,8 @@ def get_audio_devices():
     Lists all available audio output devices, filtering to include only "MME" devices.
     Returns their name and index.
     """
+    import pyaudio
+
     p = pyaudio.PyAudio()
 
     output_devices = []
@@ -92,6 +102,8 @@ def get_audio_input_devices():
     Lists all available audio input devices.
     Returns their name and index.
     """
+    import pyaudio
+
     p = pyaudio.PyAudio()
 
     input_devices = []
@@ -133,7 +145,7 @@ def get_audio_loopback_devices():
         loopback_devices.sort(key=lambda x: x["name"].lower())
         return loopback_devices
     except Exception as e:
-        print(f"Warning: Failed to load loopback devices: {e}")
+        logger.warning("Failed to load loopback devices: %s", e)
         return []
 
 
@@ -187,7 +199,7 @@ def _get_default_config():
         "translation_language": "",
         # API & Remote Control server
         "enable_api_server": False,
-        "api_server_host": "0.0.0.0",
+        "api_server_host": "127.0.0.1",
         "api_server_port": 3031,
         "api_server_key": "",
         "remote_mouse_idle_timeout": 3.0,
@@ -202,6 +214,12 @@ def _get_default_config():
         # LLM retry on transient errors (503, rate limits, etc.)
         "llm_max_retries": 3,
         "llm_retry_base_delay": 5,
+        # Chat history sent with each request (oldest turns dropped first)
+        "history_max_turns": 10,
+        "history_max_chars": 24000,
+        # Longest a single answer may take, in seconds
+        "claude_timeout": 600,
+        "llm_request_timeout": 600,
         # Maximum number of prompts to keep in text input history
         "max_prompt_history": 100,
         # Periodic screenshots
@@ -223,6 +241,41 @@ def _get_default_config():
         "languagetool_api_key": "",
         "languagetool_language": "auto",
         "languagetool_level": "picky",
+        # Real-time correction
+        "realtime_correction_enabled": False,
+        "realtime_correction_audio_source": "both",
+        "realtime_correction_window_size": 4,
+        "realtime_correction_grammar": True,
+        "realtime_correction_fact_check": True,
+        "realtime_correction_content_suggestions": False,
+        # Provider keys (LiteLLM)
+        "anthropic_api_key": "",
+        "openai_api_key": "",
+        "groq_api_key": "",
+        "openrouter_api_key": "",
+        # Services
+        "ocr_config": {"remote_ocr_host": "127.0.0.1", "port": 8000},
+        "antigravity_service_url": "http://localhost:8200",
+        "diarization_model": "base",
+        "embedding_engine": "local",
+        # Test hotkeys for subtitles (ctrl+alt+shift+t, ctrl+alt+shift+1..5)
+        "debug_hotkeys": False,
+        # Remote control
+        "mouse_sensitivity": 1.5,
+        "hide_from_capture": False,
+        # Logging
+        "log_file": "logs/snapsolve.log",
+        "log_level": "INFO",
+        "log_rotation": "10 MB",
+        "log_retention": "7 days",
+        "log_levels": {
+            "urllib3": "WARNING",
+            "PIL": "WARNING",
+            "google": "WARNING",
+            "httpx": "WARNING",
+            "soundcard": "WARNING",
+            "matplotlib": "WARNING",
+        },
     }
 
 
@@ -276,7 +329,7 @@ def _load_config_from_file():
         return {}
 
     try:
-        with open(CONFIG_FILE) as f:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
             file_config = json.load(f)
 
         _migrate_hotkey_format(file_config)
@@ -284,7 +337,7 @@ def _load_config_from_file():
 
         return file_config
     except json.JSONDecodeError:
-        print(f"Warning: {CONFIG_FILE} is not a valid JSON. Using default settings.")
+        logger.warning("%s is not valid JSON; using the default settings.", CONFIG_FILE)
         return {}
 
 
@@ -321,18 +374,94 @@ def load_config():
     elif "remote_control_port" in file_config:
         del file_config["remote_control_port"]
 
-    config.update(file_config)
+    config.update(_drop_mistyped(file_config, config))
 
     return config
 
 
-def save_config(config):
-    # Ensure backward compatibility field is removed before saving
-    if "hotkey" in config:
-        del config["hotkey"]
+def _same_kind(value, default) -> bool:
+    if default is None or value is None:
+        return True
+    if isinstance(default, bool) or isinstance(value, bool):
+        return isinstance(value, bool) and isinstance(default, bool)
+    if isinstance(default, (int, float)):
+        return isinstance(value, (int, float))
+    return isinstance(value, type(default))
 
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
+
+def _drop_mistyped(file_config: dict, defaults: dict) -> dict:
+    """File values whose type matches the default's; others fall back to the default.
+
+    A hand-edited ``"opacity": "high"`` would otherwise crash code far from here.
+    """
+    kept = {}
+    for key, value in file_config.items():
+        if key in defaults and not _same_kind(value, defaults[key]):
+            logger.warning(
+                "config.json: %s should be %s, not %r; using the default %r",
+                key,
+                type(defaults[key]).__name__,
+                value,
+                defaults[key],
+            )
+            continue
+        kept[key] = value
+    return kept
+
+
+class AppConfig(dict):
+    """The live configuration: defaults, then config.json, then command-line flags.
+
+    ``cli_overrides`` remembers what the command line set, so :func:`save_config`
+    never makes a one-off flag (an API key, ``--continue-last``) permanent.
+    """
+
+    def __init__(self, values: dict, cli_overrides: dict | None = None):
+        super().__init__(values)
+        self.cli_overrides: dict = dict(cli_overrides or {})
+
+
+def update_config_file(changes: dict) -> None:
+    """Set `changes` in config.json, leaving every other stored key as it is.
+
+    Unlike save_config, this never writes defaults or command-line overrides
+    into the file.
+    """
+    stored = {}
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            stored = json.load(f)
+    stored.update(changes)
+    _write_json_atomic(CONFIG_FILE, stored)
+
+
+def _stored_config() -> dict:
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_config(config):
+    """Write the live config to config.json, minus unchanged command-line overrides."""
+    # Ensure backward compatibility field is removed before saving
+    config.pop("hotkey", None)
+
+    to_write = dict(config)
+    overrides = getattr(config, "cli_overrides", {})
+    if overrides:
+        stored = _stored_config()
+        for key, cli_value in overrides.items():
+            if to_write.get(key) != cli_value:
+                continue  # changed since startup (e.g. in the UI): a real setting
+            if key in stored:
+                to_write[key] = stored[key]
+            else:
+                to_write.pop(key, None)
+    _write_json_atomic(CONFIG_FILE, to_write)
 
 
 def parse_args():
@@ -741,8 +870,9 @@ def _apply_periodic_screenshots_config(config, args):
         )
 
 
-def get_config():
+def get_config() -> AppConfig:
     config = load_config()
+    from_file = copy.deepcopy(config)
     args = parse_args()
 
     _apply_output_mode_config(config, args)
@@ -753,4 +883,7 @@ def get_config():
     _apply_transcription_config(config, args)
     _apply_periodic_screenshots_config(config, args)
 
-    return config
+    overrides = {
+        k: v for k, v in config.items() if k not in from_file or from_file[k] != v
+    }
+    return AppConfig(config, cli_overrides=overrides)

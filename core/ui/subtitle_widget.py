@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
 from core.ui.mixins import DraggableWidgetMixin
 from core.ui.signals import app_callbacks
 
+logger = logging.getLogger(__name__)
+
 
 class SubtitleLabel(QLabel):
     def __init__(self, text):
@@ -34,7 +36,7 @@ class SubtitleLabel(QLabel):
                         daemon=True,
                     ).start()
                 except Exception as e:
-                    print(f"Error submitting subtitle text: {e}")
+                    logger.error("Error submitting subtitle text: %s", e)
 
 
 class SubtitleWidget(DraggableWidgetMixin, QWidget):
@@ -106,7 +108,6 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         self.setGeometry(x, y, w, h)
 
         # Debug logging
-        logger = logging.getLogger(__name__)
         logger.info(f"Subtitle widget position updated: ({x}, {y}), size: ({w}, {h})")
 
     def get_subtitle_text(self, index: int) -> str:
@@ -117,8 +118,7 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
 
     def add_subtitle(self, text: str):
         """Add a new subtitle line."""
-        logger = logging.getLogger(__name__)
-        logger.info(f"Adding subtitle: {text}")
+        logger.debug("Adding a subtitle (%d characters)", len(text))
         logger.info(f"Subtitle widget visible: {self.isVisible()}")
         logger.info(f"Subtitle widget position: {self.pos()}, size: {self.size()}")
 
@@ -180,8 +180,7 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
 
     def update_last_subtitle(self, text: str, append: bool = False):
         """Update the text of the most recent subtitle instead of creating a new one."""
-        logger = logging.getLogger(__name__)
-        logger.info(f"update_last_subtitle called with text: {text}, append: {append}")
+        logger.debug("Updating the last subtitle (append=%s)", append)
 
         if not self.subtitle_labels:
             # No existing subtitles, create a new one
@@ -204,7 +203,7 @@ class SubtitleWidget(DraggableWidgetMixin, QWidget):
         else:
             # Replace existing text
             last_label.setText(text)
-            logger.info(f"Updated last subtitle to: {text}")
+            logger.debug("Updated the last subtitle")
 
         # Force layout update and position adjustment
         self.layout.activate()

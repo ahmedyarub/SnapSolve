@@ -29,6 +29,21 @@ def toggle_control_panel(show=None):
     ui_signals.toggle_panel.emit(show)
 
 
+def open_settings():
+    """Open the settings dialog (safe from any thread)."""
+    ui_signals.open_settings.emit()
+
+
+def set_profile_choices(choices: list[tuple[str, str]], active_id: str):
+    """Fill the panel's profile selector: ``[(profile_id, name), ...]``."""
+    ui_signals.set_profiles.emit(list(choices), active_id)
+
+
+def show_pairing_dialog():
+    """Open the Android pairing dialog (safe from any thread)."""
+    ui_signals.show_pairing.emit()
+
+
 def toggle_all_widgets():
     """Hide or unhide all overlay widgets."""
     ui_signals.toggle_all_visibility.emit()
@@ -95,7 +110,7 @@ def is_autosubmit_enabled() -> bool:
 def show_subtitle(text: str):
     """Show a subtitle line with real-time transcription."""
     logger = logging.getLogger(__name__)
-    logger.info(f"show_subtitle called with text: {text}")
+    logger.debug("show_subtitle: %d characters", len(text))
     ui_signals.show_subtitle.emit(text)
     logger.info("show_subtitle signal emitted")
 
@@ -103,7 +118,7 @@ def show_subtitle(text: str):
 def update_subtitle(text: str, append: bool = False):
     """Update the most recent subtitle line instead of creating a new one."""
     logger = logging.getLogger(__name__)
-    logger.info(f"update_subtitle called with text: {text}, append: {append}")
+    logger.debug("update_subtitle: %d characters, append=%s", len(text), append)
     ui_signals.update_subtitle.emit(text, append)
     logger.info("update_subtitle signal emitted")
 

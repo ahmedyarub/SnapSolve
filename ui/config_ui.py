@@ -1,7 +1,9 @@
 import json
+import logging
 import os
 import platform
 import sys
+import threading
 from pathlib import Path
 
 # Ensure PyCharm's Stop button kills the process immediately, even when
@@ -22,7 +24,7 @@ if platform.system() == "Windows":
 # Add parent directory to path so imports work when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -55,40 +57,14 @@ def load_json(path, default):
             with open(path) as f:
                 return json.load(f)
     except Exception as e:
-        print(f"Error loading {path}: {e}")
+        logger.warning("Error loading %s: %s", path, e)
     return default
 
 
-# Shared language list used by config UI and control panel
-TRANSCRIPTION_LANGUAGES: list[tuple[str, str]] = [
-    ("Auto-detect", ""),
-    ("English", "en"),
-    ("Spanish", "es"),
-    ("French", "fr"),
-    ("German", "de"),
-    ("Italian", "it"),
-    ("Portuguese", "pt"),
-    ("Russian", "ru"),
-    ("Chinese", "zh"),
-    ("Japanese", "ja"),
-    ("Korean", "ko"),
-    ("Arabic", "ar"),
-    ("Hindi", "hi"),
-    ("Turkish", "tr"),
-    ("Polish", "pl"),
-    ("Dutch", "nl"),
-    ("Swedish", "sv"),
-    ("Czech", "cs"),
-    ("Romanian", "ro"),
-    ("Hungarian", "hu"),
-    ("Ukrainian", "uk"),
-    ("Greek", "el"),
-    ("Hebrew", "he"),
-    ("Thai", "th"),
-    ("Vietnamese", "vi"),
-    ("Indonesian", "id"),
-    ("Malay", "ms"),
-]
+# Re-exported: the panel and this dialog share one list.
+from core.languages import TRANSCRIPTION_LANGUAGES  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 class RefreshableComboBox(QComboBox):
@@ -101,6 +77,13 @@ class RefreshableComboBox(QComboBox):
         if self.on_show_popup:
             self.on_show_popup()
         super().showPopup()
+
+
+class _IndexProgress(QObject):
+    """Carries re-index progress from the worker thread to the dialog."""
+
+    step = pyqtSignal(int)
+    finished = pyqtSignal()
 
 
 class ConfigUI(QDialog):
@@ -764,7 +747,7 @@ class ConfigUI(QDialog):
             for device in input_audio_devices:
                 self.audio_input_device_combo.addItem(device["name"], device["name"])
         except Exception as e:
-            print(f"Failed to load audio input devices: {e}")
+            logger.warning("Failed to load audio input devices: %s", e)
 
         current_input_device_name = self.config.get("audio_input_device_name", None)
         if current_input_device_name is not None:
@@ -784,7 +767,7 @@ class ConfigUI(QDialog):
             for device in loopback_audio_devices:
                 self.audio_loopback_device_combo.addItem(device["name"], device["name"])
         except Exception as e:
-            print(f"Failed to load audio loopback devices: {e}")
+            logger.warning("Failed to load audio loopback devices: %s", e)
 
         current_loopback_device_name = self.config.get(
             "audio_loopback_device_name", None
@@ -2086,33 +2069,48 @@ class ConfigUI(QDialog):
             self.config["gemini_api_key"] = self.gemini_api_key.text()
 
             from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QApplication, QProgressDialog
+            from PyQt6.QtWidgets import QProgressDialog
 
-            from core.session_manager import SessionManager
+            from core.sessions import index, store
 
-            manager = SessionManager(self.config)
-            sessions = manager.list_all_sessions()
-            total = len(sessions)
+            session_ids = [s["id"] for s in store.list_sessions()]
+            total = len(session_ids)
+            config = dict(self.config)
 
             progress = QProgressDialog(
                 "Re-indexing sessions...", "Cancel", 0, total, self
             )
             progress.setWindowTitle("Indexing")
             progress.setWindowModality(Qt.WindowModality.WindowModal)
+            cancelled = threading.Event()
+            progress.canceled.connect(cancelled.set)
+
+            relay = _IndexProgress(progress)
+
+            def on_step(done: int) -> None:
+                progress.setValue(done)
+                progress.setLabelText(f"Indexed {done} of {total} sessions...")
+
+            def on_finished() -> None:
+                progress.setValue(total)
+                QMessageBox.information(
+                    self, "Indexing Complete", "Re-indexing has finished."
+                )
+
+            relay.step.connect(on_step)
+            relay.finished.connect(on_finished)
+
+            def work() -> None:
+                # Embedding runs the model; keep it off the GUI thread.
+                for i, session_id in enumerate(session_ids):
+                    if cancelled.is_set():
+                        break
+                    index.index_session_sync(config, session_id)
+                    relay.step.emit(i + 1)
+                relay.finished.emit()
+
             progress.show()
-
-            for i, s in enumerate(sessions):
-                if progress.wasCanceled():
-                    break
-                progress.setValue(i)
-                progress.setLabelText(f"Indexing session {i + 1} of {total}...")
-                QApplication.processEvents()
-                manager.index_session_sync(s["id"])
-
-            progress.setValue(total)
-            QMessageBox.information(
-                self, "Indexing Complete", "Re-indexing has finished."
-            )
+            threading.Thread(target=work, daemon=True, name="reindex-all").start()
 
 
 def open_config_ui(config_path, models_path, profiles_path, prompts_path):
@@ -2146,7 +2144,7 @@ if __name__ == "__main__":
     )
 
     if should_run:
-        print("Launching application...")
+        logger.info("Launching application...")
         # Since we are executing as a script, we can run main.py via subprocess or import it.
         # It's cleaner to exec into main.py
         import subprocess

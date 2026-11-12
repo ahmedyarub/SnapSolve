@@ -15,6 +15,9 @@ import java.util.concurrent.TimeUnit
  * All callbacks are invoked on OkHttp's background thread — callers must dispatch
  * to the main thread (e.g. via `runOnUiThread`) before touching the UI.
  */
+/** Outcome of [RemoteControlClient.testConnection]. */
+enum class ConnectionCheck { OK, UNAUTHORIZED, UNREACHABLE }
+
 interface RemoteControlListener {
     /** Called when the WebSocket connection is established and the server acknowledged. */
     fun onConnected()
@@ -52,7 +55,8 @@ interface RemoteControlListener {
 class RemoteControlClient {
 
     private var serverIp: String = ""
-    private var serverPort: Int = 8080
+    private var serverPort: Int = 3031
+    private var apiKey: String = ""
 
     /** Shared OkHttpClient with sensible timeouts for a local-network connection. */
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -76,11 +80,17 @@ class RemoteControlClient {
      *
      * @param ip   IPv4/IPv6 address or hostname of the SnapSolve host.
      * @param port TCP port the SnapSolve remote control server is listening on.
+     * @param key  API key from the desktop's pairing dialog; sent with every request.
      */
-    fun setServerConfig(ip: String, port: Int) {
+    fun setServerConfig(ip: String, port: Int, key: String) {
         serverIp = ip
         serverPort = port
+        apiKey = key
     }
+
+    /** A request to [url] carrying the API key the server requires. */
+    private fun authorizedRequest(url: String): Request.Builder =
+        Request.Builder().url(url).header("Authorization", apiKey)
 
     /**
      * Register a listener for push-based server events.
@@ -94,8 +104,8 @@ class RemoteControlClient {
     /** Returns the base HTTP URL, e.g. `http://192.168.1.10:8080`. */
     private fun baseUrl(): String = "http://$serverIp:$serverPort"
 
-    /** Returns the WebSocket URL, e.g. `ws://192.168.1.10:8080`. */
-    private fun wsUrl(): String = "ws://$serverIp:$serverPort"
+    /** Returns the WebSocket URL, e.g. `ws://192.168.1.10:3031/ws`. */
+    private fun wsUrl(): String = "ws://$serverIp:$serverPort/ws"
 
     // -------------------------------------------------------------------------
     // HTTP methods (connection test + image fetch)
@@ -107,13 +117,20 @@ class RemoteControlClient {
      * This is a plain HTTP request (not WebSocket) and must be called from a
      * background thread.
      *
-     * @return `true` if the server responded with HTTP 200.
+     * @return [ConnectionCheck.OK] on HTTP 200, [ConnectionCheck.UNAUTHORIZED] when
+     *   the server rejects the key, [ConnectionCheck.UNREACHABLE] otherwise.
      */
-    fun testConnection(): Boolean = try {
-        val request = Request.Builder().url("${baseUrl()}/status").get().build()
-        httpClient.newCall(request).execute().use { it.isSuccessful }
+    fun testConnection(): ConnectionCheck = try {
+        val request = authorizedRequest("${baseUrl()}/status").get().build()
+        httpClient.newCall(request).execute().use {
+            when {
+                it.isSuccessful -> ConnectionCheck.OK
+                it.code == 401 -> ConnectionCheck.UNAUTHORIZED
+                else -> ConnectionCheck.UNREACHABLE
+            }
+        }
     } catch (e: IOException) {
-        false
+        ConnectionCheck.UNREACHABLE
     }
 
     /**
@@ -124,7 +141,7 @@ class RemoteControlClient {
      * @return `ByteArray` containing the PNG image if successful, `null` otherwise.
      */
     fun fetchResponseImage(): ByteArray? = try {
-        val request = Request.Builder().url("${baseUrl()}/response_image").get().build()
+        val request = authorizedRequest("${baseUrl()}/response_image").get().build()
         httpClient.newCall(request).execute().use { response ->
             if (response.isSuccessful) {
                 response.body?.bytes()
@@ -147,31 +164,33 @@ class RemoteControlClient {
      * [RemoteControlListener.onConnected] or [RemoteControlListener.onError].
      */
     fun connect() {
-        val request = Request.Builder().url(wsUrl()).build()
+        val request = authorizedRequest(wsUrl()).build()
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(ws: WebSocket, response: Response) {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
                 // Send the connect message to block the physical mouse on the server
                 send(JSONObject().put("type", "connect"))
                 listener?.onConnected()
             }
 
-            override fun onMessage(ws: WebSocket, text: String) {
+            override fun onMessage(webSocket: WebSocket, text: String) {
                 handleServerMessage(text)
             }
 
-            override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                ws.close(1000, null)
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(1000, null)
             }
 
-            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                webSocket = null
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                this@RemoteControlClient.webSocket = null
                 listener?.onDisconnected(reason.ifEmpty { "Connection closed" })
             }
 
-            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                webSocket = null
-                listener?.onDisconnected(t.message ?: "Connection failed")
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                this@RemoteControlClient.webSocket = null
+                // The server refuses the handshake (HTTP 403) when the API key is wrong.
+                val reason = if (response?.code == 403) "API key rejected" else t.message
+                listener?.onDisconnected(reason ?: "Connection failed")
             }
         })
     }
@@ -306,7 +325,7 @@ class RemoteControlClient {
                 "state_update" -> {
                     val buttons = json.optJSONObject("buttons")
                     val hasNewImage = json.optBoolean("has_new_response_image", false)
-                    val transLang = json.optString("transcription_language", null)
+                    val transLang = if (json.has("transcription_language")) json.optString("transcription_language") else null
                     val periodicScreenshots = if (json.has("periodic_screenshots_enabled")) {
                         json.optBoolean("periodic_screenshots_enabled", false)
                     } else {

@@ -32,12 +32,12 @@ An Android application that allows you to remotely control SnapSolve from your p
 ### Prerequisites
 
 1. Make sure SnapSolve is running on your computer with remote control enabled
-2. Enable remote control in SnapSolve config:
+2. Enable the API server in SnapSolve's `config/config.json` (see below):
    ```json
    {
-     "enable_remote_control": true,
-     "remote_control_host": "0.0.0.0",
-     "remote_control_port": 8080
+     "enable_api_server": true,
+     "api_server_host": "0.0.0.0",
+     "api_server_port": 3031
    }
    ```
 
@@ -104,19 +104,22 @@ An Android application that allows you to remotely control SnapSolve from your p
 
 Follow these steps **after** the app is installed on your phone and SnapSolve is running on your PC.
 
-### 1. Enable the Remote Control Server in SnapSolve
+### 1. Enable the API Server in SnapSolve
 
-Add (or verify) the following in `config/config.json`:
+Add (or verify) the following in `config/config.json`, then restart SnapSolve:
 
 ```json
 {
-  "enable_remote_control": true,
-  "remote_control_host": "0.0.0.0",
-  "remote_control_port": 8080
+  "enable_api_server": true,
+  "api_server_host": "0.0.0.0",
+  "api_server_port": 3031
 }
 ```
 
-You can also toggle this from the SnapSolve **Config UI** (right-click the tray icon → *Settings* → *Remote Control* tab).
+`api_server_host` defaults to `127.0.0.1`, which only accepts connections from the
+PC itself; `0.0.0.0` lets the phone in. On first start SnapSolve generates an API
+key (`api_server_key`). Every request and the WebSocket must carry it, so a device
+on your network without the key cannot control the PC.
 
 ### 2. Allow the Port Through Windows Firewall
 
@@ -124,39 +127,27 @@ Run **once** in an elevated PowerShell:
 
 ```powershell
 New-NetFirewallRule -DisplayName "SnapSolve Remote Control" `
-    -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+    -Direction Inbound -LocalPort 3031 -Protocol TCP -Action Allow
 ```
 
-### 3. Find Your PC's Local IP Address
+### 3. Pair the Phone
 
-```powershell
-ipconfig
-```
+1. On the PC, click **📱 Pair Phone** in the SnapSolve panel (or **Pair Android Remote**
+   in the tray menu). A dialog shows a QR code, the PC's address, the port and the key.
+2. On the phone, open **SnapSolve Remote**, tap **Scan code**, and scan the QR code.
+   The app fills in the address, port and key, and connects.
+3. Without a camera, type the address, port and key from the dialog and tap **Connect**.
 
-Look for the **IPv4 Address** under your active Wi-Fi or Ethernet adapter (e.g., `192.168.1.100`).
-
-### 4. Connect from the Android App
-
-1. Open **SnapSolve Remote Control** on your phone.
-2. Enter your PC's IP address and port (`8080` by default).
-3. Tap **Connect**.
-4. A successful connection enables the touchpad and all action buttons.
-
-### 5. Verify
-
-Open a browser on your phone and navigate to `http://<your-pc-ip>:8080/status`. You should see a JSON response confirming the server is running.
+A successful connection enables the touchpad and all action buttons. The app remembers
+the address and key. If the key changes on the PC, it reports "The server rejected the
+API key"; pair again.
 
 ## Usage
 
-1. **Find your computer's IP address**:
-   - Windows: Open Command Prompt and run `ipconfig`
-   - Mac/Linux: Open Terminal and run `ifconfig` or `ip addr`
+1. **Pair** (first time only): see *Pair the Phone* above.
 
-2. **Connect the app**:
-   - Open SnapSolve Remote Control on your Android device
-   - Enter your computer's IP address (e.g., `192.168.1.100`)
-   - Enter the port (default: `8080`)
-   - Tap "Connect"
+2. **Connect**: the app reconnects to the last paired PC when it starts; tap
+   **Connect** to reconnect by hand.
 
 3. **Use the touchpad**:
    - Move your finger on the touchpad to control the mouse cursor
@@ -172,11 +163,11 @@ Open a browser on your phone and navigate to `http://<your-pc-ip>:8080/status`. 
 
 ### Firewall Settings
 
-Make sure your firewall allows incoming connections on port 8080:
+Make sure your firewall allows incoming connections on port 3031:
 
 **Windows**:
 ```powershell
-New-NetFirewallRule -DisplayName "SnapSolve Remote Control" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "SnapSolve Remote Control" -Direction Inbound -LocalPort 3031 -Protocol TCP -Action Allow
 ```
 
 **Mac**:
@@ -187,14 +178,15 @@ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /path/to/pytho
 
 **Linux (UFW)**:
 ```bash
-sudo ufw allow 8080/tcp
+sudo ufw allow 3031/tcp
 ```
 
 ### Troubleshooting
 
 **Can't connect to server**:
 - Make sure SnapSolve is running
-- Check that remote control is enabled in config
+- Check that `enable_api_server` is true and `api_server_host` is `0.0.0.0`
+- "API key rejected": pair again from **Pair Phone**
 - Verify your computer's IP address
 - Check firewall settings
 - Ensure both devices are on the same network

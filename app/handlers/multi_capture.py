@@ -1,209 +1,139 @@
 """Multi-capture handlers — accumulate multiple screen captures before sending to LLM."""
 
-import threading
+import logging
 
-import app.state as state
-from app.handlers.capture import _ensure_ocr_engine
-from app.state import (
-    _make_status_callback,
-    _run_in_processing_thread,
-    _show_status_popup,
-    set_processing,
-)
+from app.context import AppContext
+from app.feedback import run_request, show_status, status_callback
+from app.handlers.capture import ensure_ocr_engine
 from core.output import update_multi_state
 from core.sources import ScreenshotSource, get_active_source_instance
-from ui.selector import get_coordinates
+from core.ui.selector import get_coordinates
+
+logger = logging.getLogger(__name__)
 
 
-def _check_multi_capture_requirements(config, active_profile):
-    """Check multi-capture requirements."""
-    ocr_type = active_profile.get("ocr_engine", "none")
-    if ocr_type == "none":
-        _show_status_popup(
-            config,
-            "Error: Multi-capture requires an OCR engine to be defined in the active profile.",
-            auto_close=5000,
-        )
+def _image_source_active() -> bool:
+    active_source = get_active_source_instance()
+    if active_source and active_source.name != "image":
+        logger.info("Multi-capture is disabled for the %s source.", active_source.name)
         return False
     return True
 
 
-def _initialize_multi_capture():
-    """Initialize multi-capture mode."""
-    if not state.is_multi_capturing:
-        state.is_multi_capturing = True
-        state.multi_capture_texts = []
-        state.multi_capture_images = []
-        update_multi_state(True)
+def _capture_one_region(ctx: AppContext) -> None:
+    """Let the user pick a region, OCR it, and add it to the multi-capture."""
+    status_update = status_callback(ctx.config)
+    coords = get_coordinates()
+    if not coords or ctx.cancel_event.is_set():
+        logger.info("Multi-capture: selection cancelled.")
+        if ctx.is_multi_capturing:
+            from app.handlers.cancel import handle_cancel
 
+            handle_cancel(ctx)
+        return
 
-def _perform_multi_capture_ocr(active_profile, coords, status_update):
-    """Perform multi-capture OCR."""
-    _ensure_ocr_engine(active_profile, status_callback=status_update)
-
+    status_update("Capturing screen...")
     temp_source = ScreenshotSource()
-    temp_source.ocr_engine = state.ocr_engine_instance
+    temp_source.ocr_engine = ensure_ocr_engine(ctx, status_update)
     extracted_text = None
     image_path = None
     try:
         extracted_text = temp_source.get_text(
-            coords=coords,
-            status_callback=status_update,
-            cancel_event=state.cancel_event,
+            coords=coords, status_callback=status_update, cancel_event=ctx.cancel_event
         )
-        if hasattr(temp_source, "temp_files") and temp_source.temp_files:
+        if getattr(temp_source, "temp_files", None):
             image_path = temp_source.temp_files[-1]
     except Exception as ocr_error:
         status_update(f"Error during OCR: {ocr_error!s}")
     finally:
         temp_source.cleanup_all()
 
-    return extracted_text, image_path
+    if ctx.cancel_event.is_set():
+        logger.info("Multi-capture OCR was cancelled.")
+        return
 
+    if extracted_text:
+        ctx.multi_capture_texts.append(extracted_text)
+        # When Autosubmit is OFF, incrementally send OCR text to the text box
+        from core.output import is_autosubmit_enabled, send_ocr_text_to_input
 
-def _handle_multi_capture_ocr(active_profile, coords, config):
-    """Handle OCR during multi-capture."""
-
-    def status_update(msg):
-        _show_status_popup(config, msg)
-
-    status_update("Capturing screen...")
-
-    extracted_text, image_path = _perform_multi_capture_ocr(
-        active_profile, coords, status_update
-    )
-
-    if state.cancel_event.is_set():
-        print("Multi-capture OCR was cancelled.")
-        return None
+        if not is_autosubmit_enabled():
+            send_ocr_text_to_input(extracted_text)
+    if image_path:
+        ctx.multi_capture_images.append(image_path)
 
     if extracted_text or image_path:
-        if extracted_text:
-            state.multi_capture_texts.append(extracted_text)
-            # When Autosubmit is OFF, incrementally send OCR text to the text box
-            from core.output import is_autosubmit_enabled, send_ocr_text_to_input
-
-            if not is_autosubmit_enabled():
-                send_ocr_text_to_input(extracted_text)
-        if image_path:
-            state.multi_capture_images.append(image_path)
         status_update(
-            f"Captured {len(state.multi_capture_texts)} text blocks, "
-            f"{len(state.multi_capture_images)} images... Multiple capture mode"
+            f"Captured {len(ctx.multi_capture_texts)} text blocks, "
+            f"{len(ctx.multi_capture_images)} images... Multiple capture mode"
         )
     else:
         status_update(
-            f"No text found. Captured {len(state.multi_capture_images)} images... Multiple capture mode"
+            f"No text found. Captured {len(ctx.multi_capture_images)} images... "
+            "Multiple capture mode"
         )
 
-    return extracted_text
 
-
-def _multi_capture_loop(config, active_profile):
-    """Main loop for multi-capture process."""
-    coords = get_coordinates()
-    if not coords or state.cancel_event.is_set():
-        print("Multi-capture: Selection cancelled.")
-        if state.is_multi_capturing:
-            from app.handlers.cancel import handle_cancel
-
-            handle_cancel()
-        return
-
-    _handle_multi_capture_ocr(active_profile, coords, config)
-
-
-def handle_multi_capture(config, active_profile):
+def handle_multi_capture(ctx: AppContext):
     """Start or continue a multi-capture session."""
-    if state.is_processing:
+    if not _image_source_active():
         return
-
-    active_source = get_active_source_instance()
-    if active_source and active_source.name != "image":
-        print(f"Multi-capture is disabled for {active_source.name} source.")
-        return
-
-    set_processing(True)
-
-    def _multi_capture():
-        if not _check_multi_capture_requirements(config, active_profile):
-            return
-
-        _initialize_multi_capture()
-        _show_status_popup(config, "Multiple capture mode")
-        _multi_capture_loop(config, active_profile)
-
-    _run_in_processing_thread(config, _multi_capture, error_label="multi-capture")
-
-
-def _check_multi_capture_texts(config, capture_texts):
-    """Check if there are multi-capture texts."""
-    if not capture_texts:
-        _show_status_popup(
-            config, "No text captured in multi-capture mode.", auto_close=3000
+    if ctx.profile.get("ocr_engine", "none") == "none":
+        show_status(
+            ctx.config,
+            "Error: Multi-capture requires an OCR engine in the active profile.",
+            auto_close=5000,
         )
-        return False
-    return True
-
-
-def handle_end_multi_capture(config, active_profile, active_prompt_text):
-    """End multi-capture mode and send combined text to LLM."""
-    if state.is_processing:
         return
 
-    if not state.is_multi_capturing:
+    def work() -> None:
+        if not ctx.is_multi_capturing:
+            ctx.reset_multi_capture()
+            ctx.is_multi_capturing = True
+            update_multi_state(True)
+        show_status(ctx.config, "Multiple capture mode")
+        _capture_one_region(ctx)
+
+    run_request(ctx, work, "multi-capture")
+
+
+def handle_end_multi_capture(ctx: AppContext):
+    """End multi-capture mode and send the combined text to the LLM."""
+    if not ctx.is_multi_capturing or not _image_source_active():
         return
 
-    active_source = get_active_source_instance()
-    if active_source and active_source.name != "image":
-        return
-
-    set_processing(True)
-
-    update_multi_state(False)
-
-    def _end_multi_capture():
+    def work() -> None:
         try:
-            if not _check_multi_capture_texts(config, state.multi_capture_texts):
-                state.is_multi_capturing = False
-                update_multi_state(False)
+            update_multi_state(False)
+            if not ctx.multi_capture_texts:
+                show_status(
+                    ctx.config,
+                    "No text captured in multi-capture mode.",
+                    auto_close=3000,
+                )
                 return
 
             from core.output import is_autosubmit_enabled
 
             if not is_autosubmit_enabled():
-                # Autosubmit OFF — text is already in the text box from
-                # incremental sends.  Just reset multi-capture state and let
-                # the user review / edit / submit manually.
-                print("Multi-capture ended (Autosubmit OFF) — text left in text box.")
+                # Autosubmit OFF — the text is already in the text box from the
+                # incremental sends; let the user review and submit it.
+                logger.info(
+                    "Multi-capture ended (Autosubmit OFF); text left in text box."
+                )
                 return
 
-            combined_text = "\n\n".join(state.multi_capture_texts)
-            print(f"Combined Text:\n{combined_text}")
+            from app.handlers.text import execute_text_pipeline
 
-            status_update = _make_status_callback(config)
-
-            from app.handlers.text import _execute_text_pipeline
-
-            _execute_text_pipeline(
-                config,
-                active_profile,
-                active_prompt_text,
-                status_update,
-                text=combined_text,
-                image_paths=state.multi_capture_images
-                if state.multi_capture_images
-                else None,
+            execute_text_pipeline(
+                ctx,
+                ctx.prompt_text,
+                status_callback(ctx.config),
+                text="\n\n".join(ctx.multi_capture_texts),
+                image_paths=list(ctx.multi_capture_images) or None,
                 source_name="image",
             )
-
-        except Exception as multi_error:
-            print(f"Error during processing multi-capture: {multi_error}")
-            _show_status_popup(config, f"Error: {multi_error}", auto_close=5000)
         finally:
-            set_processing(False)
-            state.is_multi_capturing = False
-            state.multi_capture_texts = []
-            state.multi_capture_images = []
+            ctx.reset_multi_capture()
 
-    threading.Thread(target=_end_multi_capture, daemon=True).start()
+    run_request(ctx, work, "end multi-capture")

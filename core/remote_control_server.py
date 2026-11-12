@@ -289,79 +289,41 @@ def _handle_disconnect() -> dict:
     return {"type": "response", "status": "disconnected", "mouse_blocked": False}
 
 
+# Actions a remote client may trigger; the app registers a callback for each.
+REMOTE_ACTIONS = frozenset(
+    {
+        "capture",
+        "reselect",
+        "multi_capture",
+        "end_multi_capture",
+        "cancel",
+        "toggle_chat_sessions",
+        "cycle_source",
+        "toggle_panel",
+        "new_chat_session",
+        "toggle_periodic_screenshots",
+    }
+)
+
+
 def _handle_action(data: dict, app_config: dict[str, Any]) -> dict:
-    """Dispatch a named SnapSolve action using the live application config."""
+    """Run a named SnapSolve action through the app's registered callbacks."""
     _refresh_idle_timer(app_config)
     action = data.get("action")
     if not action:
         return {"type": "error", "message": "Action parameter is required"}
 
-    # Import inside the function to avoid circular-import issues at module load.
-    from app.handlers import (
-        handle_cancel,
-        handle_capture,
-        handle_cycle_source,
-        handle_end_multi_capture,
-        handle_multi_capture,
-        handle_new_chat_session,
-        handle_reselect,
-        handle_toggle_chat_sessions,
-        handle_toggle_panel,
-        handle_toggle_periodic_screenshots,
-    )
-    from config.settings import load_profiles, load_prompts
+    from core.ui.signals import app_callbacks
 
+    if action not in REMOTE_ACTIONS or action not in app_callbacks:
+        return {"type": "error", "message": f"Unknown action: {action}"}
     try:
-        profiles = load_profiles()
-        prompts = load_prompts()
-
-        active_profile_id = app_config.get("active_profile_id", "claude")
-        active_profile = next(
-            (p for p in profiles if p.get("id") == active_profile_id),
-            profiles[0] if profiles else {},
-        )
-
-        prompt_id = active_profile.get("prompt_id", "default")
-        active_prompt = next(
-            (p for p in prompts if p.get("id") == prompt_id),
-            prompts[0] if prompts else {},
-        )
-        active_prompt_text = active_prompt.get(
-            "text", "answer the following question quickly and briefly"
-        )
-
-        action_map = {
-            "capture": lambda: handle_capture(
-                app_config, active_profile, active_prompt_text
-            ),
-            "reselect": lambda: handle_reselect(app_config),
-            "multi_capture": lambda: handle_multi_capture(app_config, active_profile),
-            "end_multi_capture": lambda: handle_end_multi_capture(
-                app_config, active_profile, active_prompt_text
-            ),
-            "cancel": handle_cancel,
-            "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(
-                app_config, active_profile
-            ),
-            "cycle_source": lambda: handle_cycle_source(app_config, active_profile),
-            "toggle_panel": handle_toggle_panel,
-            "new_chat_session": lambda: handle_new_chat_session(app_config),
-            "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(
-                app_config
-            ),
-        }
-
-        fn = action_map.get(action)
-        if fn is None:
-            return {"type": "error", "message": f"Unknown action: {action}"}
-
-        fn()
-        logger.info("Remote control action executed: %s", action)
-        return {"type": "response", "status": "success", "action": action}
-
+        app_callbacks[action]()
     except Exception as exc:
         logger.error("Error executing action %s: %s", action, exc)
         return {"type": "error", "message": f"Error executing action: {exc}"}
+    logger.info("Remote control action executed: %s", action)
+    return {"type": "response", "status": "success", "action": action}
 
 
 def _handle_mouse_move(data: dict, app_config: dict[str, Any]) -> dict | None:

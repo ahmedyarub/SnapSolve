@@ -10,6 +10,10 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Active Profile Placement:** The active profile selector is placed on the main application tab for quick access.
 *   **Background Mode:** Run the application minimized to the system tray, freeing up taskbar space.
 *   **Profiles:** Define and switch between distinct configurations (e.g., "Fast Image Processing", "Deep Text Analysis"). Each profile stores its specific `llm_engine`, model, `ocr_engine`, prompt, and fallback model settings.
+*   **Runtime Profile Switching:** Switch profiles while the app runs from the control panel's profile selector or the tray's Profile menu. The new profile is validated first (known engines; a model that can read images or an OCR engine), its engines are built in the background (the OCR engine is kept when unchanged), and the choice is saved. An invalid profile leaves the current one active.
+*   **Settings from the App:** ⚙ Settings in the control panel and Settings… in the tray open the configuration dialog; after saving, the configuration and the active profile's engines are reloaded without a restart.
+*   **Layered Configuration:** Defaults (one place: `config/settings.py`) < `config.json` < command-line flags. Command-line flags apply to that run only and are never written to `config.json`; values of the wrong type in `config.json` fall back to the default with a warning.
+*   **Ready State:** The UI appears immediately and the engines load in the background; a "Ready" popup appears when they are loaded, and requests made before that are answered with "Still starting up".
 *   **Audio Device Configuration:** Configure specific audio input devices for speech recognition and output devices for TTS.
 *   **Session Browser:** A full-featured dialog to browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering. Accessible via hotkey (`Ctrl+Alt+Shift+B`) or from the control panel.
 *   **Quit App:** Graceful application exit via hotkey (`Ctrl+Alt+Shift+Q`) or system tray menu.
@@ -44,6 +48,7 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Chat Session History:** Maintains context over multiple queries. The conversation is saved locally, and the previous context is stitched into the prompt or passed via API (depending on the engine) to allow for conversational follow-ups.
 *   **Custom Prompting:** Allows defining custom instructions (via `config/prompts.json`) to dictate how the LLM should format or structure its response.
 *   **Context Chat Sessions:** Configurable option to include conversation context in prompts for follow-up questions. Can be toggled at runtime via hotkey.
+*   **History Limits:** The history sent with a request is capped (`history_max_turns`, default 10; `history_max_chars`, default 24,000), dropping the oldest turns first. Google GenAI and LiteLLM receive it as real multi-turn messages; the other engines get it written in front of the prompt.
 
 ## Session Management
 
@@ -64,6 +69,8 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Session Timeline View:** Screenpipe-inspired visual timeline in the Session Browser showing periodic screenshots as a scrollable filmstrip, event markers for different interaction types (🎤 audio, 🖼️ OCR, 📐 multi-select, 💬 text, 📝 transcription) with a time ruler. Features a draggable playhead that updates the screenshot preview and shows nearby transcription context. Clicking a transcription line jumps the timeline to that moment; clicking an event marker selects the corresponding prompt in the tree. Collapsible for space efficiency.
 *   **Transcription Persistence:** Audio transcriptions are saved to per-session transcription files with speaker attribution.
 *   **Auto-Summarize Transcription:** Automatically generate and save a summary of the entire audio conversation to the transcription file when recording stops. Configurable with a custom prompt prefix via the Configuration UI.
+*   **Session Export:** Save any session from the Session Browser (💾 Export…) as Markdown (questions, captured text, answers, corrections and transcript) or JSON (complete data). Also available as `GET /sessions/{id}/export?format=md|json`.
+*   **Safe Concurrent Writes:** Every change to a session file is a locked read-modify-write (`core/sessions/store.py`), so the pipeline, the correction engine, the UI and the indexer never overwrite each other's changes.
 *   **Webhooks / Integrations:** Configure an HTTP webhook URL to automatically trigger when a session ends or an audio summary is generated. Ideal for sending summaries to Slack, Zapier, or n8n. Webhooks can also be triggered manually for any session from the Session Browser.
 *   **Context Manager:** Per-session context configuration dialog with:
     *   **Category Toggles:** Enable/disable inclusion of transcribed text, previous questions, and previous answers in the LLM prompt context. All categories are disabled by default.
@@ -78,12 +85,13 @@ The Screen Capture & QA application provides several customizable features organ
     *   `ollama`: Integrates with a local Ollama server, avoiding external network requests.
     *   `antigravity`: Uses the Google Antigravity SDK via a local FastAPI service. Provides agentic coding capabilities with full project context, streaming SSE responses, and multi-turn conversation support.
     *   `litellm`: Universal API router that integrates with 100+ LLM providers (Anthropic, Groq, OpenRouter, CustomOpenAI, etc.) into a single engine. Selectable from the UI with specific API key fields and custom model string support.
-*   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated.
+*   **Fallback Capability:** Configure a secondary model that runs concurrently with the main model. If the main model fails or takes too long, the application gracefully defaults to the fallback model to ensure a response is always generated. The fallback can use a different provider (`fallback_llm_engine`), so one provider's outage is covered, and it is stopped as soon as the main model has answered.
 *   **Local OCR (PaddleOCR):** For workflows requiring precise text extraction prior to LLM processing, PaddleOCR can be configured to process the screen capture entirely on your local machine.
 *   **Remote OCR:** Offload OCR processing to a remote PaddleOCR FastAPI service.
 *   **Concurrent Execution & Warmup:** Models are preloaded (warmed up) during application startup for reduced latency. Configurable warmup for OCR, LLM, TTS, speech recognition, and real-time transcription.
 *   **Speech Recognition:** Google Speech-to-Text integration for audio input processing with configurable warmup.
-*   **Automatic LLM Retry:** Automatic retry with exponential backoff (up to 3 attempts, configurable) when LLM providers return transient errors such as `503 UNAVAILABLE`, rate limits, or connection failures. Retries are cancellable and show status updates in the popup.
+*   **Automatic LLM Retry:** Automatic retry with exponential backoff (up to 3 attempts, configurable) when LLM providers return transient errors such as `503 UNAVAILABLE`, rate limits, or connection failures. Retries are cancellable and show status updates in the popup. Failures are typed (`LLMError` with `retryable`), so a permanent error (bad key, unknown model) is reported at once and never saved as an answer.
+*   **Timeouts:** Ollama (streamed), Antigravity, the Claude CLI (`claude_timeout`) and LiteLLM (`llm_request_timeout`) all stop a request that hangs.
 
 ## Sink (Output Generation)
 
@@ -113,7 +121,9 @@ The Screen Capture & QA application provides several customizable features organ
 
 ## API, Remote Control & Android Integration
 
-*   **Unified API Server**: A local FastAPI-based server (`http://0.0.0.0:3031`) exposing both REST endpoints (Screenpipe-inspired endpoints like `/sessions`, `/search`, `/health`, `/config` and Android parity endpoints like `/response_image/ack`, `/config/transcription_language`) and a legacy WebSocket endpoint (`/ws`) for the Android companion app. Supports optional API key authentication and includes a Swagger UI at the root (`/`).
+*   **Unified API Server**: A local FastAPI-based server (port 3031; `127.0.0.1` by default, `0.0.0.0` for the phone) exposing REST endpoints (`/sessions`, `/sessions/{id}/export`, `/search`, `/health`, `/config`, `/response_image/ack`, `/config/transcription_language`, mouse and keyboard) and the WebSocket endpoint (`/ws`) for the Android companion app, plus a Swagger UI at the root (`/`).
+*   **Required API Key:** The server never runs open: a key is generated on first start, every route and the WebSocket require it (`Authorization: <key>` or `Bearer <key>`; `?key=` on the WebSocket), the comparison is constant-time, and `/config` masks every secret.
+*   **QR Pairing:** 📱 Pair Phone (panel) or Pair Android Remote (tray) shows a QR code with the PC's address, port and key; the Android app's Scan code button (or a `snapsolve://pair` link) fills them in and connects.
 *   **Model Context Protocol (MCP) Server**: Exposes SnapSolve's session history, OCR texts, and transcriptions to external AI tools (Claude Desktop, Cursor, VS Code) via standard MCP tools.
 *   **Mouse Control:** Relative mouse movement, click (left/right/middle), double-click, drag (start/end), and scroll via REST endpoints or the Android touchpad.
 *   **Physical Mouse Blocking:** Blocks physical mouse input while Android remote control is active using a `WH_MOUSE_LL` hook. Injected (pyautogui) events pass through. Automatically re-enables after a configurable idle timeout.
@@ -146,3 +156,5 @@ The Screen Capture & QA application provides several customizable features organ
 *   **Audio Testing:** Support for virtual audio devices (VB-Audio Virtual Cable) for TTS and speech recognition testing.
 *   **Automated UI Testing:** PyAutoGUI integration for automated UI interaction testing.
 *   **Static Analysis:** Ruff linting, Qodana, SonarQube, and Kotlin/Android lint via verification scripts.
+*   **Unit Tests and CI:** `tests/test_*.py` (API auth, session storage, LLM errors/retry/fallback, configuration, the pipeline) run in `scripts/verify.ps1` and on every push in GitHub Actions (Windows, without the GPU stack).
+*   **Locked Dependencies:** `requirements.lock` pins the full dependency tree that is verified on the target GPU (`scripts/lock_requirements.py` regenerates it).

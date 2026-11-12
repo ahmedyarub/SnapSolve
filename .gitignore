@@ -4,7 +4,7 @@ config.json
 config/prompt_history.json
 config/recent_folders.json
 .idea/
-sessions/
+/sessions/
 *.onnx
 *.onnx.json
 tests/sound_test_settings.json
@@ -24,3 +24,5 @@ hs_err_pid*.log
 replay_pid*.log
 # Antigravity CLI session state
 .antigravitycli/
+# CI scratch (scripts/ci_requirements.py)
+ci-requirements.txt

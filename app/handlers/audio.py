@@ -1,223 +1,185 @@
 """Audio recording handlers — start and stop recording."""
 
 import contextlib
+import logging
+import os
 import threading
 
+from app.context import AppContext
 from core.sources import SoundSource, get_active_source_instance
 
+logger = logging.getLogger(__name__)
 
-def handle_start_record(config, enable_transcription):
+DIARIZATION_URL = "http://127.0.0.1:8001/diarize"
+DIARIZATION_TIMEOUT_S = 900  # long recordings take minutes on the GPU
+
+
+def _popup_status(ctx: AppContext, auto_close: int | None):
+    from core.output import ui_signals
+
+    def status_update(msg: str) -> None:
+        if "popup" in ctx.config.get("output_mode", ["popup"]):
+            ui_signals.show_popup.emit(
+                {
+                    "text": msg,
+                    "auto_close": auto_close,
+                    "opacity": ctx.config.get("opacity", 0.8),
+                    "is_result": False,
+                }
+            )
+
+    return status_update
+
+
+def handle_start_record(ctx: AppContext, enable_transcription):
     """Start audio recording on the active SoundSource."""
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
 
-    def status_update(msg):
-        from core.output import ui_signals
-
-        if "popup" in config.get("output_mode", ["popup"]):
-            ui_signals.show_popup.emit(
-                {
-                    "text": msg,
-                    "auto_close": 3000,
-                    "opacity": config.get("opacity", 0.8),
-                    "is_result": False,
-                }
-            )
-
     active_source.start_recording(
-        status_callback=status_update, enable_transcription=enable_transcription
+        status_callback=_popup_status(ctx, 3000),
+        enable_transcription=enable_transcription,
     )
 
-    # Attach correction engine if available
-    import app.state as state
-
-    if state.correction_engine_instance:
-        state.correction_engine_instance.reset()
-        active_source.correction_engine = state.correction_engine_instance
+    if ctx.correction_engine:
+        ctx.correction_engine.reset()
+        active_source.correction_engine = ctx.correction_engine
         from core.ui.signals import ui_signals
 
         ui_signals.clear_corrections.emit()
 
 
-def handle_stop_record(config, active_profile, _active_prompt_text, is_long_press):
-    """Stop audio recording and optionally send transcription to LLM."""
+def _run_diarization(ctx: AppContext, session_dir: str) -> None:
+    """Send the session's recordings to the diarization service; save its transcript."""
+    import requests
+
+    config = ctx.config
+    mic_path = os.path.join(session_dir, "audio_mic.wav")
+    loopback_path = os.path.join(session_dir, "audio_loopback.wav")
+    data = {
+        "speaker_name": config.get("speaker_name", "interviewer"),
+        "model": config.get("diarization_model", "base"),
+    }
+    try:
+        # The handles must close even if the POST fails, or Windows keeps the
+        # WAVs locked and the cleanup below cannot delete them.
+        with contextlib.ExitStack() as stack:
+            files = {}
+            if os.path.exists(mic_path):
+                files["audio_mic"] = stack.enter_context(open(mic_path, "rb"))
+            if os.path.exists(loopback_path):
+                files["audio_loopback"] = stack.enter_context(open(loopback_path, "rb"))
+            if not files:
+                return
+            response = requests.post(
+                DIARIZATION_URL, files=files, data=data, timeout=DIARIZATION_TIMEOUT_S
+            )
+    except requests.RequestException as e:
+        logger.error("Diarization service failed: %s", e)
+        return
+
+    if response.status_code != 200:
+        logger.error("Diarization service returned HTTP %s", response.status_code)
+        return
+
+    segments = response.json().get("segments", [])
+    if segments:
+        with open(
+            os.path.join(session_dir, "transcription.txt"), "w", encoding="utf-8"
+        ) as f:
+            for seg in segments:
+                f.write(f"[{seg['speaker']}] {seg['text']}\n")
+
+    if config.get("delete_wav_after_diarization", True):
+        for path in (mic_path, loopback_path):
+            with contextlib.suppress(OSError):
+                os.remove(path)
+
+    if ctx.session_manager:
+        ctx.session_manager.index_session(ctx.session_manager.current_session_id)
+
+
+def _summarize_transcription(ctx: AppContext, status_update) -> None:
+    manager = ctx.session_manager
+    full_transcription = manager.get_full_transcription() if manager else None
+    if not full_transcription:
+        return
+    prompt_prefix = ctx.config.get(
+        "summarize_transcription_prompt",
+        "Summarize the following transcribed conversation:\n",
+    )
+    status_update("Summarizing transcription...")
+    session_id = manager.current_session_id
+
+    def on_summary(summary_text):
+        if ctx.config.get("webhook_trigger_on_summary", False):
+            from core.webhook import trigger_webhook
+
+            trigger_webhook(ctx.config, session_id, summary_text)
+
+    from app.handlers.text import handle_text_submit
+
+    handle_text_submit(
+        ctx,
+        f"{prompt_prefix}\n\n{full_transcription}",
+        source_name="audio",
+        post_action=on_summary,
+    )
+
+
+def handle_stop_record(ctx: AppContext, is_long_press):
+    """Stop audio recording and optionally send the transcription to the LLM."""
     active_source = get_active_source_instance()
     if not isinstance(active_source, SoundSource):
         return
 
-    from core.output import ui_signals
-
-    def status_update(msg):
-        if "popup" in config.get("output_mode", ["popup"]):
-            ui_signals.show_popup.emit(
-                {
-                    "text": msg,
-                    "auto_close": None,
-                    "opacity": config.get("opacity", 0.8),
-                    "is_result": False,
-                }
-            )
-
+    status_update = _popup_status(ctx, None)
     status_update("Processing audio...")
 
-    def _process_audio():
-        assert active_source is not None
-        assert isinstance(active_source, SoundSource)
+    def process_audio() -> None:
         text = active_source.stop_recording()
 
         # Save any accumulated corrections to the session
-        import app.state as state
-
-        if state.correction_engine_instance:
-            state.correction_engine_instance.stop()
-            corrections = state.correction_engine_instance.get_corrections()
-            if corrections and state.session_manager:
-                state.session_manager.append_corrections(corrections)
-        # Detach correction engine from source
+        if ctx.correction_engine:
+            ctx.correction_engine.stop()
+            corrections = ctx.correction_engine.get_corrections()
+            if corrections and ctx.session_manager:
+                ctx.session_manager.append_corrections(corrections)
         active_source.correction_engine = None
 
-        if config.get("post_recording_diarization", False):
-            import os
-            import threading
-
-            import requests
-
-            import app.state as state
-
-            if state.session_manager:
-                session_dir = state.session_manager.get_session_dir(
-                    state.session_manager.current_session_id
-                )
-                if session_dir:
-                    mic_path = os.path.join(session_dir, "audio_mic.wav")
-                    loopback_path = os.path.join(session_dir, "audio_loopback.wav")
-
-                    def run_diarization():
-                        try:
-                            data = {
-                                "speaker_name": config.get(
-                                    "speaker_name", "interviewer"
-                                ),
-                                "model": config.get("diarization_model", "base"),
-                            }
-                            # The handles must close even if the POST fails, or Windows
-                            # keeps the WAVs locked and the cleanup below cannot delete them.
-                            with contextlib.ExitStack() as stack:
-                                files = {}
-                                if os.path.exists(mic_path):
-                                    files["audio_mic"] = stack.enter_context(
-                                        open(mic_path, "rb")
-                                    )
-                                if os.path.exists(loopback_path):
-                                    files["audio_loopback"] = stack.enter_context(
-                                        open(loopback_path, "rb")
-                                    )
-
-                                if not files:
-                                    return
-
-                                response = requests.post(
-                                    "http://127.0.0.1:8001/diarize",
-                                    files=files,
-                                    data=data,
-                                )
-
-                            if response.status_code == 200:
-                                res_json = response.json()
-                                segments = res_json.get("segments", [])
-                                if segments:
-                                    transcription_path = os.path.join(
-                                        session_dir, "transcription.txt"
-                                    )
-                                    with open(
-                                        transcription_path, "w", encoding="utf-8"
-                                    ) as f:
-                                        for seg in segments:
-                                            f.write(
-                                                f"[{seg['speaker']}] {seg['text']}\n"
-                                            )
-
-                                if config.get("delete_wav_after_diarization", True):
-                                    if os.path.exists(mic_path):
-                                        try:
-                                            os.remove(mic_path)
-                                        except OSError:
-                                            pass
-                                    if os.path.exists(loopback_path):
-                                        try:
-                                            os.remove(loopback_path)
-                                        except OSError:
-                                            pass
-
-                                if state.session_manager:
-                                    state.session_manager.index_session(
-                                        state.session_manager.current_session_id
-                                    )
-                        except Exception as e:
-                            print(f"Failed to run diarization service: {e}")
-
-                    threading.Thread(target=run_diarization, daemon=True).start()
-                    status_update("Diarization sent to service.")
+        manager = ctx.session_manager
+        if ctx.config.get("post_recording_diarization", False) and manager:
+            session_dir = manager.get_session_dir(manager.current_session_id)
+            if session_dir:
+                threading.Thread(
+                    target=_run_diarization,
+                    args=(ctx, session_dir),
+                    daemon=True,
+                    name="diarization",
+                ).start()
+                status_update("Diarization sent to service.")
 
         if not is_long_press:
             status_update("Transcription stopped.")
             from core.output import clear_subtitles
 
             clear_subtitles()
-
-            if config.get("auto_summarize_transcription", False):
-                import app.state as state
-
-                if state.session_manager:
-                    full_transcription = state.session_manager.get_full_transcription()
-                    if full_transcription:
-                        prompt_prefix = config.get(
-                            "summarize_transcription_prompt",
-                            "Summarize the following transcribed conversation:\n",
-                        )
-                        summary_prompt = f"{prompt_prefix}\n\n{full_transcription}"
-                        status_update("Summarizing transcription...")
-                        from app.handlers.text import handle_text_submit
-
-                        def _on_summary_complete(summary_text):
-                            if config.get("webhook_trigger_on_summary", False):
-                                from core.webhook import trigger_webhook
-
-                                trigger_webhook(
-                                    config,
-                                    state.session_manager,
-                                    state.session_manager.current_session_id,
-                                    summary_text,
-                                )
-
-                        handle_text_submit(
-                            config,
-                            active_profile,
-                            summary_prompt,
-                            source_name="audio",
-                            post_action=_on_summary_complete,
-                        )
-
-            else:
-                import app.state as state
-
-                if state.session_manager:
-                    state.session_manager.index_session(
-                        state.session_manager.current_session_id
-                    )
-
+            if ctx.config.get("auto_summarize_transcription", False):
+                _summarize_transcription(ctx, status_update)
+            elif manager:
+                manager.index_session(manager.current_session_id)
             return
 
         if not text:
             status_update("No speech recognized.")
             return
 
-        print(f"Recognized Speech: {text}")
+        logger.info("Recognized speech (%d chars)", len(text))
         status_update(f"Recognized: {text}\nSending to LLM...")
 
         from app.handlers.text import handle_text_submit
 
-        handle_text_submit(config, active_profile, text, source_name="audio")
+        handle_text_submit(ctx, text, source_name="audio")
 
-    threading.Thread(target=_process_audio, daemon=True).start()
+    threading.Thread(target=process_audio, daemon=True, name="stop-record").start()

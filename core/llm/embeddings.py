@@ -1,5 +1,6 @@
 import abc
 import logging
+import threading
 
 import numpy as np
 
@@ -12,10 +13,17 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class EmbeddingError(RuntimeError):
+    """Embedding failed. Callers must not store or compare against a result."""
+
+
 class EmbeddingEngine(abc.ABC):
     @abc.abstractmethod
     def embed_texts(self, texts: list[str]) -> np.ndarray:
-        """Returns a 2D numpy array of shape (len(texts), embedding_dim)"""
+        """Returns a 2D numpy array of shape (len(texts), embedding_dim).
+
+        Raises EmbeddingError when the texts cannot be embedded.
+        """
 
     @abc.abstractmethod
     def get_dimension(self) -> int:
@@ -42,9 +50,7 @@ class GeminiEmbeddingEngine(EmbeddingEngine):
             embeddings = [emb.values for emb in response.embeddings]
             return np.array(embeddings, dtype=np.float32)
         except Exception as e:
-            logger.error(f"Gemini embedding failed: {e}")
-            # Return zero vectors as fallback
-            return np.zeros((len(texts), self.get_dimension()), dtype=np.float32)
+            raise EmbeddingError(f"Gemini embedding failed: {e}") from e
 
     def get_dimension(self) -> int:
         return 768  # text-embedding-004 dimension
@@ -54,21 +60,27 @@ class LocalEmbeddingEngine(EmbeddingEngine):
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
         self._model = None
+        self._model_lock = threading.Lock()
 
     def _get_model(self):
-        if self._model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
+        # Indexing threads and searches may ask at the same time; load it once.
+        with self._model_lock:
+            if self._model is None:
+                self._model = self._load_model()
+            return self._model
 
-                # Load model lazily
-                self._model = SentenceTransformer(self.model_name)
-            except ImportError:
-                logger.error("sentence-transformers is not installed.")
-                raise
-            except Exception as e:
-                logger.error(f"Failed to load local embedding model: {e}")
-                raise
-        return self._model
+    def _load_model(self):
+        """Load the sentence-transformers model (seconds; imports torch)."""
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            logger.error("sentence-transformers is not installed.")
+            raise
+        try:
+            return SentenceTransformer(self.model_name)
+        except Exception as e:
+            logger.error(f"Failed to load local embedding model: {e}")
+            raise
 
     def embed_texts(self, texts: list[str]) -> np.ndarray:
         if not texts:
@@ -79,8 +91,7 @@ class LocalEmbeddingEngine(EmbeddingEngine):
             embeddings = model.encode(texts, convert_to_numpy=True)
             return embeddings.astype(np.float32)
         except Exception as e:
-            logger.error(f"Local embedding failed: {e}")
-            return np.zeros((len(texts), self.get_dimension()), dtype=np.float32)
+            raise EmbeddingError(f"Local embedding failed: {e}") from e
 
     def get_dimension(self) -> int:
         # all-MiniLM-L6-v2 dimension is 384
@@ -88,9 +99,15 @@ class LocalEmbeddingEngine(EmbeddingEngine):
 
 
 _active_embedding_engine: EmbeddingEngine | None = None
+_engine_lock = threading.Lock()
 
 
 def get_embedding_engine(config: dict) -> EmbeddingEngine:
+    with _engine_lock:
+        return _select_embedding_engine(config)
+
+
+def _select_embedding_engine(config: dict) -> EmbeddingEngine:
     global _active_embedding_engine
 
     engine_type = config.get("embedding_engine", "local")

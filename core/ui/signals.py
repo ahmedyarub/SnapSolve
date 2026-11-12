@@ -1,8 +1,13 @@
 """Signal brokers, module-level globals, and tiny helpers shared across UI widgets."""
 
+import logging
 import threading
+from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 
 # --- Signal Broker ---
@@ -23,6 +28,10 @@ class UISignals(QObject):
     open_url = pyqtSignal(str)
     open_session_browser = pyqtSignal()
     open_context_manager = pyqtSignal()
+    show_pairing = pyqtSignal()
+    open_settings = pyqtSignal()
+    # [(profile_id, name), ...], active profile id
+    set_profiles = pyqtSignal(list, str)
     set_transcription_language = pyqtSignal(str)
     update_chat_sessions_btn = pyqtSignal(bool)
     update_periodic_screenshots_btn = pyqtSignal(bool)
@@ -41,7 +50,8 @@ class SelectorSignals(QObject):
 
 ui_signals = UISignals()
 selector_signals = SelectorSignals()
-app_callbacks = {}
+# Action name -> callable, registered by the app (see app.startup).
+app_callbacks: dict[str, Callable[..., Any]] = {}
 _last_user_prompt: str | None = None
 
 
@@ -59,4 +69,4 @@ def call_action(action, *args):
                 target=app_callbacks[action], args=args, daemon=True
             ).start()
         except Exception as e:
-            print(f"Error calling {action}: {e}")
+            logger.error("Error calling %s: %s", action, e)

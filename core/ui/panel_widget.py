@@ -112,6 +112,33 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.layout.addWidget(self.btn_context)
         self.buttons["context"] = self.btn_context
 
+        self.btn_pair = QPushButton("📱 Pair Phone")
+        self.btn_pair.setStyleSheet(btn_style)
+        self.btn_pair.clicked.connect(lambda: ui_signals.show_pairing.emit())
+        self.layout.addWidget(self.btn_pair)
+        self.buttons["pair"] = self.btn_pair
+
+        self.btn_settings = QPushButton("⚙ Settings")
+        self.btn_settings.setStyleSheet(btn_style)
+        self.btn_settings.clicked.connect(lambda: ui_signals.open_settings.emit())
+        self.layout.addWidget(self.btn_settings)
+        self.buttons["settings"] = self.btn_settings
+
+        # Profile selector; the app fills it (set_profile_choices) at startup.
+        self.profile_combo = QComboBox()
+        self.profile_combo.setToolTip("Active profile")
+        self.profile_combo.setStyleSheet(
+            "QComboBox { background-color: rgba(45, 45, 45, 180); color: white;"
+            " border: none; padding: 4px; border-radius: 4px; font-size: 12px;}"
+            " QComboBox::drop-down { border: none; }"
+            " QComboBox QAbstractItemView { background-color: #2d2d2d; color: white;"
+            " selection-background-color: #3e3e3e; }"
+        )
+        self._filling_profiles = False
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        self.layout.addWidget(self.profile_combo)
+        self.profile_combo.hide()
+
         self.btn_periodic_screenshots = create_btn(
             "periodic_screenshots", "📷 Screenshots: OFF", "toggle_periodic_screenshots"
         )
@@ -122,7 +149,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         )
 
         # Transcription language selector (visible only in audio mode)
-        from ui.config_ui import TRANSCRIPTION_LANGUAGES
+        from core.languages import TRANSCRIPTION_LANGUAGES
 
         lang_combo_style = (
             "QComboBox { background-color: rgba(45, 45, 45, 180); color: white;"
@@ -235,6 +262,27 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
         self.update_position()
         self._broadcast_state()
 
+    def set_profile_choices(self, choices: list, active_id: str):
+        """Show the profiles (``[(id, name), ...]``) with ``active_id`` selected."""
+        self._filling_profiles = True
+        try:
+            self.profile_combo.clear()
+            for profile_id, name in choices:
+                self.profile_combo.addItem(name, profile_id)
+            index = self.profile_combo.findData(active_id)
+            if index >= 0:
+                self.profile_combo.setCurrentIndex(index)
+        finally:
+            self._filling_profiles = False
+        self.profile_combo.setVisible(len(choices) > 1)
+
+    def _on_profile_changed(self, _index: int):
+        if self._filling_profiles:
+            return
+        profile_id = self.profile_combo.currentData()
+        if profile_id:
+            call_action("switch_profile", profile_id)
+
     def _on_language_changed(self, _index: int):
         """Emit signal when the user changes the transcription language."""
         lang_code = self.lang_combo.currentData() or ""
@@ -259,7 +307,7 @@ class PanelWidget(DraggableWidgetMixin, QWidget):
     def update_translation_label(self, lang_code: str):
         """Update the translation status label to reflect the current setting."""
         if lang_code:
-            from ui.config_ui import TRANSCRIPTION_LANGUAGES
+            from core.languages import TRANSCRIPTION_LANGUAGES
 
             # Look up the display name
             display = lang_code

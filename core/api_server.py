@@ -11,13 +11,16 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
+    Query,
     WebSocket,
     WebSocketDisconnect,
+    status,
 )
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import core.remote_control_server as rc_server
+from core.remote_auth import key_matches, redact_secrets
 from core.remote_control_server import (
     _handle_action,
     _handle_connect,
@@ -43,10 +46,19 @@ _app_config: dict[str, Any] = {}
 _api_key: str = ""
 
 
+def _no_status() -> dict[str, str]:
+    return {}
+
+
+# Set by the app (start_api_server): live engine names for /health.
+_status_provider = _no_status
+
+
 def verify_api_key(x_api_key: str | None = Header(None, alias="Authorization")):
-    if _api_key:
-        if not x_api_key or x_api_key != _api_key:
-            raise HTTPException(status_code=401, detail="Invalid API Key")
+    # No configured key means no access (see core.remote_auth); startup always
+    # sets one before the server runs.
+    if not key_matches(x_api_key, _api_key):
+        raise HTTPException(status_code=401, detail="Invalid API Key")
     return True
 
 
@@ -56,12 +68,9 @@ def health_check():
     # below does not stall the event loop that serves the remote-control socket.
     import requests
 
-    import app.state as state
-    from core.sources.sound import is_whisperlive_service_online
+    from core.sources.whisperlive_manager import is_whisperlive_service_online
 
-    ocr_status = "None"
-    if state.ocr_engine_instance:
-        ocr_status = type(state.ocr_engine_instance).__name__
+    ocr_status = _status_provider().get("ocr", "None")
 
     whisperlive_status = "online" if is_whisperlive_service_online() else "offline"
 
@@ -85,32 +94,18 @@ def health_check():
 
 @app.get("/config", dependencies=[Depends(verify_api_key)])
 async def get_config():
-    import copy
-
-    redacted_config = copy.deepcopy(_app_config)
-    for key in [
-        "api_server_key",
-        "google_api_key",
-        "gemini_api_key",
-        "ollama_api_key",
-        "groq_api_key",
-        "anthropic_api_key",
-        "openai_api_key",
-    ]:
-        if redacted_config.get(key):
-            redacted_config[key] = "***REDACTED***"
-    return redacted_config
+    return redact_secrets(_app_config)
 
 
-@app.get("/status")
-async def status():
-    # Legacy endpoint for Android client
+@app.get("/status", dependencies=[Depends(verify_api_key)])
+async def server_status():
+    # The Android client's connection check; it also proves the key is right.
     return {"status": "running", "server": "SnapSolve Remote Control"}
 
 
-@app.get("/response_image")
+@app.get("/response_image", dependencies=[Depends(verify_api_key)])
 def get_response_image():
-    # Legacy endpoint for Android client
+    # Used by the Android client
     with _response_image_lock:
         image_path = rc_server.response_image_path
 
@@ -127,7 +122,7 @@ class ActionRequest(BaseModel):
 
 
 @app.post("/action", dependencies=[Depends(verify_api_key)])
-async def trigger_action(req: ActionRequest):
+def trigger_action(req: ActionRequest):
     result = _handle_action({"action": req.action}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -140,7 +135,7 @@ class MouseMoveRequest(BaseModel):
 
 
 @app.post("/mouse/move", dependencies=[Depends(verify_api_key)])
-async def mouse_move(req: MouseMoveRequest):
+def mouse_move(req: MouseMoveRequest):
     result = _handle_mouse_move({"dx": req.dx, "dy": req.dy}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -152,7 +147,7 @@ class MouseClickRequest(BaseModel):
 
 
 @app.post("/mouse/click", dependencies=[Depends(verify_api_key)])
-async def mouse_click(req: MouseClickRequest):
+def mouse_click(req: MouseClickRequest):
     result = _handle_mouse_click({"button": req.button}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -160,7 +155,7 @@ async def mouse_click(req: MouseClickRequest):
 
 
 @app.post("/mouse/double_click", dependencies=[Depends(verify_api_key)])
-async def mouse_double_click(req: MouseClickRequest):
+def mouse_double_click(req: MouseClickRequest):
     result = _handle_mouse_double_click({"button": req.button}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -168,7 +163,7 @@ async def mouse_double_click(req: MouseClickRequest):
 
 
 @app.post("/mouse/drag/start", dependencies=[Depends(verify_api_key)])
-async def mouse_drag_start():
+def mouse_drag_start():
     result = _handle_mouse_drag_start(_app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -176,7 +171,7 @@ async def mouse_drag_start():
 
 
 @app.post("/mouse/drag/end", dependencies=[Depends(verify_api_key)])
-async def mouse_drag_end():
+def mouse_drag_end():
     result = _handle_mouse_drag_end(_app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -188,7 +183,7 @@ class MouseScrollRequest(BaseModel):
 
 
 @app.post("/mouse/scroll", dependencies=[Depends(verify_api_key)])
-async def mouse_scroll(req: MouseScrollRequest):
+def mouse_scroll(req: MouseScrollRequest):
     result = _handle_mouse_scroll({"delta": req.delta}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -200,7 +195,7 @@ class KeyboardTypeRequest(BaseModel):
 
 
 @app.post("/keyboard/type", dependencies=[Depends(verify_api_key)])
-async def keyboard_type(req: KeyboardTypeRequest):
+def keyboard_type(req: KeyboardTypeRequest):
     result = _handle_keyboard_type({"text": req.text}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -208,7 +203,7 @@ async def keyboard_type(req: KeyboardTypeRequest):
 
 
 @app.post("/response_image/ack", dependencies=[Depends(verify_api_key)])
-async def response_image_ack():
+def response_image_ack():
     result = rc_server.handle_response_image_ack()
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -220,7 +215,7 @@ class SetTranscriptionLanguageRequest(BaseModel):
 
 
 @app.post("/config/transcription_language", dependencies=[Depends(verify_api_key)])
-async def set_transcription_language(req: SetTranscriptionLanguageRequest):
+def set_transcription_language(req: SetTranscriptionLanguageRequest):
     result = _handle_set_transcription_language({"language": req.language}, _app_config)
     if result and result.get("type") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -229,18 +224,14 @@ async def set_transcription_language(req: SetTranscriptionLanguageRequest):
 
 # Screenpipe-like endpoints
 @app.get("/search", dependencies=[Depends(verify_api_key)])
-async def search_sessions(
+def search_sessions(
     q: str | None = None,
     limit: int = 20,
     offset: int = 0,
     semantic: bool = False,
     types: str | None = None,
 ):
-    import app.state as state
-
-    manager = state.session_manager
-    if not manager:
-        raise HTTPException(status_code=500, detail="Session manager not initialized")
+    from core.sessions import index, store
 
     allowed_types = (
         set(types.split(","))
@@ -250,7 +241,7 @@ async def search_sessions(
 
     if not semantic or not q:
         # Standard text search across chunks
-        all_chunks = manager.get_all_embeddings()
+        all_chunks = index.get_all_embeddings()
 
         results_map = {}
         q_lower = q.lower() if q else ""
@@ -265,7 +256,7 @@ async def search_sessions(
                     results_map[s_id] = {"id": s_id, "timestamp": 0, "tags": []}
 
         # Populate session metadata
-        sessions = manager.list_all_sessions()
+        sessions = store.list_sessions()
         final_results = []
         for s in sessions:
             s_id = s.get("id")
@@ -303,7 +294,7 @@ async def search_sessions(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {e}") from e
 
-    all_chunks = manager.get_all_embeddings()
+    all_chunks = index.get_all_embeddings()
     if not all_chunks:
         return {"data": [], "total": 0}
 
@@ -359,32 +350,18 @@ async def search_sessions(
 
 
 @app.get("/tags", dependencies=[Depends(verify_api_key)])
-async def get_tags():
-    import app.state as state
+def get_tags():
+    from core.sessions import store
 
-    manager = state.session_manager
-    if not manager:
-        raise HTTPException(status_code=500, detail="Session manager not initialized")
-
-    sessions = manager.list_all_sessions()
-    all_tags = set()
-    for s in sessions:
-        for tag in s.get("tags", []):
-            all_tags.add(tag)
-
-    return {"data": list(all_tags)}
+    all_tags = {tag for s in store.list_sessions() for tag in s.get("tags", [])}
+    return {"data": sorted(all_tags)}
 
 
 @app.get("/sessions", dependencies=[Depends(verify_api_key)])
-async def get_sessions(limit: int = 20, offset: int = 0):
-    import app.state as state
+def get_sessions(limit: int = 20, offset: int = 0):
+    from core.sessions import store
 
-    manager = state.session_manager
-    if not manager:
-        raise HTTPException(status_code=500, detail="Session manager not initialized")
-
-    sessions = manager.list_all_sessions()
-    sessions.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+    sessions = store.list_sessions()  # newest first
     results = [
         {
             "id": s.get("id"),
@@ -398,14 +375,10 @@ async def get_sessions(limit: int = 20, offset: int = 0):
 
 
 @app.get("/sessions/{session_id}", dependencies=[Depends(verify_api_key)])
-async def get_session(session_id: str):
-    import app.state as state
+def get_session(session_id: str):
+    from core.sessions import store
 
-    manager = state.session_manager
-    if not manager:
-        raise HTTPException(status_code=500, detail="Session manager not initialized")
-
-    session_data = manager.load_session_data(session_id)
+    session_data = store.read_session(session_id)
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -420,12 +393,38 @@ async def get_session(session_id: str):
     }
 
 
+@app.get("/sessions/{session_id}/export", dependencies=[Depends(verify_api_key)])
+def export_session_route(session_id: str, fmt: str = Query("md", alias="format")):
+    from fastapi.responses import PlainTextResponse
+
+    from core.sessions.export import EXPORT_FORMATS, export_session
+
+    if fmt not in EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=400, detail=f"format must be one of {EXPORT_FORMATS}"
+        )
+    content = export_session(session_id, fmt)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    media_type = "application/json" if fmt == "json" else "text/markdown"
+    return PlainTextResponse(content, media_type=media_type)
+
+
 # Active websocket connections list for push updates
 _active_websockets: list[WebSocket] = []
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    # Same key as the HTTP routes: in the Authorization header (the Android app)
+    # or as ?key= for clients that cannot set headers on a WebSocket.
+    supplied = websocket.headers.get("authorization") or websocket.query_params.get(
+        "key"
+    )
+    if not key_matches(supplied, _api_key):
+        # Closing before accept() rejects the handshake (HTTP 403).
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await websocket.accept()
 
     _active_websockets.append(websocket)
@@ -485,7 +484,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 continue
 
-            response = handler()
+            # Handlers block (pyautogui, keyboard, disk); keep the loop free for
+            # other clients. Awaiting each one keeps this client's events in order.
+            response = await asyncio.to_thread(handler)
             if response:
                 await websocket.send_text(json.dumps(response))
 
@@ -515,16 +516,17 @@ async def broadcast_state(state: dict[str, dict[str, bool]]):
         }
     )
 
-    for ws in _active_websockets:
+    for ws in list(_active_websockets):
         try:
             await ws.send_text(message)
-        except Exception:
-            pass
+        except Exception as exc:
+            # The receive loop removes it once the disconnect surfaces there.
+            logger.debug("State push to a WebSocket client failed: %s", exc)
 
 
 class APIServer:
     def __init__(
-        self, host: str = "0.0.0.0", port: int = 3031, config: dict | None = None
+        self, host: str = "127.0.0.1", port: int = 3031, config: dict | None = None
     ):
         self.host = host
         self.port = port
@@ -587,9 +589,15 @@ api_server_instance: APIServer | None = None
 
 
 def start_api_server(
-    host: str = "0.0.0.0", port: int = 3031, config: dict | None = None
+    host: str = "127.0.0.1",
+    port: int = 3031,
+    config: dict | None = None,
+    status_provider=None,
 ) -> APIServer:
-    global api_server_instance
+    """Start the server; ``status_provider`` returns live engine names for /health."""
+    global api_server_instance, _status_provider
+    if status_provider is not None:
+        _status_provider = status_provider
     if api_server_instance is None:
         api_server_instance = APIServer(host, port, config)
 
@@ -604,3 +612,21 @@ def stop_api_server() -> None:
     if api_server_instance:
         api_server_instance.stop()
         api_server_instance = None
+
+
+def current_pairing() -> dict[str, Any]:
+    """What a phone needs to connect to the running server (for the pairing dialog)."""
+    from core.remote_auth import pairing_address, pairing_uri
+
+    server = api_server_instance
+    if server is None or not server.is_running:
+        return {"running": False}
+    address = pairing_address(server.host)
+    return {
+        "running": True,
+        "bind_host": server.host,
+        "address": address,
+        "port": server.port,
+        "key": _api_key,
+        "uri": pairing_uri(address, server.port, _api_key) if address else None,
+    }

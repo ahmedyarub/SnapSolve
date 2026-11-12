@@ -25,28 +25,41 @@ try:
 except Exception:
     pass
 
-from app import state
-from app.config_validation import validate_config
-from app.engine_init import (
-    _initialize_audio_components,
-    _initialize_correction_engine,
-    _initialize_llm_engines,
-    _initialize_ocr_engine,
-    _perform_llm_warmup,
-)
+import threading
+
+from app.config_validation import profile_problems
+from app.context import AppContext
+from app.engine_init import build_audio_sink, warm_up_llms
+from app.feedback import show_status
 from app.handlers.audio import handle_start_record, handle_stop_record
 from app.handlers.cancel import handle_cancel
 from app.handlers.capture import handle_capture
 from app.handlers.multi_capture import handle_end_multi_capture, handle_multi_capture
-from app.handlers.navigation import handle_open_context_manager
+from app.handlers.navigation import handle_open_context_manager, handle_toggle_panel
 from app.handlers.periodic_screenshots import handle_toggle_periodic_screenshots
-from app.handlers.session import handle_toggle_chat_sessions
+from app.handlers.session import handle_new_chat_session, handle_toggle_chat_sessions
 from app.handlers.source import handle_cycle_source, handle_reselect
 from app.handlers.text import handle_text_submit
-from app.hotkeys import _register_keyboard_shortcuts
-from app.state import exit_app
-from app.tray import _setup_tray_or_console_mode
-from config.settings import get_config, load_profiles, load_prompts, save_config
+from app.hotkeys import register_keyboard_shortcuts
+from app.lifecycle import exit_app
+from app.profiles import (
+    apply_profile_engines,
+    find_profile,
+    prompt_text_for,
+    publish_profiles,
+    switch_profile,
+)
+from app.tray import setup_tray_or_console_mode
+from config.settings import (
+    CONFIG_FILE,
+    PROFILES_FILE,
+    PROMPTS_FILE,
+    get_config,
+    load_config,
+    load_profiles,
+    load_prompts,
+    update_config_file,
+)
 from core.api_server import start_api_server
 from core.output import (
     set_active_source_ui,
@@ -56,6 +69,7 @@ from core.output import (
     set_periodic_screenshots_btn_state,
     toggle_control_panel,
 )
+from core.remote_auth import generate_api_key
 from core.session_manager import SessionManager
 from core.sources import (
     ScreenshotSource,
@@ -64,7 +78,9 @@ from core.sources import (
     get_active_source_instance,
     set_active_source_instance,
 )
-from ui.selector import get_coordinates
+from core.ui.selector import get_coordinates
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Early platform setup (runs at import time)
@@ -75,8 +91,8 @@ if platform.system() == "Windows":
     try:
         SetProcessDpiAwareness = ctypes.windll.shcore.SetProcessDpiAwareness
         SetProcessDpiAwareness(2)
-    except Exception as e:
-        print(f"Warning: Failed to set DPI awareness: {e}")
+    except Exception as dpi_error:
+        logger.warning("Failed to set DPI awareness: %s", dpi_error)
 
     # Register a console control handler BEFORE any library (keyboard, Qt,
     # pystray) has a chance to install its own.  This ensures PyCharm's Stop
@@ -107,109 +123,201 @@ def _initialize_qt_app():
     return app
 
 
-def _load_config_and_profiles():
-    """Load configuration and profiles."""
+def _create_context() -> AppContext:
+    """Config plus the active profile and its prompt (engines come later)."""
     config = get_config()
-    profiles = load_profiles()
-    prompts = load_prompts()
-
-    active_profile_id = config.get("active_profile_id", "claude")
-    active_profile = next(
-        (p for p in profiles if p.get("id") == active_profile_id),
-        profiles[0] if profiles else {},
+    profile = find_profile(load_profiles(), config.get("active_profile_id", "claude"))
+    if "enable_chat_sessions" in config:
+        profile["enable_chat_sessions"] = config["enable_chat_sessions"]
+    return AppContext(
+        config=config,
+        profile=profile,
+        prompt_text=prompt_text_for(profile, load_prompts()),
     )
 
-    prompt_id = active_profile.get("prompt_id", "default")
-    active_prompt = next(
-        (p for p in prompts if p.get("id") == prompt_id), prompts[0] if prompts else {}
+
+def _exit_if_profile_invalid(ctx: AppContext) -> None:
+    problems = profile_problems(ctx.profile)
+    if not problems:
+        return
+    from PyQt6.QtWidgets import QMessageBox
+
+    name = ctx.profile.get("name", ctx.profile.get("id"))
+    message = (
+        f"The active profile '{name}' cannot be used:\n\n- "
+        + "\n- ".join(problems)
+        + "\n\nFix it in config/profiles.json or in the settings (ui/config_ui.py)."
     )
-    active_prompt_text = active_prompt.get(
-        "text", "answer the following question quickly and briefly"
-    )
-
-    return config, active_profile, active_prompt_text
+    logger.error(message)
+    QMessageBox.critical(None, "SnapSolve", message)
+    sys.exit(1)
 
 
-def _initialize_session_manager(config):
-    """Initialize session manager."""
-    manager = SessionManager(config)
-    return manager
-
-
-def _setup_active_source(config, manager):
+def _setup_active_source(ctx: AppContext):
     """Set up the active source based on configuration."""
-    default_source = config.get("default_source", "text")
+    default_source = ctx.config.get("default_source", "text")
     if default_source == "image":
         set_active_source_instance(ScreenshotSource())
     elif default_source == "audio":
-        set_active_source_instance(SoundSource(config, session_manager=manager))
+        set_active_source_instance(
+            SoundSource(ctx.config, session_manager=ctx.session_manager)
+        )
     else:
         set_active_source_instance(TextSource())
     return get_active_source_instance()
 
 
-def _setup_ui_callbacks(config, active_profile, active_prompt_text, session_manager):
-    """Set up UI callbacks."""
-    callbacks = {
-        "capture": lambda: handle_capture(config, active_profile, active_prompt_text),
-        "reselect": lambda: handle_reselect(config),
-        "multi_capture": lambda: handle_multi_capture(config, active_profile),
-        "end_multi_capture": lambda: handle_end_multi_capture(
-            config, active_profile, active_prompt_text
-        ),
-        "cancel": handle_cancel,
-        "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(
-            config, active_profile
-        ),
-        "cycle_source": lambda: handle_cycle_source(config, active_profile),
-        "text_submit": lambda text: handle_text_submit(config, active_profile, text),
+def _open_session_browser():
+    from ui.session_browser import open_session_browser
+
+    open_session_browser()
+
+
+def _open_settings(ctx: AppContext) -> None:
+    """The settings dialog (Qt thread); after a save, reload config and profile."""
+    from ui.config_ui import ConfigUI
+
+    models_path = os.path.join(os.path.dirname(CONFIG_FILE), "llm_models.json")
+    dialog = ConfigUI(CONFIG_FILE, models_path, PROFILES_FILE, PROMPTS_FILE)
+    if not dialog.exec():
+        return
+
+    ctx.config.update(load_config())
+    # Command-line flags still win for this run.
+    ctx.config.update(getattr(ctx.config, "cli_overrides", {}))
+    reload_active_profile(ctx)
+
+
+def reload_active_profile(ctx: AppContext) -> None:
+    """Rebuild the active profile's engines from the saved profiles (background)."""
+
+    def work():
+        profile_id = ctx.config.get("active_profile_id", ctx.profile.get("id"))
+        profile = find_profile(load_profiles(), profile_id)
+        problems = profile_problems(profile)
+        if problems:
+            show_status(
+                ctx.config, "Profile not reloaded:\n" + "\n".join(problems), 8000
+            )
+            return
+        try:
+            apply_profile_engines(ctx, profile, load_prompts())
+        except Exception as e:
+            logger.exception("Reloading the profile failed")
+            show_status(ctx.config, f"Could not reload the profile: {e}", 8000)
+            return
+        publish_profiles(ctx)
+        set_chat_sessions_btn_state(ctx.profile.get("enable_chat_sessions", True))
+        show_status(ctx.config, "Settings applied", auto_close=2500)
+
+    threading.Thread(target=work, daemon=True, name="reload-profile").start()
+
+
+def _setup_ui_callbacks(ctx: AppContext):
+    """Callbacks the UI and the remote API invoke by name."""
+    return {
+        "capture": lambda: handle_capture(ctx),
+        "reselect": lambda: handle_reselect(ctx),
+        "multi_capture": lambda: handle_multi_capture(ctx),
+        "end_multi_capture": lambda: handle_end_multi_capture(ctx),
+        "cancel": lambda: handle_cancel(ctx),
+        "toggle_chat_sessions": lambda: handle_toggle_chat_sessions(ctx),
+        "new_chat_session": lambda: handle_new_chat_session(ctx),
+        "toggle_panel": handle_toggle_panel,
+        "cycle_source": lambda: handle_cycle_source(ctx),
+        "text_submit": lambda text: handle_text_submit(ctx, text),
         "start_record": lambda enable_transcription: handle_start_record(
-            config, enable_transcription
+            ctx, enable_transcription
         ),
-        "stop_record": lambda is_long_press: handle_stop_record(
-            config, active_profile, active_prompt_text, is_long_press
+        "stop_record": lambda is_long_press: handle_stop_record(ctx, is_long_press),
+        "open_context_manager": lambda: handle_open_context_manager(
+            ctx.session_manager
         ),
-        "open_context_manager": lambda: handle_open_context_manager(session_manager),
-        "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(
-            config
-        ),
+        "toggle_periodic_screenshots": lambda: handle_toggle_periodic_screenshots(ctx),
+        "switch_profile": lambda profile_id: switch_profile(ctx, profile_id),
+        # These two run on the Qt thread (the UI manager calls them from slots).
+        "open_session_browser": _open_session_browser,
+        "open_settings": lambda: _open_settings(ctx),
     }
-    return callbacks
 
 
-def _initialize_ui(config, active_source, callbacks):
+def _initialize_ui(ctx: AppContext, active_source) -> None:
     """Initialize UI manager and set callbacks."""
     from core.output import init_ui_manager
 
     init_ui_manager()
-    set_hide_from_capture(config.get("hide_from_capture", False))
-    set_app_callbacks(callbacks)
+    set_hide_from_capture(ctx.config.get("hide_from_capture", False))
+    set_app_callbacks(_setup_ui_callbacks(ctx))
 
     set_active_source_ui(
         active_source.name if active_source else "text",
-        opacity=config.get("opacity", 0.8),
+        opacity=ctx.config.get("opacity", 0.8),
     )
-
-    if config.get("show_control_panel", False):
+    if ctx.config.get("show_control_panel", False):
         toggle_control_panel(True)
 
 
-def _handle_coordinates_setup(config, active_source):
-    """Handle coordinates setup if needed."""
+def _handle_coordinates_setup(ctx: AppContext, active_source) -> None:
+    """Ask for the capture region on first use of the image source."""
     if (
         active_source
         and active_source.name == "image"
-        and not config.get("coordinates")
+        and not ctx.config.get("coordinates")
     ):
-        print("Coordinates not found in config. Launching coordinate selector...")
+        logger.info("No capture region configured; launching the selector...")
         coords = get_coordinates()
-        if coords:
-            config["coordinates"] = coords
-            save_config(config)
-            print(f"Coordinates saved: {coords}")
-        else:
-            print("No coordinates selected. Exiting.")
+        if not coords:
+            logger.error("No coordinates selected. Exiting.")
             sys.exit(1)
+        ctx.config["coordinates"] = coords
+        update_config_file({"coordinates": coords})
+
+
+def _start_api_server(ctx: AppContext) -> None:
+    config = ctx.config
+    if not config.get("enable_api_server", False):
+        return
+    if not config.get("api_server_key"):
+        # The API controls the mouse and keyboard; it never runs without a key.
+        config["api_server_key"] = generate_api_key()
+        update_config_file({"api_server_key": config["api_server_key"]})
+        logger.info("Generated a remote-control API key. Pair a phone from the panel.")
+
+    def status():
+        return {"ocr": type(ctx.ocr_engine).__name__ if ctx.ocr_engine else "None"}
+
+    try:
+        start_api_server(
+            config.get("api_server_host", "127.0.0.1"),
+            config.get("api_server_port", 3031),
+            config,
+            status_provider=status,
+        )
+    except Exception:
+        logger.exception("Failed to start the API server")
+
+
+def _load_engines_in_background(ctx: AppContext) -> None:
+    """Build the profile's engines (OCR load, LLM warmup) without blocking the UI.
+
+    Requests made before this finishes are refused with "Still starting up".
+    """
+
+    def work() -> None:
+        try:
+            apply_profile_engines(ctx, ctx.profile, load_prompts())
+        except Exception as e:
+            logger.exception("Engine initialization failed")
+            show_status(ctx.config, f"Startup failed: {e}", auto_close=10000)
+            return
+        ctx.ready.set()
+        warm_up_llms(ctx.config, ctx.llm_engine, ctx.fallback_llm_engine)
+        logger.info("Ready.")
+        show_status(
+            ctx.config, f"Ready ({ctx.profile.get('name', '')})", auto_close=2500
+        )
+
+    threading.Thread(target=work, daemon=True, name="engine-init").start()
 
 
 # ---------------------------------------------------------------------------
@@ -222,87 +330,43 @@ def main():
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-
-    print("Initializing Screen Capture & Gemini QA App...")
+    logger.info("Initializing SnapSolve...")
 
     app = _initialize_qt_app()
-
-    config, active_profile, active_prompt_text = _load_config_and_profiles()
+    ctx = _create_context()
 
     # Replace early logging with full loguru setup now that config is available
     from core.logging_config import setup_logging
 
-    setup_logging(config)
+    setup_logging(ctx.config)
+    _exit_if_profile_invalid(ctx)
 
-    validate_config(active_profile)
+    ctx.session_manager = SessionManager(ctx.config)
+    active_source = _setup_active_source(ctx)
+    _initialize_ui(ctx, active_source)
+    _handle_coordinates_setup(ctx, active_source)
 
-    state.session_manager = _initialize_session_manager(config)
+    ctx.audio_sink = build_audio_sink(ctx.config, ctx.session_manager, ctx.cancel_event)
+    set_chat_sessions_btn_state(ctx.profile.get("enable_chat_sessions", True))
+    publish_profiles(ctx)
 
-    active_source = _setup_active_source(config, state.session_manager)
-
-    callbacks = _setup_ui_callbacks(
-        config, active_profile, active_prompt_text, state.session_manager
-    )
-
-    _initialize_ui(config, active_source, callbacks)
-
-    _handle_coordinates_setup(config, active_source)
-
-    print("Checking engine pre-initialization...")
-
-    state.ocr_engine_instance = _initialize_ocr_engine(active_profile, config)
-
-    if isinstance(active_source, ScreenshotSource):
-        active_source.ocr_engine = state.ocr_engine_instance
-        set_active_source_instance(active_source)
-
-    state.llm_engine_instance, state.fallback_llm_engine_instance = (
-        _initialize_llm_engines(active_profile, config, state.session_manager)
-    )
-
-    _perform_llm_warmup(
-        config, state.llm_engine_instance, state.fallback_llm_engine_instance
-    )
-
-    # Initialize real-time correction engine
-    prompts = load_prompts()
-    state.correction_engine_instance = _initialize_correction_engine(
-        active_profile, config, state.session_manager, prompts
-    )
-
-    state.audio_sink_instance = _initialize_audio_components(
-        config, state.session_manager, state.cancel_event
-    )
-
-    if "enable_chat_sessions" in config:
-        active_profile["enable_chat_sessions"] = config["enable_chat_sessions"]
-
-    set_chat_sessions_btn_state(active_profile.get("enable_chat_sessions", True))
-
-    # Initialize periodic screenshot service
     from core.periodic_screenshots import PeriodicScreenshotService
 
-    state.periodic_screenshot_service = PeriodicScreenshotService(
-        config, state.session_manager
+    ctx.periodic_screenshot_service = PeriodicScreenshotService(
+        ctx.config, ctx.session_manager
     )
-    if config.get("periodic_screenshots_enabled", False):
-        state.periodic_screenshot_service.start()
+    if ctx.config.get("periodic_screenshots_enabled", False):
+        ctx.periodic_screenshot_service.start()
     set_periodic_screenshots_btn_state(
-        config.get("periodic_screenshots_enabled", False)
+        ctx.config.get("periodic_screenshots_enabled", False)
     )
 
-    # Start API server if enabled
-    if config.get("enable_api_server", False):
-        api_host = config.get("api_server_host", "0.0.0.0")
-        api_port = config.get("api_server_port", 3031)
-        try:
-            start_api_server(api_host, api_port, config)
-        except Exception as api_error:
-            print(f"Failed to start API server: {api_error}")
+    _start_api_server(ctx)
+    register_keyboard_shortcuts(ctx)
+    setup_tray_or_console_mode(ctx)
+    _load_engines_in_background(ctx)
 
-    _register_keyboard_shortcuts(config, active_profile, active_prompt_text)
-
-    _setup_tray_or_console_mode(config, exit_app)
-
-    print("Initialization done.")
-    sys.exit(app.exec())
+    logger.info("UI up; loading engines in the background.")
+    code = app.exec()
+    exit_app(ctx)
+    sys.exit(code)

@@ -5,95 +5,89 @@ and codebase specific conventions to ensure your modifications are safe and perf
 
 ## Code Organization & Architecture
 
-This application relies on a strictly decoupled architecture:
+Layers, top to bottom. A layer may import from the layers below it, never above:
+`app/` → `ui/` → `core/` → `config/`. (`core/` must not import `app/` or `ui/`; the app
+registers callbacks in `core.ui.signals.app_callbacks` where core needs to reach up.)
 
-1.  **`core/`**: The main business logic.
-    *   `sources/`: Input sources for extracting text or images.
-        *   `text.py`: `TextSource` — direct text pass-through.
-        *   `screenshot.py`: `ScreenshotSource` — screen capture via `PIL.ImageGrab` with OCR support.
-        *   `sound.py`: `SoundSource` — audio recording with Google Speech-to-Text and WhisperLive real-time
-          transcription, subtitle display, and server management.
-        *   `manager.py`: Global active source singleton (`get_active_source_instance()`,
-          `set_active_source_instance()`).
-    *   `sources/ocr/`: OCR engine implementations.
-        *   `paddleocr.py`: `LocalPaddleOCREngine` — local PaddleOCR with warmup and confidence filtering.
-        *   `remote_paddle.py`: `RemotePaddleOCREngine` — remote PaddleOCR via HTTP POST.
-        *   `none.py`: `NoOCREngine` — no-op OCR.
-        *   `exceptions.py`: Custom exception hierarchy (`OCRError`, `OCRInitializationError`, etc.).
-    *   `llm/`: LLM Engine implementations.
-        *   `google_genai.py`: `GoogleGenAIEngine` — Google GenAI SDK with streaming and multi-turn history.
-        *   `ollama.py`: `OllamaEngine` — Ollama REST API with base64 image encoding.
-        *   `claude_code.py`: `ClaudeCodeEngine` — default engine (`claude-code`). Runs the `claude` CLI headless
-          (`-p`, stream-json, no tools) so requests use the user's Claude subscription; strips
-          `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the child environment.
-        *   `gemini_cli.py`: `GeminiCLIEngine` — wraps the `gemini` CLI tool via subprocess.
-        *   `antigravity.py`: `AntigravityEngine` — HTTP+SSE client to the Antigravity SDK service.
-          Streams tokens in real-time to the sink.
-    *   `sinks/`: Output sinks for presenting results to the user.
-        *   `popup.py`: `PopupSink` — accumulates text chunks, renders via `show_popup()` from `core/output.py`.
-        *   `audio.py`: `AudioSink` — Piper TTS synthesis with Markdown stripping and configurable output device.
-        *   `composite.py`: `CompositeSink` — fan-out to multiple sinks (e.g., popup + audio simultaneously).
-    *   `pipeline/`: Pipeline orchestration.
-        *   `pipeline.py`: `process_pipeline()` orchestrates Source → LLM → Sink. Also contains
-          `ConcurrentSinkWrapper` for main + fallback model concurrency.
-    *   `output.py`: **Central UI module** (928 lines) — contains `PopupWidget`, `PanelWidget`,
-      `TextInputWidget`, `SubtitleWidget`, `RecordButton`, `UIManager`, and `UISignals` for thread-safe
-      signal-based communication. This is the largest single file in the project.
-    *   `session_manager.py`: `SessionManager` — chat session persistence, history management, transcription
-      file storage.
-    *   `correction_engine.py`: `CorrectionEngine` — real-time speech correction orchestrator. Routes grammar
-      corrections to either the LLM or LanguageTool depending on `realtime_correction_grammar_engine` config.
-    *   `languagetool.py`: `LanguageToolClient` — HTTP client for the LanguageTool API (`/v2/check`). Supports
-      both local server and cloud Premium modes. Automatically maps transcription language codes to
-      LanguageTool regional variants (e.g., `en` → `en-US`). Config keys: `languagetool_mode`,
-      `languagetool_url`, `languagetool_username`, `languagetool_api_key`, `languagetool_language`,
-      `languagetool_level`.
-    *   `remote_control_server.py`: WebSocket server for Android remote control — mouse control, app action dispatch,
-      UI state synchronization.
-2.  **`ui/`**: PyQt6 dialog and overlay components. Do not mix heavy I/O or LLM requests directly inside UI event
-    handlers.
-    *   `config_ui.py`: `ConfigUI(QDialog)` — full configuration dialog with tabs for settings, profiles,
-      shortcuts, warmup, and remote control.
-    *   `context_manager_ui.py`: `ContextManagerDialog(QDialog)` — per-session context configuration with
-      category toggles (transcribed text, questions, answers), project folder selection with autocomplete
-      from recent paths, and session context import.
-    *   `selector.py`: `CoordinateSelector(QWidget)` — screen region selector overlay with DPI-aware coordinates.
-    *   `session_browser.py`: `SessionBrowserDialog(QDialog)` — maximized session browser with tree view,
-      prompt/response panels, tag management, and filtering. Reuses `popup.html` for Markdown rendering.
-3.  **`config/`**: Configuration parsing and profile management.
-    *   `settings.py`: Config loading/saving, profile management, argument parsing, audio device helpers.
-    *   `config.json` / `config.sample.json`: Active and sample configuration files.
-    *   `profiles.json`: Named profiles with engine, model, OCR, and prompt settings.
-    *   `prompts.json`: System prompt definitions.
-    *   `llm_models.json`: Model registry with capability flags (e.g., `supports_ocr`).
-4.  **`services/`**: External services.
-    *   `ocr_service.py`: FastAPI microservice for remote PaddleOCR (POST `/ocr` endpoint).
-    *   `whisperlive/`: Git submodule — WhisperLive real-time transcription server.
-    *   `antigravity/`: Antigravity SDK service — FastAPI app that wraps the `google-antigravity`
-      Python SDK. Exposes `POST /chat` with SSE streaming and `GET /health` on `127.0.0.1:8200`
-      (`ANTIGRAVITY_HOST` / `ANTIGRAVITY_PORT` override them).
-5.  **`sessions/`**: Local storage for chat session history (JSON files), captured images, and transcriptions.
-6.  **`tests/`**: Contains the tests.
-    *   `e2e/`: End-to-end tests with image-recognition-based UI automation. Only run on the developer's machine.
-      Don't run or modify the files inside without understanding the full test infrastructure.
-    *   `sanity/`: Standalone sanity check scripts (OCR, audio, WhisperLive warmup) for component verification.
-7.  **`scripts/`**: Verification scripts.
-    *   `verify.ps1` / `verify.sh`: Ruff lint + format (`ruff.toml`), pytest (`pytest.ini`), Qodana (`qodana.yaml`,
-        interpreter built by `qodana_bootstrap.sh`), and SonarQube (`sonar-project.properties`, server started by
-        `sonarqube_up.sh`, token from `SONAR_TOKEN`). The Android app is not linted by these scripts.
-    *   Qodana runs through `scripts/qodana_scan.sh`, which scans a copy of our sources (without the WhisperLive
-        submodule) in WSL's `~/.cache/snapsolve-qodana/src`. When Qodana indexes the submodule, its
-        `python_requires=">=3.9"` makes it report valid code such as `str | None` as "Invalid type annotation" by
-        the hundred, and that sticks in its cache: if it ever happens, delete everything in
-        `~/.cache/snapsolve-qodana/cache` except `snapsolve-venv` and `pip`.
-    *   WSL stops the distro a few seconds after the last `wsl.exe` process exits, and Docker containers inside
-        (Qodana, SonarQube) stop with it. `verify.ps1` holds it open for the run; do the same when using
-        SonarQube from Windows by hand (`wsl -e sleep 3600` in another window).
-8.  **`android_remote_control/`**: Companion Android app (Kotlin/Gradle) for remote control via WebSocket.
-9.  **`docs/`**: Additional documentation (architecture, features, setup guides, roadmap).
-10. **`main.py`**: Application entry point and orchestrator (1359 lines) — initializes Qt, config, engines, UI,
-    hotkeys, and runs the event loop. Contains all handler functions (`handle_capture()`, `handle_text_submit()`,
-    `handle_start_record()`, etc.) and global state management.
+1.  **`app/`**: The running application.
+    *   `startup.py`: `main()` — Qt init, config, UI, API server, hotkeys, tray. The profile's
+        engines load in the background; requests before `ctx.ready` get "Still starting up".
+    *   `context.py`: `AppContext` — the one object handlers get: config, the **current** profile
+        and prompt, engines, session manager, cancel event, multi-capture state.
+        `try_start_processing()` / `finish_processing()` make sure only one request runs.
+    *   `feedback.py`: `run_request(ctx, work, label)` (the standard way to run a request on a
+        worker thread) and `show_status()` popups.
+    *   `handlers/`: `handle_*(ctx, ...)` for capture, multi-capture, text, audio, source cycling,
+        sessions, cancel, periodic screenshots, navigation.
+    *   `profiles.py`: picking the active profile and `switch_profile()` at runtime (validated,
+        engines rebuilt, saved). `engine_init.py` builds engines; `config_validation.py` has
+        `profile_problems()`.
+    *   `hotkeys.py`, `tray.py`, `lifecycle.py` (`exit_app()`: ordered shutdown, then `os._exit`).
+2.  **`core/`**: Business logic.
+    *   `sources/`: `TextSource`, `ScreenshotSource`, `SoundSource` (+ `whisperlive_manager.py`,
+        which tracks the WhisperLive processes it starts and stops them on exit); `sources/ocr/`
+        has the PaddleOCR engines.
+    *   `llm/`: engines (`claude_code`, `google_genai`, `ollama`, `gemini_cli`, `antigravity`,
+        `litellm`) on `LLMEngine` (`base.py`). Callers use `LLMEngine.generate()`, which raises
+        `LLMError` (`errors.py`, with `retryable`); engines may still report errors as
+        `"Error..."` strings, which `generate()` converts. `history_turns()` /
+        `history_messages()` give the capped chat history (`history_max_turns`,
+        `history_max_chars`); Google GenAI and LiteLLM send it as real multi-turn messages.
+        `embeddings.py` raises `EmbeddingError` instead of returning zero vectors.
+    *   `pipeline/`: `process_pipeline()` builds Source → prompt → LLM (with retry and an optional
+        concurrent fallback) → sink → session save. The fallback gets a `LinkedCancel` that is set
+        as soon as the main model has answered.
+    *   `sinks/`: `PopupSink`, `AudioSink` (Piper TTS), `CompositeSink`.
+    *   `sessions/`: `store.py` (paths, legacy migration, `update_session()` — every write is a
+        locked read-modify-write, so concurrent writers never lose changes), `timeline.py`,
+        `index.py` (background embedding index, merged re-index requests, cached reads),
+        `export.py` (Markdown / JSON). `session_manager.py`: `SessionManager` for the *current*
+        session on top of these.
+    *   `ui/`: overlay widgets (`PopupWidget`, `PanelWidget`, `TextInputWidget`, `SubtitleWidget`,
+        `selector.py`, `pairing_dialog.py`), `UIManager`, and `signals.py` (`ui_signals`,
+        `app_callbacks`). `core/output.py` is a facade that re-exports `core.ui`.
+    *   `api_server.py` (FastAPI: REST + `/ws` for the Android app), `remote_auth.py` (API key
+        checks, secret redaction, pairing URI), `remote_control_server.py` (mouse/keyboard/action
+        handlers; actions go through `app_callbacks`).
+    *   `correction_engine.py`, `languagetool.py`: real-time corrections (LLM or LanguageTool).
+    *   `languages.py`: transcription languages shared by the panel, config UI and Android app.
+3.  **`ui/`**: PyQt6 dialogs above core: `config_ui.py` (settings, also opened from the panel's
+    ⚙ Settings and the tray), `session_browser.py` (browse, search, tag, export),
+    `context_manager_ui.py`, `timeline_widget.py`. Never do heavy I/O or LLM/embedding work on
+    the GUI thread; use a worker thread and a signal back (see `config_ui.reindex_all_sessions`).
+4.  **`config/`**: `settings.py` — `get_config()` returns an `AppConfig`: defaults
+    (`_get_default_config()`, the single source of defaults) < `config.json` < command line.
+    `save_config()` never writes unchanged command-line overrides; `update_config_file()` sets
+    single keys. Values whose type differs from the default's are dropped with a warning.
+    `profiles.json`, `prompts.json`, `llm_models.json` (`supports_ocr` = the model reads images).
+5.  **`services/`**: `ocr_service.py` (remote PaddleOCR), `diarization/`, `antigravity/`
+    (`127.0.0.1:8200`, `ANTIGRAVITY_HOST` / `ANTIGRAVITY_PORT` override), `mcp_server/`
+    (reads sessions through `core.sessions.store`), `whisperlive/` (git submodule; ignore it).
+6.  **`sessions/`**: Session data (`sessions/<id>/session.json`, images, screenshots,
+    transcription, `embeddings.json`).
+7.  **`tests/`**: Unit tests (`tests/test_*.py`, run by `pytest` and CI). `e2e/` and `sanity/` are
+    manual developer scripts: never run them autonomously.
+8.  **`scripts/`**:
+    *   `verify.ps1` / `verify.sh`: Ruff lint + format (`ruff.toml`), pytest (`pytest.ini`), Qodana
+        (`qodana.yaml`, interpreter built by `qodana_bootstrap.sh`), and SonarQube
+        (`sonar-project.properties`, server started by `sonarqube_up.sh`, token from
+        `SONAR_TOKEN`). The Android app is not linted by these scripts.
+    *   Qodana runs through `scripts/qodana_scan.sh`, which scans a copy of our sources (without the
+        WhisperLive submodule) in WSL's `~/.cache/snapsolve-qodana/src`. When Qodana indexes the
+        submodule, its `python_requires=">=3.9"` makes it report valid code such as `str | None` as
+        "Invalid type annotation" by the hundred, and that sticks in its cache: if it ever happens,
+        delete everything in `~/.cache/snapsolve-qodana/cache` except `snapsolve-venv` and `pip`.
+        Qodana 2026.2 needs `qodana.cloud` reachable at startup.
+    *   WSL stops the distro a few seconds after the last `wsl.exe` process exits, and Docker
+        containers inside (Qodana, SonarQube) stop with it. `verify.ps1` holds it open for the run;
+        do the same when using SonarQube from Windows by hand (`wsl -e sleep 3600` in another window).
+    *   `check_gpu.py` (GPU stack), `lock_requirements.py` (writes `requirements.lock` from the
+        verified environment), `ci_requirements.py` (the lock without the GPU stack, for CI).
+9.  **`android_remote_control/`**: Kotlin app. Pairs by scanning the desktop's QR code
+    (`snapsolve://pair?host=&port=&key=`), sends the key as `Authorization` on HTTP and on `/ws`.
+    Build with JDK 17+ (e.g. `JAVA_HOME=~/.jdks/corretto-21.*`): `gradlew assembleDebug`.
+10. **`main.py`**: calls `app.startup.main()`.
+11. **`.github/workflows/ci.yml`**: Ruff and the unit tests on Windows, without the GPU stack.
 
 ## Crucial Technical Constraints
 
@@ -104,8 +98,11 @@ This application relies on a strictly decoupled architecture:
   `keyboard.read_hotkey()` **must not** perform long-running blocking operations or attempt to update PyQt6 UI
   elements directly.
 * **UI Updates:** All updates to the UI from background threads (like LLM streaming chunks or hotkey callbacks) must be
-  dispatched to the main UI thread using `UISignals` (Qt signals/slots defined in `core/output.py`) or
+  dispatched to the main UI thread using `ui_signals` (Qt signals/slots in `core/ui/signals.py`) or
   `QTimer.singleShot()`.
+* **Requests:** start every user request with `run_request(ctx, work, label)` (`app/feedback.py`). It refuses a
+  second request while one runs (atomically) and ends the busy state when `work` returns or raises. Never check
+  `ctx.is_processing` and then claim it separately.
 * **Qt Event Handlers:** When implementing Qt event handlers (e.g., `mousePressEvent`, `keyPressEvent`, `paintEvent`, etc.),
   you must add `# noinspection PyPep8Naming` before the method definition. Qt requires camelCase naming for
   event handlers, which conflicts with PEP 8 naming conventions. Example:
@@ -125,7 +122,10 @@ This application relies on a strictly decoupled architecture:
 ### Concurrent LLM Execution
 
 * The app supports running a main model and a fallback model concurrently via `ConcurrentSinkWrapper` (located in
-  `core/pipeline/pipeline.py`, not in `core/sinks/`).
+  `core/pipeline/pipeline.py`, not in `core/sinks/`). The fallback may use another provider
+  (`fallback_llm_engine` in the profile) and is cancelled once the main model has answered.
+* Failures are `LLMError`s; retries happen only when `retryable` is true. Don't add new `"Error..."` return
+  strings to engines; raise `LLMError` instead.
 * When testing modifications to LLM engines or sinks, ensure that your changes handle the abrupt replacement of fallback
   text with main model text correctly.
 * Engines implement a `warmup()` method. When dealing with engine instantiation, remember to call this method to
@@ -133,13 +133,13 @@ This application relies on a strictly decoupled architecture:
 
 ### Audio Processing
 
-* **Audio Recording:** The `SoundSource` (`core/sources/sound.py`, 489 lines) uses background threading for audio
+* **Audio Recording:** The `SoundSource` (`core/sources/sound.py`) uses background threading for audio
   recording to avoid blocking the UI.
 * **Speech Recognition:** Google Speech-to-Text is used for transcription. Ensure proper error handling for network issues
   or unrecognized speech.
 * **Real-time Transcription:** WhisperLive integration in `SoundSource` manages the server process lifecycle (health
   check, startup, warmup, cleanup) and streams audio to a local WhisperLive server for real-time subtitles via
-  `SubtitleWidget` in `core/output.py`.
+  `SubtitleWidget` in `core/ui/subtitle_widget.py`.
 * **Audio Devices:** The application supports configurable audio input and output devices. Always validate device names
   and handle cases where specified devices are not available.
 * **TTS Integration:** Piper TTS (`AudioSink` in `core/sinks/audio.py`) runs in a separate daemon thread. It strips
@@ -155,11 +155,21 @@ This application relies on a strictly decoupled architecture:
 
 ### Output & Rendering
 
-* The `PopupSink` delegates rendering to `PopupWidget` in `core/output.py`, which uses a PyQt6 `QWebEngineView`
+* The `PopupSink` delegates rendering to `PopupWidget` in `core/ui/popup_widget.py`, which uses a PyQt6 `QWebEngineView`
   powered by `marked.js`, `KaTeX`, and `Mermaid.js`.
 * This enables rich Markdown, LaTeX math, syntax-highlighted code blocks, and diagram rendering with streaming updates.
-* If you need to add new rendering features, modify `core/output.py` (specifically the `PopupWidget` class and its
-  HTML/JS template). Do **not** introduce additional rendering libraries without good reason.
+* If you need to add new rendering features, modify `core/ui/popup_widget.py` and its HTML/JS template
+  (`core/web_assets/popup.html`). Do **not** introduce additional rendering libraries without good reason.
+
+### Remote Control API
+
+* The API server (`core/api_server.py`) can move the mouse and type, so it never runs without a key: startup
+  generates `api_server_key` when it is empty. Every HTTP route uses `Depends(verify_api_key)` and `/ws` checks the
+  key (header or `?key=`) before accepting. Add the dependency to any new route.
+* `api_server_host` defaults to `127.0.0.1`; `0.0.0.0` is needed for the phone. `/config` masks every key whose
+  name ends in `key`, `token`, `secret` or `password` (`core.remote_auth.redact_secrets`).
+* Route handlers that block (pyautogui, keyboard, disk, embeddings) are plain `def` so FastAPI runs them in its
+  thread pool; the WebSocket runs its handlers with `asyncio.to_thread`.
 
 ### Antigravity Service
 
@@ -180,7 +190,8 @@ This application relies on a strictly decoupled architecture:
 ## General Practices
 
 * **Speed is critical:** Prioritize optimizations that reduce time-to-first-token.
-* **Logging:** Use the existing logging structures. When popping up notifications, distinguish between "log" messages (
+* **Logging:** Use `logging.getLogger(__name__)`; `print()` is rejected by Ruff (`T20`) outside scripts, tests and
+  services. Never log prompts, answers, OCR text or transcripts; log sizes or counts instead. When popping up notifications, distinguish between "log" messages (
   auto-closing) and "result" messages (staying open).
 * **Clean Code:** Always remove unused imports, variables, and function arguments. Optimize imports.
 * **Types:** Always add type hints and annotations when practical. If using a `class | None` pattern, always assert that
@@ -211,7 +222,7 @@ This application relies on a strictly decoupled architecture:
   - Makes the class interface clear and predictable
 * **Code Formatting:** **CRITICAL** - Always respect the `.editorconfig` file settings for code formatting:
   - **Indentation:** Use 4 spaces for indentation (no tabs)
-  - **Line Length:** Maximum line length of 120 characters
+  - **Line Length:** 88 characters for Python (`ruff.toml`, enforced by `ruff format`)
   - **Line Endings:** Use CRLF (`\r\n`) line endings on Windows
   - **Final Newlines:** Do not insert final newlines at end of files
   - **File Encoding:** Use UTF-8 encoding
@@ -232,8 +243,8 @@ This application relies on a strictly decoupled architecture:
   update `ui/config_ui.py` to allow the user to select them.
 * **Profile Management:** When adding new configuration options, consider whether they should be profile-specific or
   global settings. Update `profiles.json` structure accordingly.
-* **Hotkey Management:** New hotkeys should be added to the default configuration in `config/settings.py` and properly
-  handled in the main application logic.
+* **Hotkey Management:** New hotkeys go in the default configuration in `config/settings.py` and in `_actions()` in
+  `app/hotkeys.py` (a test checks that every configured action has a handler).
 * Sanity Tests:
     *   The `tests/sanity/` folder contains standalone sanity check scripts (e.g. testing the microphone, testing the OCR without the full app).
     *   These files MUST be entirely self-contained. Do not import or reference logic modules from the main application codebase inside these scripts.
@@ -253,6 +264,11 @@ This application relies on a strictly decoupled architecture:
 * Audio recording tests use virtual audio devices for TTS verification.
 * Never modify E2E test files without understanding the full test infrastructure and requirements.
 
+### Unit Tests
+
+* `tests/test_*.py` run with `pytest` (configured in `pytest.ini`) locally, in `scripts/verify.ps1`, and in CI.
+  Add a test with every behaviour change; keep them free of real hardware, network and GPU.
+
 ### Component Testing
 * Sanity tests should be self-contained and not depend on the main application logic.
 * Audio tests require proper device configuration and may need specific test files (e.g., `test_sound.wav`).
@@ -269,7 +285,7 @@ WhisperLive and the diarization service run faster-whisper on CUDA in their own 
   * Without Qt loaded, importing `paddle` first makes a later `import torch` or `import ctranslate2` fail with
     `OSError: [WinError 127]`.
   * With PyQt6 WebEngine loaded, `import torch` **before** `paddleocr` segfaults the process.
-  * The working order is the app's: `PyQt6.QtWebEngineWidgets` first (see `main.py`), then PaddleOCR, then torch
+  * The working order is the app's: `PyQt6.QtWebEngineWidgets` first (see `app/startup.py`), then PaddleOCR, then torch
     (lazily, for local embeddings). Keep the early `import PyQt6.QtWebEngineWidgets  # noqa: F401` lines; do not
     preload torch.
 * `pytest-qt` breaks `QtWebEngineCore` loading, so `pytest.ini` disables it.

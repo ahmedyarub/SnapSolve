@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-# Monkey-patch print to write to stderr, preventing accidental output (like SessionManager's prints)
+# Monkey-patch print to write to stderr, preventing accidental output
 # from corrupting the MCP stdio JSON-RPC protocol
 _original_print = builtins.print
 
@@ -23,8 +23,7 @@ root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, root_dir)
 os.chdir(root_dir)
 
-from config.settings import get_config  # noqa: E402
-from core.session_manager import SessionManager  # noqa: E402
+from core.sessions import store  # noqa: E402
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -33,21 +32,15 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP Server
 mcp = FastMCP("SnapSolve MCP Server")
 
-# Global SessionManager instance
-_session_manager: SessionManager | None = None
 
-
-def get_session_manager() -> SessionManager:
-    """Lazy initialize the SessionManager."""
-    global _session_manager
-    if _session_manager is None:
-        try:
-            config = get_config()
-        except Exception as e:
-            logger.warning(f"Failed to load config: {e}. Using empty config.")
-            config = {}
-        _session_manager = SessionManager(config)
-    return _session_manager
+def _read_transcription(session_id: str) -> str | None:
+    """The session's transcript, or None if it has none."""
+    path = store.session_transcription_path(session_id)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
 
 
 @mcp.tool()
@@ -62,9 +55,7 @@ def list_sessions(limit: int = 20, offset: int = 0) -> str:
     Returns:
         A formatted string detailing the recent sessions.
     """
-    manager = get_session_manager()
-    sessions = manager.list_all_sessions()
-    sessions.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+    sessions = store.list_sessions()  # newest first
 
     results = sessions[offset : offset + limit]
     if not results:
@@ -96,8 +87,7 @@ def get_session(session_id: str) -> str:
     Returns:
         A formatted string containing the session's history and details.
     """
-    manager = get_session_manager()
-    session_data = manager.load_session_data(session_id)
+    session_data = store.read_session(session_id)
 
     if not session_data:
         return f"Session with ID '{session_id}' not found."
@@ -131,9 +121,7 @@ def get_session(session_id: str) -> str:
                 output.append(f"AI Response:\n{response}\n")
 
     # Append full transcription if available
-    manager.current_session_id = session_id
-    manager.transcription_file = session_data.get("transcription_file")
-    transcription = manager.get_full_transcription()
+    transcription = _read_transcription(session_id)
     if transcription:
         output.append("--- Full Transcription ---")
         output.append(transcription)
@@ -153,19 +141,16 @@ def search_sessions(query: str, limit: int = 10) -> str:
     Returns:
         A formatted string of matching sessions.
     """
-    manager = get_session_manager()
-
     # We will use simple text matching over history to avoid requiring embeddings
     # for the basic MCP search, which is faster and easier for generic text search.
-    sessions = manager.list_all_sessions()
-    sessions.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+    sessions = store.list_sessions()  # newest first
 
     q_lower = query.lower()
     matches = []
 
     for s in sessions:
         s_id = s.get("id")
-        session_data = manager.load_session_data(s_id)
+        session_data = store.read_session(s_id)
         if not session_data:
             continue
 
@@ -182,24 +167,18 @@ def search_sessions(query: str, limit: int = 10) -> str:
         # Check history
         if not found:
             for interaction in history:
-                prompt = interaction.get("prompt", "")
-                response = interaction.get("response", "")
-                extracted = interaction.get("extracted_text", "")
-
-                if (
-                    q_lower in prompt.lower()
-                    or q_lower in response.lower()
-                    or (extracted and q_lower in extracted.lower())
-                ):
+                fields = (
+                    interaction.get("prompt"),
+                    interaction.get("response"),
+                    interaction.get("extracted_text"),
+                )
+                if any(f and q_lower in f.lower() for f in fields):
                     found = True
                     break
 
         # Check transcription
-        if not found and session_data.get("transcription_file"):
-            # Temporary set for getting transcription
-            manager.current_session_id = s_id
-            manager.transcription_file = session_data.get("transcription_file")
-            transcription = manager.get_full_transcription()
+        if not found:
+            transcription = _read_transcription(s_id)
             if transcription and q_lower in transcription.lower():
                 found = True
 
@@ -228,8 +207,7 @@ def get_tags() -> str:
     Returns:
         A comma-separated list of tags.
     """
-    manager = get_session_manager()
-    sessions = manager.list_all_sessions()
+    sessions = store.list_sessions()
 
     all_tags = set()
     for s in sessions:

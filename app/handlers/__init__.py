@@ -1,4 +1,7 @@
-"""Handler re-exports — single import point for all ``handle_*`` functions."""
+"""Handler re-exports — single import point for all ``handle_*`` functions.
+
+Handlers take the :class:`app.context.AppContext` as their first argument.
+"""
 
 from app.handlers.audio import handle_start_record, handle_stop_record
 from app.handlers.cancel import handle_cancel

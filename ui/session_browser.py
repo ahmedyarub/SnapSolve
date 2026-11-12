@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import (
     QColor,
     QDesktopServices,
@@ -18,6 +18,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -226,7 +227,14 @@ class SessionBrowserDialog(QDialog):
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("Filter by tag or session name…")
         self.filter_input.setClearButtonEnabled(True)
-        self.filter_input.textChanged.connect(self._apply_filter)
+        # Filter once typing pauses, not on every keystroke.
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(250)
+        self._filter_timer.timeout.connect(
+            lambda: self._apply_filter(self.filter_input.text())
+        )
+        self.filter_input.textChanged.connect(lambda _text: self._filter_timer.start())
         filter_bar.addWidget(filter_icon)
         filter_bar.addWidget(self.filter_input)
 
@@ -379,6 +387,13 @@ class SessionBrowserDialog(QDialog):
         self.btn_webhook.setToolTip("Send this session to the configured webhook URL")
         bottom_layout.addWidget(self.btn_webhook)
 
+        self.btn_export = QPushButton("💾 Export…")
+        self.btn_export.setStyleSheet(self.btn_webhook.styleSheet())
+        self.btn_export.setEnabled(False)
+        self.btn_export.clicked.connect(self._handle_export)
+        self.btn_export.setToolTip("Save this session as Markdown or JSON")
+        bottom_layout.addWidget(self.btn_export)
+
         if self.selection_mode:
             self.btn_select = QPushButton("✔️ Select Session")
             self.btn_select.setStyleSheet("""
@@ -433,7 +448,6 @@ class SessionBrowserDialog(QDialog):
         if not self._current_session_id:
             return
 
-        import app.state as state
         from config.settings import load_config
         from core.webhook import trigger_webhook
 
@@ -448,9 +462,39 @@ class SessionBrowserDialog(QDialog):
             )
             return
 
-        if state.session_manager:
-            trigger_webhook(config, state.session_manager, self._current_session_id)
-            self.status_bar.showMessage("Webhook triggered manually.", 3000)
+        trigger_webhook(config, self._current_session_id)
+        self.status_bar.showMessage("Webhook triggered manually.", 3000)
+
+    def _handle_export(self):
+        """Save the selected session as Markdown or JSON."""
+        if not self._current_session_id:
+            return
+        from core.sessions.export import export_session
+
+        path, chosen_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export session",
+            f"session-{self._current_session_id[:8]}.md",
+            "Markdown (*.md);;JSON (*.json)",
+        )
+        if not path:
+            return
+        fmt = (
+            "json"
+            if path.lower().endswith(".json") or "JSON" in chosen_filter
+            else "md"
+        )
+        content = export_session(self._current_session_id, fmt)
+        if content is None:
+            QMessageBox.warning(self, "Export", "This session no longer exists.")
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as e:
+            QMessageBox.warning(self, "Export", f"Could not save the file:\n{e}")
+            return
+        self.status_bar.showMessage(f"Exported to {path}", 5000)
 
     def _toggle_search_type(self, key: str, checked: bool):
         self.search_types[key] = checked
@@ -563,19 +607,19 @@ class SessionBrowserDialog(QDialog):
         matching_session_ids = set()
 
         if filter_lower:
-            import app.state as state
+            from core.sessions.index import get_all_embeddings
 
-            manager = state.session_manager
-            if manager:
-                allowed_types = {k for k, v in self.search_types.items() if v}
-                chunks = manager.get_all_embeddings()
-                for c in chunks:
-                    if c.get("type") in allowed_types:
-                        if filter_lower in c.get("text", "").lower():
-                            s_id = c.get("session_id")
-                            if s_id:
-                                matching_session_ids.add(s_id)
-                                self._search_matches.append(c)
+            allowed_types = {k for k, v in self.search_types.items() if v}
+            # Cached per file; cheap to call on every (debounced) keystroke.
+            for c in get_all_embeddings():
+                if (
+                    c.get("type") in allowed_types
+                    and filter_lower in c.get("text", "").lower()
+                ):
+                    s_id = c.get("session_id")
+                    if s_id:
+                        matching_session_ids.add(s_id)
+                        self._search_matches.append(c)
 
         for idx, meta in enumerate(self._sessions_meta):
             s_id = meta.get("id")
@@ -772,6 +816,8 @@ class SessionBrowserDialog(QDialog):
                 self.timeline.load_session(session_id)
                 if hasattr(self, "btn_webhook"):
                     self.btn_webhook.setEnabled(True)
+                if hasattr(self, "btn_export"):
+                    self.btn_export.setEnabled(True)
 
             # Show transcription if it exists for the root session
             data = self._get_session_data(session_id)
@@ -824,6 +870,8 @@ class SessionBrowserDialog(QDialog):
         self._current_session_id = session_id
         if hasattr(self, "btn_webhook"):
             self.btn_webhook.setEnabled(True)
+        if hasattr(self, "btn_export"):
+            self.btn_export.setEnabled(True)
 
         data = self._get_session_data(session_id)
         if not data:

@@ -98,7 +98,8 @@ class AntigravityEngine(LLMEngine):
                 f"{self.service_url}/chat",
                 json=payload,
                 stream=True,
-                timeout=(10, None),  # 10s connect, no read timeout
+                # 10 s to connect; then up to 5 min of silence between events.
+                timeout=(10, 300),
             )
             resp.raise_for_status()
         except requests.ConnectionError:

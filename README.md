@@ -8,16 +8,20 @@ answers, and provides responses via frameless popup notifications and/or local T
 * **Multiple Input Sources:** Support for text input, screen capture (images), and audio input with speech recognition.
 * **Fast Screen Capture:** Capture user-defined areas with minimal overhead.
 * **Multiple LLM Backends:** Claude through your Claude subscription (default), Gemini (via CLI or Python SDK), Google GenAI API, LiteLLM, or a local Ollama server.
-* **Concurrent Fallback Model:** Process requests on multiple models simultaneously to ensure reliability and speed.
+* **Concurrent Fallback Model:** Process requests on two models at once; the fallback can use another provider
+  (`fallback_llm_engine`) and is stopped as soon as the main model answers.
 * **Chat History:** Maintain conversational context over multiple queries with session management.
-* **Session Browser:** Browse past sessions, view prompts and formatted responses, rename sessions, and add tags for filtering.
-* **Configurable Profiles:** Seamlessly switch between different models, prompts, and settings.
+* **Session Browser:** Browse past sessions, view prompts and formatted responses, rename sessions, add tags for
+  filtering, and export a session as Markdown or JSON.
+* **Configurable Profiles:** Switch between models, prompts, and settings while the app runs (panel selector or
+  the tray's Profile menu); settings saved in ⚙ Settings apply without a restart for the profile's engines.
 * **Advanced OCR:** Optional PaddleOCR integration for reliable text extraction before prompting.
 * **Flexible Output Sinks:** Render rich Markdown answers in a floating popup and/or read them aloud via TTS.
 * **Background Mode:** Run the app seamlessly from your system tray.
 * **Multi-Capture Support:** Capture multiple screen regions in sequence for combined processing.
 * **Audio Input:** Record and transcribe audio input using speech recognition. Real-time transcription is also available using WhisperLive.
 * **Remote OCR Service:** Offload OCR processing to a remote server.
+* **Android Remote:** Control the PC from your phone; pair it by scanning a QR code (see below).
 
 For a full, detailed breakdown of all features, see [FEATURES.md](docs/FEATURES.md).
 For technical details regarding how data flows through the application, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -27,10 +31,15 @@ For details on streaming screen and audio from a remote device, see [REMOTE_CAPT
 
 ## Setup & Installation
 
-1. Install Python 3.10+
+1. Install Python 3.12.
 2. Install dependencies, with the GPU constraints so pip can't swap the CUDA stack:
    ```bash
    pip install -r requirements.txt -c constraints-gpu.txt
+   ```
+   Or install the exact versions known to work together (`requirements.lock`, regenerated with
+   `scripts/lock_requirements.py` after an upgrade passes `check_gpu.py`):
+   ```bash
+   pip install -r requirements.lock
    ```
 3. Check that the NVIDIA GPU is used (PaddleOCR and faster-whisper must report `GPU`):
    ```bash
@@ -258,10 +267,19 @@ Create a file named `config.json` in the same directory as the script. Example:
 * `tts_output_device_name`: Name of the audio device for TTS output (optional).
 * `audio_input_device_name`: Name of the audio device for audio input/speech recognition (optional).
 * `show_control_panel`: Set to `true` to show the control panel on startup.
-* `active_profile_id`: ID of the profile to use from `profiles.json`.
+* `active_profile_id`: ID of the profile to use from `profiles.json` (also set when you switch profiles in the app).
+* `history_max_turns` / `history_max_chars`: How much chat history is sent with each request (default 10 turns,
+  24,000 characters; older turns are dropped first).
+* `claude_timeout` / `llm_request_timeout`: Longest a single answer may take, in seconds (default 600).
+* `enable_api_server`, `api_server_host`, `api_server_port`, `api_server_key`: The remote-control API (see
+  "Android Remote" below). The key is generated on first start.
 * `ocr_config`: Configuration for remote OCR service (host and port).
-* Profile-specific settings are managed in `profiles.json`, including `llm_engine`, `model`, `ocr_engine`, `prompt_id`,
-  and `enable_chat_sessions`.
+* Profile-specific settings are managed in `profiles.json`, including `llm_engine`, `model`, `fallback_model`,
+  `fallback_llm_engine` (optional; another provider for the fallback), `ocr_engine`, `prompt_id`, and
+  `enable_chat_sessions`. An invalid profile (unknown engine, or a model that cannot read images with no OCR engine) is
+  reported at startup or when you switch to it.
+
+Command-line flags apply to that run only: they are never saved into `config.json`.
 
 ### Example Combinations
 
@@ -375,7 +393,8 @@ python main.py --output-mode both --hotkey-capture "ctrl+shift+x" --hotkey-resel
       in sequence.
 4. If you need to **reselect coordinates** while the app is running, press the reselect hotkey (default:
    `Ctrl + Alt + Shift + S`).
-5. Use the **control panel** to switch between input sources, change profiles, and manage sessions.
+5. Use the **control panel** to switch between input sources, change profiles, open ⚙ Settings, pair a phone, and
+   manage sessions. Right after start the engines load in the background; a "Ready" popup says when they are.
 6. Use the **Context Manager** to configure per-session context: toggle which categories (transcriptions, questions,
    answers) are included in the prompt, set a project folder for agentic coding, or import context from previous sessions.
 
@@ -387,18 +406,39 @@ Default hotkeys (configurable in `config.json`):
 * `Ctrl + Alt + Shift + S` - Reselect coordinates
 * `Ctrl + Alt + Shift + M` - Start multi-capture mode
 * `Ctrl + Alt + Shift + N` - End multi-capture mode
-* `Ctrl + Alt + Shift + T` - Cancel multi-capture mode
+* `Ctrl + Alt + T` - Cancel multi-capture mode
 * `Ctrl + Alt + Shift + P` - Toggle control panel
 * `Ctrl + Alt + Shift + H` - New chat session
 * `Ctrl + Alt + Shift + I` - Toggle context chat_sessions
 * `Ctrl + Alt + Shift + V` - Toggle all widget visibility
 * `Ctrl + Alt + U` - Open URL input
 * `Ctrl + Alt + Shift + B` - Open session browser
+* `Ctrl + Alt + Shift + Q` - Quit
+
+Test hotkeys for subtitles (`Ctrl + Alt + Shift + T` and `+ 1` … `+ 5`) are off unless `"debug_hotkeys": true`.
 
 ## Background Mode
 
 You can run the application minimized to your system tray by adding the `--background` flag or setting
-`"background": true` in `config.json`. To exit, right-click the system tray icon and select "Exit".
+`"background": true` in `config.json`. The tray menu also has Profile, Settings… and Pair Android Remote. To exit,
+right-click the system tray icon and select "Exit".
+
+## Android Remote
+
+The companion app in `android_remote_control/` controls the PC (touchpad, actions, typing) over your local network.
+
+1. In `config.json` set `"enable_api_server": true` and `"api_server_host": "0.0.0.0"`, then restart SnapSolve. It
+   generates an API key on first start; every request and the WebSocket must carry it.
+2. Click **📱 Pair Phone** in the panel (or the tray's **Pair Android Remote**) and scan the QR code with the app's
+   **Scan code** button. You can also type the address, port and key shown in the dialog.
+
+The API is also available to scripts: send the key in the `Authorization` header (`Bearer <key>` works too). See the
+`bruno/` collection; set `api_key` in its environment.
+
+## Development
+
+* `pwsh -File scripts/verify.ps1` runs Ruff, the unit tests, Qodana and SonarQube (see `AGENTS.md`).
+* CI (`.github/workflows/ci.yml`) runs Ruff and the unit tests on Windows for every push.
 
 ## License
 

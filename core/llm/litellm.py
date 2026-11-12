@@ -1,31 +1,30 @@
 import base64
 import mimetypes
-import os
 import threading
 
 from core.sinks.base import Sink
 
 from .base import LLMEngine
 
+# Model prefix -> config key. Keys go with each request rather than into
+# os.environ, where every library and child process would see them.
+_KEY_FOR_PROVIDER = {
+    "openai": "openai_api_key",
+    "anthropic": "anthropic_api_key",
+    "groq": "groq_api_key",
+    "openrouter": "openrouter_api_key",
+}
+
 
 class LiteLLMEngine(LLMEngine):
     def __init__(self, model: str, config: dict, session_manager=None):
         super().__init__(model, session_manager=session_manager)
         self.config = config
-        self._set_env_keys()
-        print(f"[LiteLLMEngine] Initialized with model: {self.model}")
 
-    def _set_env_keys(self):
-        keys = {
-            "openai_api_key": "OPENAI_API_KEY",
-            "anthropic_api_key": "ANTHROPIC_API_KEY",
-            "groq_api_key": "GROQ_API_KEY",
-            "openrouter_api_key": "OPENROUTER_API_KEY",
-        }
-        for config_key, env_var in keys.items():
-            val = self.config.get(config_key, "")
-            if val:
-                os.environ[env_var] = val
+    def _api_key(self) -> str | None:
+        provider = self.model.split("/", 1)[0] if "/" in self.model else "openai"
+        key = self.config.get(_KEY_FOR_PROVIDER.get(provider, ""), "")
+        return key or None  # None lets LiteLLM fall back to its own env lookup
 
     def warmup(self, status_callback=None) -> bool:
         if status_callback:
@@ -33,7 +32,6 @@ class LiteLLMEngine(LLMEngine):
         try:
             import litellm  # noqa: F401  (availability check)
 
-            self._set_env_keys()
             if status_callback:
                 status_callback("LiteLLM engine warmup complete.")
             return True
@@ -60,10 +58,12 @@ class LiteLLMEngine(LLMEngine):
         try:
             import litellm
 
-            print("[LiteLLMEngine] Calling litellm.completion...")
-
             response = litellm.completion(
-                model=self.model, messages=messages, stream=True
+                model=self.model,
+                messages=messages,
+                stream=True,
+                api_key=self._api_key(),
+                timeout=float(self.config.get("llm_request_timeout", 600)),
             )
 
             ans_chunks = []
@@ -97,11 +97,8 @@ class LiteLLMEngine(LLMEngine):
             if buffer and sink and not (cancel_event and cancel_event.is_set()):
                 sink.process_chunk(buffer, is_main=is_main)
 
-            ans = "".join(ans_chunks)
-            print("[LiteLLMEngine] Request finished successfully")
-            return ans
+            return "".join(ans_chunks)
         except Exception as e:
-            print(f"[LiteLLMEngine] Error during request: {e!s}")
             return f"Error calling LiteLLM API: {e!s}"
 
     def process_text(
@@ -119,16 +116,13 @@ class LiteLLMEngine(LLMEngine):
         if status_callback:
             status_callback(f"Processing with LiteLLM ({self.model})...")
 
-        print(f"[LiteLLMEngine] Text Request started for model: {self.model}")
-
         try:
             import litellm  # noqa: F401  (availability check)
         except ImportError:
             return "Error: litellm is not installed. Please install it."
 
-        self._set_env_keys()
-        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
-        messages = [{"role": "user", "content": full_prompt}]
+        messages = self.history_messages(enable_chat_sessions)
+        messages.append({"role": "user", "content": prompt})
 
         return self._execute_stream(messages, sink, is_main, cancel_event)
 
@@ -148,15 +142,10 @@ class LiteLLMEngine(LLMEngine):
         if status_callback:
             status_callback(f"Processing image with LiteLLM ({self.model})...")
 
-        print(f"[LiteLLMEngine] Image Request started for model: {self.model}")
-
         try:
             import litellm  # noqa: F401  (availability check)
         except ImportError:
             return "Error: litellm is not installed. Please install it."
-
-        self._set_env_keys()
-        full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
 
         try:
             with open(image_path, "rb") as image_file:
@@ -168,12 +157,13 @@ class LiteLLMEngine(LLMEngine):
             return f"Error reading image: {e!s}"
 
         content = [
-            {"type": "text", "text": full_prompt},
+            {"type": "text", "text": prompt},
             {
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"},
             },
         ]
-        messages = [{"role": "user", "content": content}]
+        messages = self.history_messages(enable_chat_sessions)
+        messages.append({"role": "user", "content": content})
 
         return self._execute_stream(messages, sink, is_main, cancel_event)

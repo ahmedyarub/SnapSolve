@@ -1,106 +1,90 @@
 """Text input pipeline handler."""
 
-import app.state as state
-from app.handlers.capture import _process_capture_result, _setup_capture_sinks
-from app.state import _make_status_callback, _run_in_processing_thread, set_processing
+import logging
+
+from app.context import AppContext
+from app.feedback import run_request, status_callback
+from app.handlers.capture import (
+    llm_unavailable,
+    process_capture_result,
+    setup_capture_sinks,
+)
 from core.pipeline import process_pipeline
 from core.sources import TextSource
 
+logger = logging.getLogger(__name__)
 
-def _execute_text_pipeline(
-    config,
-    active_profile,
-    prompt_text,
+
+def execute_text_pipeline(
+    ctx: AppContext,
+    prompt_text: str,
     status_update,
-    text=None,
-    image_paths=None,
-    source_name="text",
+    text: str | None = None,
+    image_paths: list[str] | None = None,
+    source_name: str = "text",
     post_action=None,
 ):
-    """Execute text pipeline."""
+    """Send ``text`` (default: ``prompt_text``) through the LLM pipeline.
+
+    Runs on the request's worker thread; returns the answer, or None.
+    """
     if text is None:
         text = prompt_text
+    if llm_unavailable(ctx):
+        return None
 
-    # Pre-flight: verify LLM engine is reachable
-    if state.llm_engine_instance:
-        available, err_msg = state.llm_engine_instance.is_available()
-        if not available:
-            from app.state import _show_status_popup
-
-            _show_status_popup(config, f"⚠️ LLM Unavailable: {err_msg}", auto_close=5000)
-            return None
-
-    main_model = active_profile.get("model", state.DEFAULT_MODEL_NAME)
-    fallback_model = active_profile.get("fallback_model", "None")
-
-    sink, popup_sink, show_headers = _setup_capture_sinks(
-        config, active_profile, main_model, fallback_model
-    )
+    with ctx.engines_lock:  # a profile switch waits until this request is set up
+        llm, fallback_llm = ctx.llm_engine, ctx.fallback_llm_engine
+        chat_sessions = ctx.profile.get("enable_chat_sessions", True)
+        sink, popup_sink, show_headers = setup_capture_sinks(ctx)
 
     temp_source = TextSource()
     temp_source._source_name = source_name
-
-    assert state.llm_engine_instance is not None
+    assert llm is not None
 
     result = process_pipeline(
         source=temp_source,
-        llm=state.llm_engine_instance,
+        llm=llm,
         prompt_text=prompt_text,
         status_callback=status_update,
-        session_manager=state.session_manager,
-        enable_chat_sessions=active_profile.get("enable_chat_sessions", True),
+        session_manager=ctx.session_manager,
+        enable_chat_sessions=chat_sessions,
         sink=sink,
-        fallback_llm=state.fallback_llm_engine_instance,
+        fallback_llm=fallback_llm,
         text=text,
         image_paths=image_paths,
-        cancel_event=state.cancel_event,
-        max_retries=config.get("llm_max_retries", 3),
-        base_delay=config.get("llm_retry_base_delay", 5),
+        cancel_event=ctx.cancel_event,
+        max_retries=ctx.config.get("llm_max_retries", 3),
+        base_delay=ctx.config.get("llm_retry_base_delay", 5),
     )
 
     if hasattr(sink, "finish"):
         sink.finish()
 
-    if state.cancel_event.is_set():
-        print("Text processing was cancelled.")
+    if ctx.cancel_event.is_set():
+        logger.info("Text processing was cancelled.")
         return None
 
-    print(f"Result: {result}")
-
-    _process_capture_result(
-        result, show_headers, popup_sink, fallback_model, main_model, config
-    )
+    process_capture_result(ctx, result, show_headers, popup_sink)
 
     if post_action:
         try:
             post_action(result)
-        except Exception as e:
-            print(f"Error in post_action: {e}")
-
+        except Exception:
+            logger.exception("Error in post_action")
     return result
 
 
 def handle_text_submit(
-    config, active_profile, text, source_name="text", post_action=None
+    ctx: AppContext, text: str, source_name="text", post_action=None
 ):
     """Handle text input submission."""
-    if state.is_processing:
-        return
-
-    set_processing(True)
-    print(f"Processing text input: {text}")
-
-    status_update = _make_status_callback(config)
-
-    _run_in_processing_thread(
-        config,
-        lambda: _execute_text_pipeline(
-            config,
-            active_profile,
-            text,
-            status_update,
-            source_name=source_name,
-            post_action=post_action,
+    logger.info("Processing text input (%d chars)", len(text))
+    status_update = status_callback(ctx.config)
+    run_request(
+        ctx,
+        lambda: execute_text_pipeline(
+            ctx, text, status_update, source_name=source_name, post_action=post_action
         ),
-        error_label="processing text input",
+        "text input",
     )

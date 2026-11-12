@@ -1,13 +1,15 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
 import threading
-import time
 
 from core.sinks.base import Sink
 
 from .base import LLMEngine
+
+logger = logging.getLogger(__name__)
 
 
 def _execute_request(
@@ -20,33 +22,37 @@ def _execute_request(
     if cancel_event and cancel_event.is_set():
         return "Cancelled"
 
-    print(f"Executing command: {' '.join(cmd_args)}")
+    # The command line holds the prompt; log only that a request is made.
+    logger.info("Running the Gemini CLI")
 
     if status_callback:
         status_callback("Processing with Gemini CLI...")
 
     try:
-        # We can't really pass a cancel_event to subprocess.run natively without wrapping it in Popen and checking
-        # For simplicity, we just check before and after. If we want we could check while it runs.
         process = subprocess.Popen(
-            cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
         )
 
-        # Simple polling loop to support cancellation
-        while process.poll() is None:
-            if cancel_event and cancel_event.is_set():
-                process.terminate()
-                return "Cancelled"
-            time.sleep(0.1)
-
-        stdout, stderr = process.communicate()
+        # communicate() keeps draining both pipes (a long answer would otherwise
+        # fill one and hang the CLI); the short timeout lets us check for cancel.
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.2)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel_event and cancel_event.is_set():
+                    process.kill()
+                    process.communicate()
+                    return "Cancelled"
         if process.returncode != 0:
             return f"CLI Error: {stderr}"
 
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
-
-        print("Processing command complete.")
 
         data = json.loads(stdout)
         ans = data.get("response", "").strip()
@@ -99,7 +105,7 @@ class GeminiCLIEngine(LLMEngine):
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
-        print(f"[GeminiCLIEngine] Text Request started for model: {self.model}")
+        logger.info("Gemini CLI text request: %s", self.model)
 
         # noinspection PyDeprecation
         gemini_cmd = shutil.which("gemini")
@@ -126,7 +132,7 @@ class GeminiCLIEngine(LLMEngine):
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
-        print(f"[GeminiCLIEngine] Image Request started for model: {self.model}")
+        logger.info("Gemini CLI image request: %s", self.model)
 
         # noinspection PyDeprecation
         gemini_cmd = shutil.which("gemini")

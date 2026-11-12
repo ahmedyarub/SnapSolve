@@ -2,6 +2,7 @@ package com.snapremote.control
 
 import android.content.SharedPreferences
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -16,6 +17,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,7 +56,9 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
 
     private lateinit var ipAddressEditText: EditText
     private lateinit var portEditText: EditText
+    private lateinit var apiKeyEditText: EditText
     private lateinit var connectButton: Button
+    private lateinit var scanPairingButton: Button
     private lateinit var statusTextView: TextView
     private lateinit var touchpadView: TouchpadView
 
@@ -88,6 +93,11 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     /** Whether the client is currently connected to the server. */
     private var isConnected = false
 
+    /** Scans the QR code shown by the desktop's "Pair Phone" dialog. */
+    private val scanPairingCode = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { applyPairingUri(it) }
+    }
+
     /** Suppress feedback loop when syncing the language spinner from a server push. */
     private var suppressLangSync = false
 
@@ -109,7 +119,18 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         setupActionButtons()
         setupLanguageSpinner()
         setConnected(false) // Start in disconnected state
-        attemptAutoConnect()
+        val pairingLink = intent?.data
+        if (pairingLink != null) {
+            applyPairingUri(pairingLink.toString())
+        } else {
+            attemptAutoConnect()
+        }
+    }
+
+    /** A `snapsolve://pair` link opened while the app is already running. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.data?.let { applyPairingUri(it.toString()) }
     }
 
     override fun onDestroy() {
@@ -128,7 +149,9 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     private fun bindViews() {
         ipAddressEditText = findViewById(R.id.ipAddressEditText)
         portEditText = findViewById(R.id.portEditText)
+        apiKeyEditText = findViewById(R.id.apiKeyEditText)
         connectButton = findViewById(R.id.connectButton)
+        scanPairingButton = findViewById(R.id.scanPairingButton)
         statusTextView = findViewById(R.id.statusTextView)
         touchpadView = findViewById(R.id.touchpadView)
 
@@ -152,20 +175,47 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     // Persistence
     // -------------------------------------------------------------------------
 
-    /** Restore the last IP and port from SharedPreferences. */
+    /** Restore the last IP, port and API key from SharedPreferences. */
     private fun restoreSavedAddress() {
         val savedIp = prefs.getString(getString(R.string.pref_key_ip), "") ?: ""
-        val savedPort = prefs.getInt(getString(R.string.pref_key_port), 8080)
+        val savedPort = prefs.getInt(getString(R.string.pref_key_port), DEFAULT_PORT)
+        val savedKey = prefs.getString(getString(R.string.pref_key_api_key), "") ?: ""
         ipAddressEditText.setText(savedIp)
         portEditText.setText(savedPort.toString())
+        apiKeyEditText.setText(savedKey)
     }
 
-    /** Persist the current IP and port to SharedPreferences. */
-    private fun saveAddress(ip: String, port: Int) {
+    /** Persist the current IP, port and API key to SharedPreferences. */
+    private fun saveAddress(ip: String, port: Int, key: String) {
         prefs.edit {
             putString(getString(R.string.pref_key_ip), ip)
                 .putInt(getString(R.string.pref_key_port), port)
+                .putString(getString(R.string.pref_key_api_key), key)
         }
+    }
+
+    /**
+     * Fill in the address, port and key from a `snapsolve://pair?host=..&port=..&key=..`
+     * URI (the desktop's pairing QR code) and connect.
+     */
+    private fun applyPairingUri(text: String) {
+        val uri = Uri.parse(text)
+        val host = uri.getQueryParameter("host")
+        val port = uri.getQueryParameter("port")?.toIntOrNull()
+        val key = uri.getQueryParameter("key")
+        if (uri.scheme != "snapsolve" || uri.host != "pair" ||
+            host.isNullOrEmpty() || port == null || key.isNullOrEmpty()
+        ) {
+            Toast.makeText(this, R.string.toast_bad_pairing_code, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (isConnected) {
+            disconnect()
+        }
+        ipAddressEditText.setText(host)
+        portEditText.setText(port.toString())
+        apiKeyEditText.setText(key)
+        connectToServer()
     }
 
     /**
@@ -185,6 +235,14 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     // -------------------------------------------------------------------------
 
     private fun setupConnectButton() {
+        scanPairingButton.setOnClickListener {
+            scanPairingCode.launch(
+                ScanOptions()
+                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    .setPrompt(getString(R.string.scan_pairing_prompt))
+                    .setBeepEnabled(false),
+            )
+        }
         connectButton.setOnClickListener {
             if (isConnected) {
                 disconnect()
@@ -197,27 +255,39 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
     /** Attempt to connect to the SnapSolve server. */
     private fun connectToServer() {
         val ip = ipAddressEditText.text.toString().trim()
-        val port = portEditText.text.toString().toIntOrNull() ?: 8080
+        val port = portEditText.text.toString().toIntOrNull() ?: DEFAULT_PORT
+        val key = apiKeyEditText.text.toString().trim()
 
         if (ip.isEmpty()) {
             Toast.makeText(this, R.string.toast_enter_ip, Toast.LENGTH_SHORT).show()
             return
         }
+        if (key.isEmpty()) {
+            Toast.makeText(this, R.string.toast_enter_key, Toast.LENGTH_LONG).show()
+            return
+        }
 
-        remoteControlClient.setServerConfig(ip, port)
+        remoteControlClient.setServerConfig(ip, port, key)
         setStatusConnecting()
 
-        // First verify the server is reachable via HTTP, then open WebSocket
+        // First check that the server is reachable and accepts the key, then open the WebSocket
         lifecycleScope.launch {
-            val reachable = withContext(Dispatchers.IO) { remoteControlClient.testConnection() }
-            if (reachable) {
-                saveAddress(ip, port)
-                // Open the persistent WebSocket connection.
-                // onConnected() / onDisconnected() will be called via the listener.
-                remoteControlClient.connect()
-            } else {
-                setConnected(false)
-                Toast.makeText(this@MainActivity, R.string.toast_connect_failed, Toast.LENGTH_SHORT).show()
+            val check = withContext(Dispatchers.IO) { remoteControlClient.testConnection() }
+            when (check) {
+                ConnectionCheck.OK -> {
+                    saveAddress(ip, port, key)
+                    // Open the persistent WebSocket connection.
+                    // onConnected() / onDisconnected() will be called via the listener.
+                    remoteControlClient.connect()
+                }
+                ConnectionCheck.UNAUTHORIZED -> {
+                    setConnected(false)
+                    Toast.makeText(this@MainActivity, R.string.toast_wrong_key, Toast.LENGTH_LONG).show()
+                }
+                ConnectionCheck.UNREACHABLE -> {
+                    setConnected(false)
+                    Toast.makeText(this@MainActivity, R.string.toast_connect_failed, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -243,7 +313,7 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         runOnUiThread {
             setConnected(true)
             val ip = ipAddressEditText.text.toString().trim()
-            val port = portEditText.text.toString().toIntOrNull() ?: 8080
+            val port = portEditText.text.toString().toIntOrNull() ?: DEFAULT_PORT
             Toast.makeText(
                 this,
                 getString(R.string.toast_connected, ip, port),
@@ -517,5 +587,10 @@ class MainActivity : AppCompatActivity(), RemoteControlListener {
         }
 
         dialog.show()
+    }
+
+    private companion object {
+        /** Default port of the SnapSolve API server (`api_server_port`). */
+        const val DEFAULT_PORT = 3031
     }
 }

@@ -2,12 +2,13 @@
 #   pip install -r requirements.txt -c constraints-gpu.txt
 # paddlepaddle-gpu comes from the Paddle index (see README, "Local OCR with PaddleOCR").
 # Check the GPU stack after any upgrade:  python scripts/check_gpu.py
+# Exact, known-good versions of all of this: requirements.lock
+# (regenerate with scripts/lock_requirements.py).
 keyboard
 mouse
 pillow
 pystray
 google-genai
-pygments
 PyQt6
 PyQt6-WebEngine
 piper-tts
@@ -17,13 +18,15 @@ speechrecognition
 pyaudio
 paddleocr
 numpy
-pyqt6-sip
 opencv-python
 fastapi
+requests
+httpx
 resampy
 pydantic
 websockets>=13
 uvicorn
+segno
 sentence-transformers
 mcp
 SoundCard

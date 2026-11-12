@@ -1,54 +1,58 @@
 """Periodic screenshot handlers — toggle and configuration updates."""
 
-import app.state as state
-from app.state import _show_status_popup
-from config.settings import save_config
+import logging
+
+from app.context import AppContext
+from app.feedback import show_status
+from config.settings import update_config_file
 from core.output import set_periodic_screenshots_btn_state
 
+logger = logging.getLogger(__name__)
 
-def handle_toggle_periodic_screenshots(config):
+
+def handle_toggle_periodic_screenshots(ctx: AppContext):
     """Toggle periodic screenshots on/off and persist the setting."""
-    service = state.periodic_screenshot_service
+    service = ctx.periodic_screenshot_service
     if service is None:
-        print("[PeriodicScreenshots] Service not initialized")
+        logger.warning("Periodic screenshot service not initialized")
         return
 
-    new_enabled = not service.is_running
-    config["periodic_screenshots_enabled"] = new_enabled
-    save_config(config)
+    enabled = not service.is_running
+    ctx.config["periodic_screenshots_enabled"] = enabled
+    update_config_file({"periodic_screenshots_enabled": enabled})
+    service.set_enabled(enabled)
 
-    service.set_enabled(new_enabled)
+    show_status(
+        ctx.config,
+        f"Periodic Screenshots {'ON' if enabled else 'OFF'}",
+        auto_close=3000,
+    )
+    set_periodic_screenshots_btn_state(enabled)
 
-    state_str = "ON" if new_enabled else "OFF"
-    _show_status_popup(config, f"Periodic Screenshots {state_str}", auto_close=3000)
-    set_periodic_screenshots_btn_state(new_enabled)
 
+def handle_set_periodic_screenshots_config(ctx: AppContext, **kwargs):
+    """Update periodic screenshot settings.
 
-def handle_set_periodic_screenshots_config(config, **kwargs):
-    """Update periodic screenshot settings (interval, on_activity, activity_min_delay).
-
-    Accepted keyword arguments:
-
-    * ``interval`` — seconds between periodic captures
-    * ``on_activity`` — whether to capture on keyboard/mouse activity
-    * ``activity_min_delay`` — minimum seconds between activity captures
+    Accepted keyword arguments: ``interval`` (seconds between captures),
+    ``on_activity`` (capture on keyboard/mouse activity) and
+    ``activity_min_delay`` (minimum seconds between activity captures).
     """
-    service = state.periodic_screenshot_service
-
+    changes = {}
     if "interval" in kwargs:
-        config["periodic_screenshots_interval"] = int(kwargs["interval"])
+        changes["periodic_screenshots_interval"] = int(kwargs["interval"])
     if "on_activity" in kwargs:
-        config["periodic_screenshots_on_activity"] = bool(kwargs["on_activity"])
+        changes["periodic_screenshots_on_activity"] = bool(kwargs["on_activity"])
     if "activity_min_delay" in kwargs:
-        config["periodic_screenshots_activity_min_delay"] = int(
+        changes["periodic_screenshots_activity_min_delay"] = int(
             kwargs["activity_min_delay"]
         )
-
-    save_config(config)
+    ctx.config.update(changes)
+    update_config_file(changes)
 
     # Restart service if running to pick up new settings
+    service = ctx.periodic_screenshot_service
     if service and service.is_running:
         service.stop()
         service.start()
 
-    _show_status_popup(config, "Screenshot settings updated", auto_close=2000)
+    show_status(ctx.config, "Screenshot settings updated", auto_close=2000)

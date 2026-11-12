@@ -1,9 +1,9 @@
 import logging
-import re
 import threading
 import time
 
-from core.llm.base import LLMEngine
+from core.llm.base import CANCELLED, LLMEngine
+from core.llm.errors import LLMError
 from core.sinks.base import Sink
 from core.sources.base import Source
 from core.sources.ocr.exceptions import OCRCancelledError
@@ -12,29 +12,29 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_CANCELLED_MSG = "Pipeline cancelled."
 
-# Patterns that indicate a transient/retryable LLM error (matched case-insensitively).
-_RETRYABLE_PATTERNS: list[re.Pattern] = [
-    re.compile(p, re.IGNORECASE)
-    for p in (
-        r"503",
-        r"429",
-        r"UNAVAILABLE",
-        r"overloaded",
-        r"rate.?limit",
-        r"quota",
-        r"capacity",
-        r"too many requests",
-        r"ResourceExhausted",
-        r"ServerError",
-        r"deadline.?exceeded",
-        r"connection",
-    )
-]
 
+class LinkedCancel(threading.Event):
+    """A cancel event that is also set while its parent is.
 
-def _is_retryable_error(error_text: str) -> bool:
-    """Return True if *error_text* matches any known transient error pattern."""
-    return any(pat.search(error_text) for pat in _RETRYABLE_PATTERNS)
+    The fallback model gets one: it stops when the user cancels the request,
+    and also when the main model has answered and its result is no longer needed.
+    """
+
+    def __init__(self, parent: threading.Event | None):
+        super().__init__()
+        self._parent = parent
+
+    def is_set(self) -> bool:
+        return super().is_set() or bool(self._parent and self._parent.is_set())
+
+    def wait(self, timeout: float | None = None) -> bool:
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while not self.is_set():
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                return False
+            super().wait(0.1 if remaining is None else min(0.1, remaining))
+        return True
 
 
 def _call_llm_with_retry(
@@ -50,45 +50,28 @@ def _call_llm_with_retry(
     max_retries: int = 3,
     base_delay: float = 5.0,
 ) -> str:
-    """Call the LLM with automatic retry on transient errors.
+    """Call the LLM, retrying transient failures with exponential backoff.
 
-    Uses exponential backoff: *base_delay* × 2^attempt (5 s → 10 s → 20 s by
-    default).  Checks *cancel_event* between retries so the user can still
-    abort.
+    Waits *base_delay* × 2^attempt between tries (5 s → 10 s → 20 s by
+    default) and checks *cancel_event* so the user can still abort. Raises
+    :class:`LLMError` when the call fails for good.
     """
-    last_error = ""
     for attempt in range(max_retries + 1):
         if cancel_event and cancel_event.is_set():
-            return "Cancelled"
-
+            return CANCELLED
         try:
-            result = _call_llm_with_cancel_check(
-                llm,
+            return llm.generate(
                 prompt,
-                image_path,
-                is_image,
+                image_path if is_image else None,
                 status_callback,
                 enable_chat_sessions,
                 sink,
-                is_main,
-                cancel_event,
+                is_main=is_main,
+                cancel_event=cancel_event,
             )
-
-            # Some engines return error strings instead of raising.
-            if (
-                isinstance(result, str)
-                and result.startswith("Error")
-                and _is_retryable_error(result)
-            ):
-                raise RuntimeError(result)
-
-            return result
-
-        except Exception as exc:
-            last_error = str(exc)
-            if not _is_retryable_error(last_error) or attempt >= max_retries:
+        except LLMError as exc:
+            if not exc.retryable or attempt >= max_retries:
                 raise
-
             delay = base_delay * (2**attempt)
             role = "main" if is_main else "fallback"
             logger.warning(
@@ -96,24 +79,20 @@ def _call_llm_with_retry(
                 role,
                 attempt + 1,
                 max_retries,
-                last_error,
+                exc,
                 delay,
             )
             if status_callback:
                 status_callback(f"Retrying ({attempt + 1}/{max_retries})...")
-
             if sink:
                 sink.process_chunk("", is_main=is_main, replace=True)
-
             # Sleep in small increments so we can bail on cancellation.
             deadline = time.time() + delay
             while time.time() < deadline:
                 if cancel_event and cancel_event.is_set():
-                    return "Cancelled"
+                    return CANCELLED
                 time.sleep(0.25)
-
-    # Should not be reached, but just in case:
-    return f"Error: retries exhausted — {last_error}"
+    raise LLMError("retries exhausted", retryable=False)  # not reached
 
 
 class ConcurrentSinkWrapper(Sink):
@@ -176,7 +155,9 @@ def _retrieve_data_from_source(
         extracted_text = _get_text_from_source(
             source, coords, text, status_callback, cancel_event
         )
-        print(f"Retrieved text from source: {extracted_text}")
+        logger.info(
+            "Retrieved %d characters from the source", len(extracted_text or "")
+        )
 
         if hasattr(source, "temp_files") and source.temp_files:
             image_path = source.temp_files[-1]
@@ -195,21 +176,13 @@ def _get_text_from_source(
     status_callback=None,
     cancel_event: threading.Event | None = None,
 ) -> str:
-    """Get text from source with optional cancel event support."""
-    if (
-        hasattr(source, "get_text")
-        and "cancel_event" in source.get_text.__code__.co_varnames
-    ):
-        return source.get_text(
-            coords=coords,
-            text=text,
-            status_callback=status_callback,
-            cancel_event=cancel_event,
-        )
-    else:
-        return source.get_text(
-            coords=coords, text=text, status_callback=status_callback
-        )
+    """Get text from source."""
+    return source.get_text(
+        coords=coords,
+        text=text,
+        status_callback=status_callback,
+        cancel_event=cancel_event,
+    )
 
 
 def _handle_text_retrieval_error(
@@ -227,7 +200,7 @@ def _handle_text_retrieval_error(
 
     is_image = True
     image_path = _get_image_from_source(source, coords, text, cancel_event)
-    print(f"Retrieved image from source: {image_path}")
+    logger.info("Retrieved an image from the source")
     return None, image_path, is_image
 
 
@@ -237,14 +210,8 @@ def _get_image_from_source(
     text=None,
     cancel_event: threading.Event | None = None,
 ) -> str:
-    """Get image from source with optional cancel event support."""
-    if (
-        hasattr(source, "get_image")
-        and "cancel_event" in source.get_image.__code__.co_varnames
-    ):
-        return source.get_image(coords=coords, text=text, cancel_event=cancel_event)
-    else:
-        return source.get_image(coords=coords, text=text)
+    """Get image from source."""
+    return source.get_image(coords=coords, text=text, cancel_event=cancel_event)
 
 
 def _build_prompt(prompt_text: str, extracted_text: str | None) -> str:
@@ -282,52 +249,6 @@ def _execute_llm_without_fallback(
     )
 
 
-def _call_llm_with_cancel_check(
-    llm: LLMEngine,
-    prompt: str,
-    image_path: str | None,
-    is_image: bool,
-    status_callback,
-    enable_chat_sessions: bool,
-    sink: Sink,
-    is_main: bool,
-    cancel_event: threading.Event | None = None,
-) -> str:
-    """Call LLM with cancel event support check."""
-    if is_image:
-        if "cancel_event" in llm.process_image.__code__.co_varnames:
-            return llm.process_image(
-                prompt,
-                image_path,
-                status_callback,
-                enable_chat_sessions,
-                sink,
-                is_main=is_main,
-                cancel_event=cancel_event,
-            )
-        return llm.process_image(
-            prompt,
-            image_path,
-            status_callback,
-            enable_chat_sessions,
-            sink,
-            is_main=is_main,
-        )
-    else:
-        if "cancel_event" in llm.process_text.__code__.co_varnames:
-            return llm.process_text(
-                prompt,
-                status_callback,
-                enable_chat_sessions,
-                sink,
-                is_main=is_main,
-                cancel_event=cancel_event,
-            )
-        return llm.process_text(
-            prompt, status_callback, enable_chat_sessions, sink, is_main=is_main
-        )
-
-
 def _store_llm_result(
     results: dict,
     lock: threading.Lock,
@@ -335,19 +256,13 @@ def _store_llm_result(
     is_main: bool,
     main_success: list,
 ):
-    """Store LLM result in results dict."""
+    """Store a successful answer."""
     with lock:
-        if isinstance(ans, str) and ans.startswith("Error"):
-            if is_main:
-                results["main_error"] = ans
-            else:
-                results["fallback_error"] = ans
+        if is_main:
+            results["main"] = ans
+            main_success[0] = True
         else:
-            if is_main:
-                results["main"] = ans
-                main_success[0] = True
-            else:
-                results["fallback"] = ans
+            results["fallback"] = ans
 
 
 def _store_llm_error(
@@ -412,17 +327,17 @@ def _run_llm_thread(
 def _determine_final_result(
     results: dict, main_success: list, fallback_thread: threading.Thread
 ) -> str:
-    """Determine the final result from main and fallback results."""
+    """The main answer, else the fallback's; raises LLMError if both failed."""
     if main_success[0] and "main" in results:
         return results["main"]
-    else:
-        fallback_thread.join()
-        if "fallback" in results:
-            return results["fallback"]
-        elif "main_error" in results:
-            return f"Error processing main: {results['main_error']}, Fallback error: {results.get('fallback_error', 'unknown')}"
-        else:
-            return "Error processing with both models."
+    fallback_thread.join()
+    if "fallback" in results:
+        return results["fallback"]
+    raise LLMError(
+        f"Main model: {results.get('main_error', 'no answer')}; "
+        f"fallback model: {results.get('fallback_error', 'no answer')}",
+        retryable=False,
+    )
 
 
 def _save_to_session(
@@ -433,8 +348,8 @@ def _save_to_session(
     extracted_text: str | None,
     source_name: str,
 ):
-    """Save the interaction to session manager."""
-    if session_manager and final_result and not final_result.startswith("Error"):
+    """Save the interaction to session manager (only real answers reach here)."""
+    if session_manager and final_result and final_result != CANCELLED:
         try:
             session_manager.append_interaction(
                 prompt,
@@ -443,8 +358,8 @@ def _save_to_session(
                 extracted_text,
                 source_name=source_name,
             )
-        except Exception as e:
-            print(f"Failed to append to session manager: {e}")
+        except Exception:
+            logger.exception("Failed to save the interaction to the session")
 
 
 def process_pipeline(
@@ -472,7 +387,7 @@ def process_pipeline(
         cancel_event = threading.Event()
 
     pipeline_start_time = time.time()
-    print(f"Using source: {source.__class__.__name__}")
+    logger.info("Using source: %s", source.__class__.__name__)
 
     from .frames import CancelledFrame, ErrorFrame, Frame, LLMResponseFrame
     from .runner import build_pipeline
@@ -497,7 +412,7 @@ def process_pipeline(
     result_frame = pipeline.run(initial_frame)
 
     elapsed_ms = (time.time() - pipeline_start_time) * 1000
-    print(f"[Pipeline] Finished processing in {elapsed_ms:.2f} ms")
+    logger.info("[Pipeline] Finished processing in %.0f ms", elapsed_ms)
 
     if isinstance(result_frame, CancelledFrame):
         return PIPELINE_CANCELLED_MSG

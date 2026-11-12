@@ -8,9 +8,17 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 
 logger = logging.getLogger(__name__)
+
+STARTUP_TIMEOUT_S = 90  # model download/load on first start can take a while
+
+# Every server process this app started, so shutdown can stop them all even
+# when the SoundSource that started one has been replaced.
+_started: set[subprocess.Popen] = set()
+_started_lock = threading.Lock()
 
 # Path to WhisperLive service directory
 _WHISPERLIVE_PATH = os.path.join(
@@ -73,6 +81,8 @@ def start_whisperlive_service(model_size: str = "small") -> subprocess.Popen | N
             )
         logger.info(f"WhisperLive server output: {log_path}")
         logger.info(f"WhisperLive service starting with PID: {process.pid}...")
+        with _started_lock:
+            _started.add(process)
         return process
     except Exception as e:
         logger.error(f"Error starting WhisperLive service: {e}")
@@ -104,7 +114,7 @@ class WhisperLiveManager:
             logger.info("WhisperLive service is not running. Starting it now...")
             model_size = config.get("transcription_model", "small")
             self.process = start_whisperlive_service(model_size)
-            time.sleep(10)  # Give it time to start and load models
+            _wait_until_online(self.process)
             if self.process and self.process.poll() is not None:
                 logger.error("Failed to start WhisperLive service.")
                 self.process = None
@@ -118,7 +128,40 @@ class WhisperLiveManager:
     def cleanup(self):
         """Terminate the WhisperLive service process if we started it."""
         if self.process:
-            logger.info("Terminating WhisperLive service process...")
-            self.process.terminate()
-            self.process.wait()
+            _stop_process(self.process)
             self.process = None
+
+
+def _wait_until_online(process: subprocess.Popen | None) -> None:
+    """Poll until the server accepts connections, exits, or the timeout passes."""
+    deadline = time.monotonic() + STARTUP_TIMEOUT_S
+    while time.monotonic() < deadline:
+        if process is None or process.poll() is not None:
+            return
+        if is_whisperlive_service_online():
+            return
+        time.sleep(0.5)
+
+
+def _stop_process(process: subprocess.Popen, timeout: float = 5) -> None:
+    if process.poll() is None:
+        logger.info("Terminating WhisperLive service (PID %s)...", process.pid)
+        process.terminate()
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=timeout)
+    with _started_lock:
+        _started.discard(process)
+
+
+def stop_all_services() -> None:
+    """Stop every WhisperLive server this app started (called on exit)."""
+    with _started_lock:
+        processes = list(_started)
+    for process in processes:
+        try:
+            _stop_process(process)
+        except OSError as e:
+            logger.warning("Could not stop WhisperLive PID %s: %s", process.pid, e)

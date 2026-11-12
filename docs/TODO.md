@@ -3,23 +3,22 @@
 This document tracks planned features, enhancements, and known issues that need to be addressed in future updates.
 
 ## Recently Completed Features
-- [x] **Summarize Audio Conversation**: Added the ability to automatically summarize an entire audio conversation when recording stops, appending a concise summary to the full transcription file.
-- [x] **App & Window Name Tracking**: Records the active foreground application name, process name, and window title alongside each periodic screenshot as a JSON sidecar file. Displayed on the Session Timeline as coloured app spans with hover tooltips. Configurable via `track_active_window`.
-- [x] **MCP Server**: Implemented a Model Context Protocol (MCP) server using FastMCP to expose SnapSolve session history, OCR texts, and transcriptions to external IDEs (Claude Desktop, Cursor).
-- [x] **Webhook / Post-Session Actions**: After a session ends or a summary is generated, trigger configurable HTTP webhook actions (e.g., send summary to Slack, create Jira ticket). Also triggerable manually from the Session Browser.
-- [x] **Audio Level Visualization**: Added a real-time audio volume progress bar to the control panel during audio recording. Configurable via Settings UI.
-- [x] **Dual Audio Channel Recording** `[Screenpipe]`: Listen to both microphone and speaker simultaneously and record them as separate sentences, enabling speaker-attributed transcription.
 - [x] **Speaker Diarization** `[Screenpipe]`: Add speaker identification to transcription segments beyond dual-channel recording. Use `pyannote-audio` or WhisperX for voice-profile-based diarization to label speakers by name.
 - [x] **Real-time Speech Correction**: Mid-recording LLM feedback loop with fact-checking, grammar correction, and content suggestions. Configurable per-profile correction model, rolling window size, and editable prompts.
 - [x] **Composable Pipeline Architecture** `[Pipecat]`: Refactored the monolithic `process_pipeline()` into a composable, frame-based pipeline. Defined `Frame` dataclasses (`SourceFrame`, `PromptFrame`, `LLMResponseFrame`, `ErrorFrame`, `CancelledFrame`), a `Processor` ABC with 6 concrete implementations, and a `Pipeline` runner with `build_pipeline()` factory. Backward-compatible — all call sites unchanged.
 - [x] **LanguageTool Grammar Correction**: Integrated LanguageTool Premium as an alternative grammar correction engine for real-time speech correction. Supports both local server and cloud Premium API modes with automatic language mapping from the transcription language. Selectable via a Grammar Engine dropdown in the Real-time Analysis settings tab.
+- [x] **Secured Remote Control**: The API server always requires a key (generated on first start), including the WebSocket; QR-code pairing for the Android app.
+- [x] **Runtime Profile Switching**: Switch profiles from the panel or tray without a restart; Settings opened from the app reload the profile's engines.
+- [x] **Application Initialization State**: The UI appears at once, engines load in the background, a "Ready" popup shows when done, and earlier requests are refused with "Still starting up".
+- [x] **Session Export**: Markdown / JSON export from the Session Browser and the API.
+- [x] **Cross-Provider Fallback**: `fallback_llm_engine` lets the fallback model use another provider; the fallback stops once the main model answers.
+- [x] **Unit Tests & CI**: Tests for API auth, session storage, LLM retries/fallback and configuration, run in GitHub Actions on every push.
 
 ## Core & Architecture Improvements
-- [ ] **Dynamic Configuration**: Change configs dynamically (especially audio input/output and profile)
+- [ ] **Dynamic Configuration**: Change audio input/output devices without a restart (profiles already switch at runtime)
 - [ ] **Simultaneous Transcription**: Enable transcription simultaneously with OCR and text input (do not cancel recording when cycling source)
 - [ ] **Type Hinting**: Add comprehensive Python type hints (especially for variables initialized to `None`) to improve IDE autocomplete, static analysis, and code maintainability.
 - [ ] **Asynchronous Remote OCR Service**: When the remote OCR source is enabled, start the service asynchronously. Disable the capture and multi-select buttons until the service port is successfully polled. Ensure that if the app starts the service, it correctly kills it upon exiting.
-- [ ] **Application Initialization State**: Introduce a "Ready" popup indicating that initialization has finished. Prevent showing the control panel or accepting keyboard shortcuts until the application is fully loaded.
 - [ ] **Better Parsing of Verification Results**: Improve parsing and formatting of verification script (`verify.ps1`/`verify.sh`) output to provide clearer, more structured results.
 
 ## UI/UX Enhancements
@@ -56,7 +55,7 @@ This document tracks planned features, enhancements, and known issues that need 
 
 ## Testing & Quality Assurance
 - [ ] **Cross-Platform Testing**: Improve testing coverage for different operating systems (Windows, macOS, Linux).
-- [ ] **Error Recovery Testing**: Enhance testing for error recovery and fallback mechanisms.
+- [x] **Error Recovery Testing**: Retry, permanent-error and fallback-cancellation behaviour are covered by `tests/test_llm_layer.py`.
 - [ ] **Audio Device Compatibility**: Improve testing with various audio devices and configurations.
 
 ## Screenpipe-Inspired Features

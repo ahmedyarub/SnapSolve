@@ -22,6 +22,7 @@ select = [
     "PIE",
     "SIM",
     "LOG",
+    "T20",    # print(): app code logs through `logging` (console + file sink)
     "ASYNC",
     "RUF",
 ]
@@ -38,11 +39,14 @@ ignore = [
 "services/ocr_service.py" = ["ASYNC"]
 "services/diarization/diarization_service.py" = ["ASYNC", "LOG015"]
 # Manual sanity/e2e scripts, not library code.
-"tests/**" = ["LOG015", "SIM112", "SIM115", "ASYNC240"]
+"tests/**" = ["LOG015", "SIM112", "SIM115", "ASYNC240", "T20"]
+# Command-line tools and standalone services print to their console on purpose.
+"scripts/**" = ["T20"]
+"services/**" = ["T20"]
 
 [lint.flake8-bugbear]
 # FastAPI's parameter markers are meant to be called in defaults.
 extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Depends", "fastapi.Query"]
 
 [lint.isort]
-known-first-party = ["app", "core", "config", "ui", "services", "challenges", "tests"]
+known-first-party = ["app", "core", "config", "ui", "services", "tests"]

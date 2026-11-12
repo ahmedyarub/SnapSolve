@@ -1,78 +1,79 @@
-"""Configuration validation — model/OCR compatibility checks."""
+"""Profile validation: known engines, and a way to read images (vision model or OCR)."""
 
 import json
+import logging
 import os
-import sys
 
-from app.state import DEFAULT_MODEL_NAME
+from app.context import DEFAULT_MODEL_NAME, model_or_none
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_LLM_ENGINE = "claude-code"
+OCR_ENGINES = ("none", "paddleocr", "remote_paddle")
+
+_MODELS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config",
+    "llm_models.json",
+)
 
 
-def load_models_data():
-    """Load the LLM models registry from config/llm_models.json."""
+def load_models_data() -> dict:
+    """The LLM model registry (config/llm_models.json): engine -> list of models."""
     try:
-        models_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "config",
-            "llm_models.json",
-        )
-        with open(models_path) as f:
+        with open(_MODELS_PATH, encoding="utf-8") as f:
             return json.load(f)
-    except Exception as models_error:
-        print(f"Warning: Could not load llm_models.json: {models_error}")
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("Could not load llm_models.json: %s", e)
         return {}
 
 
-def _check_model_ocr_support(models, model_id):
-    """Check if model supports OCR."""
-    for m in models:
-        if m.get("id") == model_id:
-            return m.get("supports_ocr", False)
-    return False
+def fallback_engine_type(profile: dict) -> str:
+    """The fallback model's engine: its own ``fallback_llm_engine``, else the main one."""
+    return profile.get("fallback_llm_engine") or profile.get(
+        "llm_engine", DEFAULT_LLM_ENGINE
+    )
 
 
-def _validate_main_model(active_profile, models_data):
-    """Validate main model configuration."""
-    llm_type = active_profile.get("llm_engine", "claude-code")
-    model_id = active_profile.get("model", DEFAULT_MODEL_NAME)
-    ocr_type = active_profile.get("ocr_engine", "none")
+def _has_vision(models_data: dict, engine: str, model_id: str) -> bool:
+    # "supports_ocr" in llm_models.json means the model reads images itself.
+    return any(
+        m.get("id") == model_id and m.get("supports_ocr", False)
+        for m in models_data.get(engine, [])
+    )
 
-    models = models_data.get(llm_type, [])
-    supports_ocr = _check_model_ocr_support(models, model_id)
 
-    if not supports_ocr and ocr_type == "none":
-        print(
-            f"Error: Selected model '{model_id}' does not support built-in OCR and no OCR engine is configured."
+def profile_problems(profile: dict, models_data: dict | None = None) -> list[str]:
+    """Everything that stops this profile from working; empty when it is usable."""
+    from app.engine_init import LLM_ENGINE_TYPES
+
+    if models_data is None:
+        models_data = load_models_data()
+    problems = []
+    ocr_type = profile.get("ocr_engine", "none")
+    if ocr_type not in OCR_ENGINES:
+        problems.append(f"Unknown ocr_engine '{ocr_type}' (use one of {OCR_ENGINES}).")
+
+    checks = [
+        (
+            "Model",
+            profile.get("llm_engine", DEFAULT_LLM_ENGINE),
+            profile.get("model", DEFAULT_MODEL_NAME),
         )
-        print("Please configure an OCR engine or select a model that supports OCR.")
-        sys.exit(1)
+    ]
+    fallback = model_or_none(profile.get("fallback_model"))
+    if fallback:
+        checks.append(("Fallback model", fallback_engine_type(profile), fallback))
 
-
-def _validate_fallback_model(active_profile, models_data):
-    """Validate fallback model configuration."""
-    llm_type = active_profile.get("llm_engine", "claude-code")
-    fallback_model_id = active_profile.get("fallback_model", "None")
-    ocr_type = active_profile.get("ocr_engine", "none")
-
-    if not fallback_model_id or fallback_model_id == "None":
-        return
-
-    models = models_data.get(llm_type, [])
-    fallback_supports_ocr = _check_model_ocr_support(models, fallback_model_id)
-
-    if not fallback_supports_ocr and ocr_type == "none":
-        print(
-            f"Error: Selected fallback model '{fallback_model_id}' does not support built-in OCR "
-            f"and no OCR engine is configured."
-        )
-        print(
-            "Please configure an OCR engine or select a fallback model that supports OCR."
-        )
-        sys.exit(1)
-
-
-def validate_config(active_profile):
-    """Validate the active profile's model and OCR configuration."""
-    models_data = load_models_data()
-
-    _validate_main_model(active_profile, models_data)
-    _validate_fallback_model(active_profile, models_data)
+    for label, engine, model_id in checks:
+        if engine not in LLM_ENGINE_TYPES:
+            problems.append(
+                f"{label} '{model_id}': unknown engine '{engine}' "
+                f"(use one of {sorted(LLM_ENGINE_TYPES)})."
+            )
+        elif ocr_type == "none" and not _has_vision(models_data, engine, model_id):
+            problems.append(
+                f"{label} '{model_id}' cannot read images and the profile has no "
+                "OCR engine. Set ocr_engine, or pick a model that supports images."
+            )
+    return problems

@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import threading
 
@@ -5,12 +6,40 @@ from core.sinks.base import Sink
 
 from .base import LLMEngine
 
+logger = logging.getLogger(__name__)
+
 
 class GoogleGenAIEngine(LLMEngine):
     def __init__(self, model: str, api_key: str, session_manager=None):
         super().__init__(model, session_manager=session_manager)
         self.api_key = api_key
-        print(f"[GoogleGenAIEngine] Initialized with model: {self.model}")
+        self._genai_client = None
+        self._client_lock = threading.Lock()
+
+    def _client(self):
+        """One client per engine, reused across requests (it pools connections)."""
+        from google import genai
+
+        with self._client_lock:
+            if self._genai_client is None:
+                self._genai_client = genai.Client(api_key=self.api_key)
+            return self._genai_client
+
+    def _history_contents(self, types, enable_chat_sessions: bool) -> list:
+        """The chat history as Gemini turns (``user`` / ``model``)."""
+        contents = []
+        for user, assistant in self.history_turns(enable_chat_sessions):
+            if user:
+                contents.append(
+                    types.Content(role="user", parts=[types.Part.from_text(text=user)])
+                )
+            if assistant:
+                contents.append(
+                    types.Content(
+                        role="model", parts=[types.Part.from_text(text=assistant)]
+                    )
+                )
+        return contents
 
     def warmup(self, status_callback=None) -> bool:
         if status_callback:
@@ -18,10 +47,9 @@ class GoogleGenAIEngine(LLMEngine):
         if not self.api_key:
             return False
         try:
-            from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=self.api_key)
+            client = self._client()
             contents = [
                 types.Content(role="user", parts=[types.Part.from_text(text="Hello")])
             ]
@@ -85,20 +113,16 @@ class GoogleGenAIEngine(LLMEngine):
         if self._check_cancelled(cancel_event):
             return "Cancelled"
 
-        print("[GoogleGenAIEngine] Calling generate_content_stream...")
         response_stream = client.models.generate_content_stream(
             model=self.model,
             contents=contents,
         )
 
-        print("[GoogleGenAIEngine] Stream started, waiting for chunks...")
         ans_chunks = []
         buffer = ""
-        for i, chunk in enumerate(response_stream):
+        for chunk in response_stream:
             if self._check_cancelled(cancel_event):
                 return "Cancelled"
-
-            print(f"[GoogleGenAIEngine] Received chunk {i}: {chunk.text!r}")
 
             chunk_text = self._process_stream_chunk(chunk, sink, is_main, cancel_event)
             if chunk_text is None:
@@ -113,9 +137,7 @@ class GoogleGenAIEngine(LLMEngine):
         if self._check_cancelled(cancel_event):
             return "Cancelled"
 
-        ans = "".join(ans_chunks)
-        print("Request finished successfully")
-        return ans
+        return "".join(ans_chunks)
 
     def process_text(
         self,
@@ -132,10 +154,7 @@ class GoogleGenAIEngine(LLMEngine):
         if status_callback:
             status_callback("Processing with Google GenAI...")
 
-        print(f"[GoogleGenAIEngine] Text Request started for model: {self.model}")
-
         try:
-            from google import genai
             from google.genai import types
         except ImportError:
             return "Error: google-genai is not installed. Please install it to use the 'google-genai' engine."
@@ -147,16 +166,14 @@ class GoogleGenAIEngine(LLMEngine):
             return "Error calling Google GenAI API: no output sink was given."
 
         try:
-            client = genai.Client(api_key=self.api_key)
-
-            full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
-
-            current_parts = [types.Part.from_text(text=full_prompt)]
-            contents = [types.Content(role="user", parts=current_parts)]
-
-            return self._execute_stream(client, contents, sink, is_main, cancel_event)
+            contents = self._history_contents(types, enable_chat_sessions)
+            contents.append(
+                types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
+            )
+            return self._execute_stream(
+                self._client(), contents, sink, is_main, cancel_event
+            )
         except Exception as e:
-            print(f"[GoogleGenAIEngine] Error during request: {e!s}")
             return f"Error calling Google GenAI API: {e!s}"
 
     def process_image(
@@ -175,10 +192,7 @@ class GoogleGenAIEngine(LLMEngine):
         if status_callback:
             status_callback("Processing with Google GenAI...")
 
-        print(f"[GoogleGenAIEngine] Image Request started for model: {self.model}")
-
         try:
-            from google import genai
             from google.genai import types
         except ImportError:
             return "Error: google-genai is not installed. Please install it to use the 'google-genai' engine."
@@ -190,13 +204,7 @@ class GoogleGenAIEngine(LLMEngine):
             return "Error calling Google GenAI API: no output sink was given."
 
         try:
-            client = genai.Client(api_key=self.api_key)
-
-            full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
-
-            current_parts = [types.Part.from_text(text=full_prompt)]
-
-            print(f"[GoogleGenAIEngine] Loading image from {image_path}...")
+            current_parts = [types.Part.from_text(text=prompt)]
             with open(image_path, "rb") as f:
                 image_bytes = f.read()
 
@@ -211,9 +219,10 @@ class GoogleGenAIEngine(LLMEngine):
                 )
             )
 
-            contents = [types.Content(role="user", parts=current_parts)]
-
-            return self._execute_stream(client, contents, sink, is_main, cancel_event)
+            contents = self._history_contents(types, enable_chat_sessions)
+            contents.append(types.Content(role="user", parts=current_parts))
+            return self._execute_stream(
+                self._client(), contents, sink, is_main, cancel_event
+            )
         except Exception as e:
-            print(f"[GoogleGenAIEngine] Error during request: {e!s}")
             return f"Error calling Google GenAI API: {e!s}"

@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import threading
@@ -7,6 +8,8 @@ from PIL import Image, ImageDraw
 
 from .base import OCREngine
 from .exceptions import OCRCancelledError
+
+logger = logging.getLogger(__name__)
 
 
 class RemotePaddleOCREngine(OCREngine):
@@ -37,7 +40,7 @@ class RemotePaddleOCREngine(OCREngine):
             img.save(temp_path)
             self.extract_text(temp_path)
         except Exception as e:
-            print(f"Warmup failed: {e}")
+            logger.warning("Remote OCR warmup failed: %s", e)
         finally:
             os.remove(temp_path)
             # Intentionally not deleting the file
@@ -51,20 +54,23 @@ class RemotePaddleOCREngine(OCREngine):
         if cancel_event and cancel_event.is_set():
             raise OCRCancelledError("OCR cancelled.")
 
-        print("Using remote PaddleOCR engine.")
+        logger.debug("Using remote PaddleOCR engine.")
         if status_callback:
             status_callback("Sending to Remote PaddleOCR...")
         try:
             payload = {"file_path": image_path}
-            print(f"Sending payload to remote OCR: {payload}")
+            logger.debug("Sending an image to the remote OCR service at %s", self.url)
             with httpx.Client() as client:
                 response = client.post(self.url, json=payload, timeout=30.0)
                 if cancel_event and cancel_event.is_set():
                     raise OCRCancelledError("OCR cancelled.")
                 response.raise_for_status()
                 response_data = response.json()
-                print(f"Received response from remote OCR: {response_data}")
+                logger.debug(
+                    "Remote OCR returned %d characters",
+                    len(response_data.get("text") or ""),
+                )
                 return response_data.get("text", "")
         except httpx.RequestError as e:
-            print(f"Error requesting OCR from remote service: {e}")
+            logger.error("Error requesting OCR from remote service: %s", e)
             return ""

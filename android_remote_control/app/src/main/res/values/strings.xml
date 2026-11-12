@@ -33,12 +33,19 @@
     <string name="toast_enter_ip">Please enter an IP address</string>
     <string name="toast_connected">Connected to %1$s:%2$d</string>
     <string name="toast_connect_failed">Failed to connect to server</string>
+    <string name="toast_enter_key">Enter the API key, or tap Scan code and scan the code from Pair Phone on the desktop</string>
+    <string name="toast_wrong_key">The server rejected the API key. Scan the pairing code again.</string>
+    <string name="toast_bad_pairing_code">That is not a SnapSolve pairing code</string>
+    <string name="scan_pairing_prompt">Scan the code from Pair Phone on the desktop</string>
+    <string name="hint_api_key">API key</string>
+    <string name="button_scan_pairing">Scan code</string>
     <string name="toast_connect_error">Connection error: %1$s</string>
     <string name="toast_action_error">Error: %1$s</string>
 
     <!-- SharedPreferences keys (not shown in UI, used internally) -->
     <string name="pref_key_ip" translatable="false">pref_server_ip</string>
     <string name="pref_key_port" translatable="false">pref_server_port</string>
+    <string name="pref_key_api_key" translatable="false">pref_server_api_key</string>
 
     <!-- Transcription language selector -->
     <string name="label_transcription_lang">🌐 Language:</string>

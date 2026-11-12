@@ -8,6 +8,7 @@ behaves as a plain chat model, and streams text deltas back to the sink.
 
 import base64
 import json
+import logging
 import mimetypes
 import os
 import shutil
@@ -15,12 +16,18 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 from core.sinks.base import Sink
 
 from .base import LLMEngine
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_CLAUDE_MODEL = "claude-opus-5-5"
+# Longest a single answer may take before the CLI is stopped
+# (config: claude_timeout).
+DEFAULT_TIMEOUT_S = 600
 
 # Replaces Claude Code's coding-agent system prompt: this engine only answers.
 _SYSTEM_PROMPT = (
@@ -51,8 +58,8 @@ def _neutral_cwd() -> str:
 class ClaudeCodeEngine(LLMEngine):
     def __init__(self, model: str, config: dict | None = None, session_manager=None):
         super().__init__(model or DEFAULT_CLAUDE_MODEL, session_manager=session_manager)
-        self.cli_path = (config or {}).get("claude_cli_path", "claude")
-        print(f"[ClaudeCodeEngine] Initialized with model: {self.model}")
+        self.config = config or {}
+        self.cli_path = self.config.get("claude_cli_path", "claude")
 
     @property
     def supports_images(self) -> bool:
@@ -174,15 +181,22 @@ class ClaudeCodeEngine(LLMEngine):
         stderr_thread.start()
 
         finished = threading.Event()
-        if cancel_event:
+        timed_out = threading.Event()
+        deadline = time.monotonic() + float(
+            self.config.get("claude_timeout", DEFAULT_TIMEOUT_S)
+        )
 
-            def _kill_on_cancel():
-                while not finished.wait(0.1):
-                    if cancel_event.is_set():
-                        process.kill()
-                        return
+        def _kill_on_cancel_or_timeout():
+            while not finished.wait(0.1):
+                if cancel_event and cancel_event.is_set():
+                    process.kill()
+                    return
+                if time.monotonic() > deadline:
+                    timed_out.set()
+                    process.kill()
+                    return
 
-            threading.Thread(target=_kill_on_cancel, daemon=True).start()
+        threading.Thread(target=_kill_on_cancel_or_timeout, daemon=True).start()
 
         try:
             process.stdin.write(json.dumps(user_message) + "\n")
@@ -201,6 +215,8 @@ class ClaudeCodeEngine(LLMEngine):
 
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
+        if timed_out.is_set():
+            return "Error: Claude CLI timed out (claude_timeout in config.json)."
         if error:
             return f"Error from Claude: {error}"
         if process.returncode != 0:
@@ -272,7 +288,7 @@ class ClaudeCodeEngine(LLMEngine):
         is_main: bool = True,
         cancel_event: threading.Event | None = None,
     ) -> str:
-        print(f"[ClaudeCodeEngine] Text Request started for model: {self.model}")
+        logger.info("Claude text request: %s", self.model)
         full_prompt = self._prepare_prompt(prompt, enable_chat_sessions)
         content = [{"type": "text", "text": full_prompt}]
         return self._run(content, status_callback, sink, is_main, cancel_event)
@@ -287,7 +303,7 @@ class ClaudeCodeEngine(LLMEngine):
         is_main: bool = True,
         cancel_event: threading.Event | None = None,
     ) -> str:
-        print(f"[ClaudeCodeEngine] Image Request started for model: {self.model}")
+        logger.info("Claude image request: %s", self.model)
         try:
             with open(image_path, "rb") as f:
                 image_data = base64.standard_b64encode(f.read()).decode("ascii")

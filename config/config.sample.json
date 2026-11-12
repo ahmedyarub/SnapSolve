@@ -34,7 +34,6 @@
   "auto_close_results": false,
   "opacity": 0.9,
   "hide_from_capture": false,
-  "toggle_panel": true,
   "warmup_ocr": false,
   "warmup_llm": false,
   "warmup_tts": false,
@@ -55,7 +54,7 @@
     "port": 8000
   },
   "enable_api_server": false,
-  "api_server_host": "0.0.0.0",
+  "api_server_host": "127.0.0.1",
   "api_server_port": 3031,
   "api_server_key": "",
   "mouse_sensitivity": 1.5,

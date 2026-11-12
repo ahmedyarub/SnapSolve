@@ -1,5 +1,6 @@
 """System tray icon and console/tray mode setup."""
 
+import logging
 import os
 import platform
 import signal
@@ -8,11 +9,33 @@ import threading
 import pystray
 from PIL import Image
 
-from core.output import toggle_control_panel
+from app.context import AppContext
+from config.settings import load_profiles
+from core.output import open_settings, show_pairing_dialog, toggle_control_panel
+
+logger = logging.getLogger(__name__)
 
 
-def create_tray_icon(on_exit):
+def _profile_menu(ctx: AppContext) -> pystray.Menu:
+    """One radio item per profile; picking one switches to it."""
+    from app.profiles import switch_profile
+
+    def item(profile):
+        profile_id = profile.get("id", "")
+        return pystray.MenuItem(
+            profile.get("name", profile_id),
+            lambda _icon, _item: switch_profile(ctx, profile_id),
+            checked=lambda _item: ctx.profile.get("id") == profile_id,
+            radio=True,
+        )
+
+    return pystray.Menu(lambda: (item(p) for p in load_profiles()))
+
+
+def create_tray_icon(ctx: AppContext):
     """Create and return a pystray system-tray icon."""
+    from app.lifecycle import exit_app
+
     # Load custom tray icon from assets, fall back to generated if missing
     icon_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -24,49 +47,47 @@ def create_tray_icon(on_exit):
     else:
         img = Image.new("RGB", (64, 64), color=(73, 109, 137))
 
-    def quit_action(_icon):
-        _icon.stop()
-        on_exit()
-
-    def toggle_panel_action():
-        toggle_control_panel()
+    def quit_action(icon):
+        icon.stop()
+        exit_app(ctx)
 
     menu = pystray.Menu(
-        pystray.MenuItem("Toggle Panel", toggle_panel_action),
+        pystray.MenuItem("Toggle Panel", lambda: toggle_control_panel()),
+        pystray.MenuItem("Profile", _profile_menu(ctx)),
+        pystray.MenuItem("Settings…", lambda: open_settings()),
+        pystray.MenuItem("Pair Android Remote", lambda: show_pairing_dialog()),
         pystray.MenuItem("Exit", quit_action),
     )
-    icon = pystray.Icon("ScreenQA", img, "Screen Capture QA", menu)
-    return icon
+    return pystray.Icon("SnapSolve", img, "SnapSolve", menu)
 
 
-def _setup_tray_or_console_mode(config, exit_handler):
-    """Setup tray or console mode."""
-    if config.get("background", False):
-        print("Running in background tray mode with pystray...")
+def setup_tray_or_console_mode(ctx: AppContext):
+    """Run the tray icon (background mode) or wire console signals."""
+    if ctx.config.get("background", False):
+        logger.info("Running in background tray mode...")
 
         def run_tray():
-            icon = create_tray_icon(exit_handler)
-            icon.run()
+            create_tray_icon(ctx).run()
 
-        threading.Thread(target=run_tray, daemon=True).start()
-    else:
-        print("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")
-        # On Windows, the SetConsoleCtrlHandler registered at module load
-        # handles SIGINT/console-close.  On other platforms, fall back to
-        # Python signal handlers with a QTimer to ensure delivery.
-        if platform.system() != "Windows":
+        threading.Thread(target=run_tray, daemon=True, name="tray").start()
+        return
 
-            def _signal_exit(_sig, _frame):
-                print("Exiting (signal)...")
-                # noinspection PyProtectedMember
-                os._exit(0)
+    logger.info("Running in console/Qt mode. Press Ctrl+C or close via tray to exit.")
+    # On Windows, the SetConsoleCtrlHandler registered at startup handles
+    # SIGINT/console-close. Elsewhere, use signal handlers plus a QTimer so
+    # Python gets a chance to run them.
+    if platform.system() != "Windows":
+        from app.lifecycle import exit_app
 
-            signal.signal(signal.SIGINT, _signal_exit)
-            if hasattr(signal, "SIGTERM"):
-                signal.signal(signal.SIGTERM, _signal_exit)
+        def _signal_exit(_sig, _frame):
+            exit_app(ctx)
 
-            from PyQt6.QtCore import QTimer
+        signal.signal(signal.SIGINT, _signal_exit)
+        if hasattr(signal, "SIGTERM"):
+            signal.signal(signal.SIGTERM, _signal_exit)
 
-            timer = QTimer()
-            timer.start(500)
-            timer.timeout.connect(lambda: None)
+        from PyQt6.QtCore import QTimer
+
+        timer = QTimer()
+        timer.start(500)
+        timer.timeout.connect(lambda: None)

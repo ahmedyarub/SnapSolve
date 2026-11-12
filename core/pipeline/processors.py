@@ -163,7 +163,7 @@ class PromptBuilderProcessor(Processor):
         from .pipeline import _build_prompt
 
         prompt = _build_prompt(self.prompt_text, frame.extracted_text)
-        print(f"Submitted prompt: {prompt}")
+        logger.info("Submitted a prompt of %d characters", len(prompt))
 
         # Store prompt for IDE context injection
         from core.output import set_last_user_prompt
@@ -240,7 +240,7 @@ class LLMProcessor(Processor):
             return ErrorFrame(
                 cancel_event=frame.cancel_event,
                 metadata=frame.metadata,
-                error=str(exc),
+                error=f"Error: {exc}",
             )
 
         return LLMResponseFrame(
@@ -296,11 +296,17 @@ class ConcurrentLLMProcessor(Processor):
                 error="ConcurrentLLMProcessor expected a PromptFrame.",
             )
 
+        from core.llm.errors import LLMError
+
         from .pipeline import (
             ConcurrentSinkWrapper,
+            LinkedCancel,
             _determine_final_result,
             _run_llm_thread,
         )
+
+        # Stops the fallback with the request, or as soon as main has answered.
+        fallback_cancel = LinkedCancel(frame.cancel_event)
 
         results: dict = {}
         lock = threading.Lock()
@@ -359,7 +365,7 @@ class ConcurrentLLMProcessor(Processor):
                 lock,
                 main_success,
                 main_finished,
-                frame.cancel_event,
+                fallback_cancel,
                 self.max_retries,
                 self.base_delay,
             ),
@@ -369,12 +375,23 @@ class ConcurrentLLMProcessor(Processor):
         main_thread.start()
         fallback_thread.start()
         main_thread.join()
+        if main_success[0]:
+            fallback_cancel.set()  # the fallback's answer is no longer needed
 
         cancelled = _check_cancelled(frame)
         if cancelled:
             return cancelled
 
-        final_result = _determine_final_result(results, main_success, fallback_thread)
+        try:
+            final_result = _determine_final_result(
+                results, main_success, fallback_thread
+            )
+        except LLMError as exc:
+            return ErrorFrame(
+                cancel_event=frame.cancel_event,
+                metadata=frame.metadata,
+                error=f"Error: {exc}",
+            )
 
         return LLMResponseFrame(
             cancel_event=frame.cancel_event,

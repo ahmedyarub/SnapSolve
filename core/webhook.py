@@ -6,7 +6,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from core.session_manager import SessionManager
+from core.sessions import store
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,6 @@ def _send_webhook_thread(url: str, payload: dict):
 
 def trigger_webhook(
     config: dict,
-    session_manager: SessionManager,
     session_id: str,
     summary_text: str | None = None,
 ):
@@ -36,7 +35,7 @@ def trigger_webhook(
     if not webhook_url:
         return
 
-    session_data = session_manager.load_session_data(session_id)
+    session_data = store.read_session(session_id)
     if not session_data:
         logger.warning(f"Webhook: Could not load session data for {session_id}")
         return

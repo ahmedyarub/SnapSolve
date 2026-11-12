@@ -59,7 +59,7 @@ async def extract_text(request: ImageRequest):
         raise HTTPException(status_code=400, detail="Could not read the image file.")
 
     extracted_text = " ".join(parse_ocr_results(ocr.ocr(image_data)))
-    logger.info(f"Recognized text: {extracted_text}")
+    logger.info("Recognized %d characters", len(extracted_text))
     return {"text": extracted_text}
 
 

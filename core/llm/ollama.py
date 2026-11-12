@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import threading
 import urllib.error
 import urllib.request
@@ -8,13 +9,22 @@ from core.sinks.base import Sink
 
 from .base import LLMEngine
 
+logger = logging.getLogger(__name__)
+
 
 class OllamaEngine(LLMEngine):
     def __init__(
-        self, model: str, ollama_url: str, session_manager=None, status_callback=None
+        self,
+        model: str,
+        ollama_url: str,
+        session_manager=None,
+        status_callback=None,
+        timeout: float = 300,
     ):
         super().__init__(model, session_manager=session_manager)
         self.ollama_url = ollama_url
+        # Seconds to wait for the server (model loading on first use is slow).
+        self.timeout = timeout
         if status_callback:
             status_callback("Ollama engine initialized")
 
@@ -43,7 +53,8 @@ class OllamaEngine(LLMEngine):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req) as response:
+            # The first call loads the model into memory, which can take minutes.
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 _ = response.read()
             if status_callback:
                 status_callback("Ollama warmup complete.")
@@ -51,7 +62,7 @@ class OllamaEngine(LLMEngine):
         except Exception as e:
             if status_callback:
                 status_callback(f"Ollama warmup failed: {e!s}")
-            print(f"Ollama warmup failed: {e!s}")
+            logger.warning("Ollama warmup failed: %s", e)
             return False
 
     @property
@@ -71,25 +82,32 @@ class OllamaEngine(LLMEngine):
             if cancel_event and cancel_event.is_set():
                 return "Cancelled"
 
-            print("[OllamaEngine] Sending request...")
             req = urllib.request.Request(
                 f"{self.ollama_url.rstrip('/')}/api/generate",
-                data=json.dumps(payload).encode("utf-8"),
+                data=json.dumps({**payload, "stream": True}).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req) as response:
-                if cancel_event and cancel_event.is_set():
-                    return "Cancelled"
-                data = json.loads(response.read().decode("utf-8"))
-                ans = data.get("response", "").strip()
-
-            if sink and not (cancel_event and cancel_event.is_set()):
-                sink.process_chunk(ans, is_main=is_main)
-            print("Request finished successfully")
-            return ans
+            pieces: list[str] = []
+            # Streams one JSON object per line; the timeout applies to each read.
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                for line in response:
+                    if cancel_event and cancel_event.is_set():
+                        return "Cancelled"
+                    if not line.strip():
+                        continue
+                    data = json.loads(line.decode("utf-8"))
+                    if data.get("error"):
+                        return f"Error calling Ollama API: {data['error']}"
+                    piece = data.get("response", "")
+                    if piece:
+                        pieces.append(piece)
+                        if sink:
+                            sink.process_chunk(piece, is_main=is_main)
+                    if data.get("done"):
+                        break
+            return "".join(pieces).strip()
         except Exception as e:
-            print(f"[OllamaEngine] Error calling Ollama API: {e!s}")
             return f"Error calling Ollama API: {e!s}"
 
     def process_text(
@@ -104,9 +122,7 @@ class OllamaEngine(LLMEngine):
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
-        print(
-            f"[OllamaEngine] Text Request started for model: {self.model} at {self.ollama_url}"
-        )
+        logger.info("Ollama text request: %s at %s", self.model, self.ollama_url)
         if status_callback:
             status_callback("Processing text with Ollama...")
 
@@ -129,9 +145,7 @@ class OllamaEngine(LLMEngine):
         if cancel_event and cancel_event.is_set():
             return "Cancelled"
 
-        print(
-            f"[OllamaEngine] Image Request started for model: {self.model} at {self.ollama_url}"
-        )
+        logger.info("Ollama image request: %s at %s", self.model, self.ollama_url)
         if status_callback:
             status_callback("Processing image with Ollama...")
 

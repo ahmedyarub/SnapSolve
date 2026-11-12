@@ -22,7 +22,7 @@ def _on_request_active_source(q):
 
 
 def _handle_request_coords(q):
-    from ui.selector import get_coordinates
+    from core.ui.selector import get_coordinates
 
     # Pass the queue's put method directly as the callback
     get_coordinates(callback=q.put)
@@ -80,6 +80,9 @@ class UIManager(QObject):
         ui_signals.open_url.connect(self._on_open_url)
         ui_signals.open_session_browser.connect(self._on_open_session_browser)
         ui_signals.open_context_manager.connect(self._on_open_context_manager)
+        ui_signals.show_pairing.connect(self._on_show_pairing)
+        ui_signals.open_settings.connect(self._on_open_settings)
+        ui_signals.set_profiles.connect(self.panel.set_profile_choices)
         ui_signals.set_transcription_language.connect(
             self._on_set_transcription_language
         )
@@ -111,9 +114,21 @@ class UIManager(QObject):
 
     @staticmethod
     def _on_open_session_browser():
-        from ui.session_browser import open_session_browser
+        # Registered by the app: the browser lives in ui/, above core.
+        if "open_session_browser" in app_callbacks:
+            app_callbacks["open_session_browser"]()
 
-        open_session_browser()
+    @staticmethod
+    def _on_open_settings():
+        # Registered by the app: the dialog lives in ui/, above core.
+        if "open_settings" in app_callbacks:
+            app_callbacks["open_settings"]()
+
+    @staticmethod
+    def _on_show_pairing():
+        from core.ui.pairing_dialog import show_pairing_dialog
+
+        show_pairing_dialog()
 
     @staticmethod
     def _on_open_context_manager():
@@ -207,14 +222,16 @@ class UIManager(QObject):
 
     def _on_show_subtitle(self, text: str):
         logger = logging.getLogger(__name__)
-        logger.info(f"_on_show_subtitle called with text: {text}")
+        logger.debug("Showing a subtitle (%d characters)", len(text))
         assert self.subtitle is not None
         self.subtitle.add_subtitle(text)
         logger.info("_on_show_subtitle completed")
 
     def _on_update_subtitle(self, text: str, append: bool = False):
         logger = logging.getLogger(__name__)
-        logger.info(f"_on_update_subtitle called with text: {text}, append: {append}")
+        logger.debug(
+            "Updating a subtitle (%d characters, append=%s)", len(text), append
+        )
         assert self.subtitle is not None
         self.subtitle.update_last_subtitle(text, append=append)
         logger.info("_on_update_subtitle completed")

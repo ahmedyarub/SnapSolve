@@ -211,7 +211,7 @@ class AudioSink(Sink):
 
             self._load_piper_voice()
 
-            logger.info(f"Synthesizing audio via Piper for text: '{text[:50]}...'")
+            logger.info("Synthesizing %d characters with Piper", len(text))
 
             wav_file = self._synthesize_audio_to_wav(text)
 

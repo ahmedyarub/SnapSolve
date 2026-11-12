@@ -1,7 +1,7 @@
+import logging
 import os
 import threading
 import time
-import traceback
 
 import numpy as np
 
@@ -14,6 +14,8 @@ from .exceptions import (
     OCRExecutionError,
     OCRInitializationError,
 )
+
+logger = logging.getLogger(__name__)
 
 _WARMUP_IMAGE = "test_image.png"
 
@@ -28,7 +30,7 @@ class LocalPaddleOCREngine(OCREngine):
             if warmup:
                 self._warmup(status_callback)
         except (OSError, RuntimeError) as e:
-            print(f"Error during OCR initialization:\n{traceback.format_exc()}")
+            logger.exception("Error during OCR initialization")
             raise OCRInitializationError(
                 f"Error during OCR initialization: {e!s}"
             ) from e
@@ -60,7 +62,7 @@ class LocalPaddleOCREngine(OCREngine):
     ) -> str:
         self._check_cancelled(cancel_event)
 
-        print("Using local PaddleOCR engine.")
+        logger.debug("Using local PaddleOCR engine.")
         if status_callback:
             status_callback("Running PaddleOCR...")
 
@@ -70,14 +72,12 @@ class LocalPaddleOCREngine(OCREngine):
             self._check_cancelled(cancel_event)
 
             extracted_text = " ".join(parse_ocr_results(results))
-            print(
-                f"Extracted Text: {extracted_text}"
-                if extracted_text
-                else "PaddleOCR found no text."
+            logger.info("PaddleOCR extracted %d characters", len(extracted_text))
+            logger.info(
+                "PaddleOCR took %.0f ms", (time.perf_counter() - start_time) * 1000
             )
-            print(f"PaddleOCR took {(time.perf_counter() - start_time) * 1000:.2f} ms")
             return extracted_text
 
         except (OSError, RuntimeError, ValueError, OCRCancelledError) as e:
-            print(f"Error during OCR execution:\n{traceback.format_exc()}")
+            logger.exception("Error during OCR execution")
             raise OCRExecutionError(f"Error during OCR execution: {e!s}") from e
