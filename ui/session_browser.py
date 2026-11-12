@@ -757,7 +757,9 @@ class SessionBrowserDialog(QDialog):
     #  Tree interaction
     # ------------------------------------------------------------------ #
 
-    def _on_tree_selection(self, current: QTreeWidgetItem, _previous: QTreeWidgetItem):
+    def _on_tree_selection(
+        self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ):
         if current is None:
             return
 

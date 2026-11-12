@@ -3,7 +3,7 @@
 from typing import ClassVar
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QMouseEvent
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -104,7 +104,7 @@ class _DragHandleBar(QWidget):
         bar_layout.addWidget(close_btn)
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent | None):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
             event.accept()  # Prevent propagation to parent's DraggableWidgetMixin

@@ -1,7 +1,7 @@
 import sys
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QCursor, QPainter, QPen
+from PyQt6.QtGui import QColor, QCursor, QKeyEvent, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import QApplication, QWidget
 
 
@@ -32,7 +32,7 @@ class CoordinateSelector(QWidget):
         self.setMouseTracking(True)
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent | None):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.first_point_locked:
                 self.end_x = int(event.position().x())
@@ -63,7 +63,7 @@ class CoordinateSelector(QWidget):
             self.update()
 
     # noinspection PyPep8Naming
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: QMouseEvent | None):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.is_drawing:
                 self.end_x = int(event.position().x())
@@ -95,7 +95,7 @@ class CoordinateSelector(QWidget):
                     self.update()
 
     # noinspection PyPep8Naming
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: QKeyEvent | None):
         if event.key() == Qt.Key.Key_Escape:
             self.coordinates = None
             self.finish()

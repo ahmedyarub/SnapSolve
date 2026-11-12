@@ -1,6 +1,7 @@
 """RecordButton — push-to-talk / toggle record button with long-press support."""
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QPushButton
 
 
@@ -23,14 +24,14 @@ class RecordButton(QPushButton):
         self.press_timer.timeout.connect(self.on_long_press)
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent | None):
         super().mousePressEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_long_press = False
             self.press_timer.start(500)  # 500ms for long press
 
     # noinspection PyPep8Naming
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: QMouseEvent | None):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.press_timer.stop()

@@ -5,7 +5,7 @@ import logging
 import os
 import threading
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QTextEdit,
@@ -182,7 +182,7 @@ class TextInputWidget(DraggableWidgetMixin, QWidget):
         return event.key() == Qt.Key.Key_Down
 
     # noinspection PyPep8Naming
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj: QObject | None, event: QEvent | None):
         if obj is self.text_edit and event.type() == event.Type.KeyPress:
             if self._is_return_key_event(event):
                 if self._is_shift_modifier_pressed(event):

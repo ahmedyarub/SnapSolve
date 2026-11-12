@@ -8,17 +8,20 @@ import logging
 import os
 from datetime import datetime
 
-from PyQt6.QtCore import QEvent, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QBrush,
     QColor,
     QFont,
     QFontMetrics,
     QLinearGradient,
+    QMouseEvent,
     QPainter,
     QPainterPath,
+    QPaintEvent,
     QPen,
     QPixmap,
+    QWheelEvent,
 )
 from PyQt6.QtWidgets import (
     QFileIconProvider,
@@ -222,7 +225,7 @@ class _FilmstripWidget(QWidget):
         return pix
 
     # noinspection PyPep8Naming
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -296,7 +299,7 @@ class _FilmstripWidget(QWidget):
         painter.end()
 
     # noinspection PyPep8Naming
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
         old = self._hovered_index
         self._hovered_index = self._hit_test(event.pos())
         if old != self._hovered_index:
@@ -315,7 +318,7 @@ class _FilmstripWidget(QWidget):
             QToolTip.hideText()
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
         idx = self._hit_test(event.pos())
         if idx >= 0:
             self._selected_index = idx
@@ -543,7 +546,7 @@ class _AppTrackWidget(QWidget):
         return QRect(x1, 2, w, _APP_TRACK_HEIGHT - 4)
 
     # noinspection PyPep8Naming
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -607,7 +610,7 @@ class _AppTrackWidget(QWidget):
         painter.end()
 
     # noinspection PyPep8Naming
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
         old = self._hovered_index
         self._hovered_index = self._hit_test(event.pos())
         if old != self._hovered_index:
@@ -752,7 +755,7 @@ class _EventTrackWidget(QWidget):
         painter.end()
 
     # noinspection PyPep8Naming
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
         old = self._hovered_index
         self._hovered_index = self._hit_test(event.pos())
         if old != self._hovered_index:
@@ -786,7 +789,7 @@ class _EventTrackWidget(QWidget):
             QToolTip.hideText()
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
         idx = self._hit_test(event.pos())
         if idx >= 0:
             self.eventClicked.emit(self._events[idx])
@@ -911,7 +914,7 @@ class _TimeRulerWidget(QWidget):
         painter.end()
 
     # noinspection PyPep8Naming
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
             ts = self.x_to_time(int(event.position().x()))
@@ -1405,7 +1408,7 @@ class SessionTimelineWidget(QWidget):
         root.addWidget(self._placeholder)
 
     # noinspection PyPep8Naming
-    def eventFilter(self, obj, event) -> bool:
+    def eventFilter(self, obj: QObject | None, event: QEvent | None) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress:
             if event.button() == Qt.MouseButton.LeftButton:
                 if obj in (
@@ -1723,7 +1726,7 @@ class SessionTimelineWidget(QWidget):
         self.setFixedHeight(total)
 
     # noinspection PyPep8Naming
-    def wheelEvent(self, event) -> None:
+    def wheelEvent(self, event: QWheelEvent | None) -> None:
         """Ctrl+scroll zooms the timeline; plain scroll scrolls horizontally."""
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()

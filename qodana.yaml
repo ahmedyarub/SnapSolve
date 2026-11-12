@@ -4,7 +4,7 @@
 #################################################################################
 version: "1.0"
 linter: qodana-python-community
-image: jetbrains/qodana-python-community:2026.1
+image: jetbrains/qodana-python-community:2026.2
 
 # Builds the interpreter Qodana analyses against. Scans must pass
 #   -e QODANA_PYTHON_PATH=/data/cache/snapsolve-venv/bin/python
@@ -25,6 +25,10 @@ exclude:
     # is deliberate in worker threads, Qt callbacks and best-effort probes,
     # which must not die. Handlers with an obvious narrow type use it.
     -   name: PyBroadExceptionInspection
+    # Checks the analysis venv against requirements.txt, not the code. That venv
+    # leaves PyAudio out on purpose (it needs PortAudio headers to build), and in
+    # 2026.2 the check stalls every inspection thread for ~5 minutes per scan.
+    -   name: PyPackageRequirementsInspection
 include:
     -   name: DuplicatedCode
     -   name: PyUnresolvedReferences

@@ -141,7 +141,7 @@ class UIManager(QObject):
         self.text_input.text_edit.setFocus()
 
     # noinspection PyPep8Naming
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj: QObject | None, event: QEvent | None):
         if event.type() == QEvent.Type.Show and self._hide_from_capture:
             apply_display_affinity(obj, exclude=True)
         return super().eventFilter(obj, event)

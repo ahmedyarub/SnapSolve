@@ -5,6 +5,7 @@ import threading
 import time
 
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
@@ -22,7 +23,7 @@ class SubtitleLabel(QLabel):
         self.creation_time = 0
 
     # noinspection PyPep8Naming
-    def mouseDoubleClickEvent(self, event):
+    def mouseDoubleClickEvent(self, event: QMouseEvent | None):
         if event.button() == Qt.MouseButton.LeftButton:
             text = self.text()
             if "text_submit" in app_callbacks:
